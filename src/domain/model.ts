@@ -38,6 +38,8 @@ export type Shift = {
 
 export type Order = {
   id: string;
+  /** Links the order to the currently-open Supabase shift (used for shift reports). */
+  shiftId?: string;
   tableLabel?: string;
   createdAt: number;
   createdBy: string;
@@ -72,6 +74,8 @@ export type Payment = {
   amount: number;
   receivedBy: string;
   receivedAt: number;
+  /** اسم الدافع/ملاحظة لتمييز "مين حاسب على ايه" داخل نفس الترابيزة */
+  note?: string;
 };
 
 export type LedgerEntry = {

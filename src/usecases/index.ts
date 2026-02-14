@@ -153,17 +153,18 @@ export async function addLedgerPayment(repos: Repos, input: unknown) {
 
 const CreateOrderInput = z.object({
   tableLabel: z.string().optional(),
+  shiftId: z.string().min(1),
   createdBy: z.string().min(1),
 });
 
 export async function createOrder(repos: Repos, input: unknown) {
   const data = CreateOrderInput.parse(input);
-  const order = await repos.orders.create({ tableLabel: data.tableLabel, createdBy: data.createdBy });
+  const order = await repos.orders.create({ tableLabel: data.tableLabel, createdBy: data.createdBy, shiftId: data.shiftId });
 
   await repos.events.append({
     actorUserId: data.createdBy,
     type: "order.created",
-    payload: { orderId: order.id, table: order.tableLabel ?? null },
+    payload: { orderId: order.id, table: order.tableLabel ?? null, shiftId: data.shiftId },
   });
 
   return order;
@@ -316,6 +317,7 @@ const AddPaymentInput = z.object({
   orderId: z.string().min(1),
   amount: z.number().positive(),
   receivedBy: z.string().min(1),
+  note: z.string().max(80).optional(),
 });
 
 export async function addPayment(repos: Repos, input: unknown) {
@@ -338,6 +340,7 @@ export async function addPayment(repos: Repos, input: unknown) {
     orderId: data.orderId,
     amount: data.amount,
     receivedBy: data.receivedBy,
+    note: data.note,
   });
 
   // ضمان إغلاق الطلب بعد اكتمال الدفع (حتى لو repo مختلف لاحقًا مثل Supabase)
@@ -349,7 +352,7 @@ export async function addPayment(repos: Repos, input: unknown) {
   await repos.events.append({
     actorUserId: data.receivedBy,
     type: "payment.added",
-    payload: { orderId: data.orderId, paymentId: p.id, amount: data.amount },
+    payload: { orderId: data.orderId, paymentId: p.id, amount: data.amount, note: data.note ?? null },
   });
 
   return p;

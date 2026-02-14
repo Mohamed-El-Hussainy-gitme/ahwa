@@ -144,7 +144,7 @@ export default function ShiftPage() {
   }
 
   return (
-    <MobileShell title="الوردية">
+    <MobileShell title="الوردية" backHref="/owner">
       {msg ? (
         <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-right text-sm text-red-700">
           {msg}

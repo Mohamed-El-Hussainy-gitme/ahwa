@@ -28,6 +28,7 @@ export default function BillingPage() {
   const [showPaid, setShowPaid] = useState(true);
 
   const [payAmount, setPayAmount] = useState<string>("");
+  const [payNote, setPayNote] = useState<string>("");
   const [customerId, setCustomerId] = useState<string>("");
   const [note, setNote] = useState<string>("");
   const [busy, setBusy] = useState(false);
@@ -196,7 +197,13 @@ export default function BillingPage() {
 
     setBusy(true);
     try {
-      await addPayment(repos, { orderId: activeId, amount: a, receivedBy: session.user.id });
+      await addPayment(repos, {
+        orderId: activeId,
+        amount: a,
+        receivedBy: session.user.id,
+        note: payNote || undefined,
+      });
+      setPayNote("");
       await load();
       await loadOrder(activeId);
     } catch (e: unknown) {
@@ -287,7 +294,11 @@ export default function BillingPage() {
   }, [active, checkNoByOrderId, customerNameById]);
 
   return (
-    <MobileShell title="الحساب" topRight={<div className="text-xs text-neutral-500">{session.user?.name}</div>}>
+    <MobileShell
+      title="الحساب"
+      backHref="/dashboard"
+      topRight={<div className="text-xs text-neutral-500">{session.user?.name}</div>}
+    >
       {!can.billing ? (
         <div className="rounded-xl border bg-red-50 p-3 text-sm text-red-900">هذه الشاشة للمشرف/المعلم.</div>
       ) : null}
@@ -445,7 +456,7 @@ export default function BillingPage() {
               </div>
               {invoice.paid > 0 ? (
                 <div className="mt-2 text-xs text-amber-700">
-                  ملاحظة: تم تسجيل دفعات على هذا الطلب؛ لا يمكن تقسيمه الآن. قسم الحساب قبل الدفع لتعرف "مين حاسب على ايه".
+                  تم تسجيل دفعات على هذا الطلب؛ لا يمكن تقسيمه الآن.
                 </div>
               ) : null}
             </div>
@@ -461,6 +472,12 @@ export default function BillingPage() {
                 className="w-full rounded-xl border px-3 py-3 text-right"
                 placeholder="المبلغ"
               />
+              <input
+                value={payNote}
+                onChange={(e) => setPayNote(e.target.value)}
+                className="w-full rounded-xl border px-3 py-3 text-right"
+                placeholder="اسم الدافع / ملاحظة (اختياري)"
+              />
               <button
                 onClick={onPay}
                 disabled={busy || remaining <= 0 || invoice.status !== "open"}
@@ -468,9 +485,6 @@ export default function BillingPage() {
               >
                 {busy ? "..." : remaining <= 0 ? "تم السداد" : invoice.status !== "open" ? "غير متاح" : "تسجيل دفع"}
               </button>
-              <div className="text-xs text-neutral-500">
-                الأفضل لتتبع "مين حاسب على ايه": استخدم تقسيم الحساب بالأصناف، ثم ادفع.
-              </div>
             </div>
           </div>
 
@@ -516,7 +530,8 @@ export default function BillingPage() {
                     <div className="text-sm text-neutral-600">{fmtMoney(p.amount)} ج</div>
                     <div className="text-right">
                       <div className="text-xs text-neutral-500">{new Date(p.receivedAt).toLocaleString("ar-EG")}</div>
-                      <div className="text-xs text-neutral-500">{p.receivedBy}</div>
+                      {p.note ? <div className="text-xs font-semibold text-neutral-700">الدافع: {p.note}</div> : null}
+                      <div className="text-xs text-neutral-500">الموظف: {p.receivedBy}</div>
                     </div>
                   </div>
                 ))}

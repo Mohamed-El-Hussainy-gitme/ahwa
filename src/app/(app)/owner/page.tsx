@@ -10,12 +10,13 @@ export default function OwnerPage() {
   const session = useSession();
 
   if (!can.owner) {
-    return <MobileShell title="المعلم">غير مسموح</MobileShell>;
+    return <MobileShell title="المعلم" backHref="/dashboard">غير مسموح</MobileShell>;
   }
 
   return (
     <MobileShell
       title="المعلم"
+      backHref="/dashboard"
       topRight={<div className="text-xs text-neutral-500">{session.user?.name}</div>}
     >
       {!shift ? (
@@ -53,22 +54,13 @@ export default function OwnerPage() {
           <div className="mt-1 text-xs text-neutral-500">الأصناف والأسعار</div>
         </Link>
 
-        <Link href="/dashboard" className="rounded-2xl border border-neutral-200 bg-white px-4 py-4 text-right shadow-sm hover:bg-neutral-50">
+        <Link href="/reports" className="rounded-2xl border border-neutral-200 bg-white px-4 py-4 text-right shadow-sm hover:bg-neutral-50">
           <div className="flex items-center justify-between">
             <div className="font-semibold">التقارير</div>
             <div className="text-lg">📊</div>
           </div>
-          <div className="mt-1 text-xs text-neutral-500">أحداث + تحصيل</div>
+          <div className="mt-1 text-xs text-neutral-500">وردية • يوم • شهر • سنة</div>
         </Link>
-      </div>
-
-      <div className="mt-4 rounded-2xl border border-neutral-200 bg-white p-3 text-sm text-neutral-600 shadow-sm">
-        <div className="font-semibold text-neutral-900">ملاحظات منطقية</div>
-        <ul className="mt-2 list-disc space-y-1 pr-5">
-          <li>توزيع الأدوار يتغير يوميًا لكل وردية، ويُحفظ تلقائيًا في سجلات الوردية.</li>
-          <li>المشرف يستطيع الدفع/ترحيل المديونية، ويستطيع أيضًا أخذ الطلبات كويتر.</li>
-          <li>الشريك/المعلم: صلاحية كاملة حتى لو لم يكن مُعيَّن بدور داخل الوردية.</li>
-        </ul>
       </div>
     </MobileShell>
   );

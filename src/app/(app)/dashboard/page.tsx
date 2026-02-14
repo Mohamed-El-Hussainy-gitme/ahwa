@@ -176,7 +176,7 @@ export default function DashboardPage() {
       creditToday,
       returnsToday,
       kitchenPending: baristaQ.length + shishaQ.length,
-      lastEvents: events.slice(0, 6),
+      lastEvents: events.slice(0, 3),
     };
   }, [events, baristaQ.length, shishaQ.length]);
 
@@ -318,15 +318,7 @@ export default function DashboardPage() {
         ) : null}
       </div>
 
-      {/* Hint */}
-      <div className="mt-3 rounded-2xl border border-amber-200/70 bg-white p-3 text-[12px] text-amber-900/70">
-        <div className="font-semibold text-amber-950">مبدأ التشغيل</div>
-        <ul className="mt-2 list-disc space-y-1 pr-5">
-          <li>المنيو تاتش سريع: إضافة/مسح/تعديل قبل الإرسال للمطبخ.</li>
-          <li>بعد الإرسال: يمكن إلغاء صنف أو طلب كامل (حسب السياسة).</li>
-          <li>المديونية على الزبون وليس على القهوة.</li>
-        </ul>
-      </div>
+      {/* تم حذف النصوص الإرشادية الطويلة لتقليل الزحمة على شاشة الموبايل */}
     </MobileShell>
   );
 }

@@ -28,7 +28,7 @@ function fmtMoney(n: number) {
 
 export default function OrdersPage() {
   const repos = memoryRepos;
-  const { can } = useAuthz();
+  const { can, shift } = useAuthz();
   const session = useSession();
 
   const [products, setProducts] = useState<Product[]>([]);
@@ -155,6 +155,10 @@ export default function OrdersPage() {
       return;
     }
     if (!session.user) return;
+    if (!shift?.id) {
+      alert("لا يوجد وردية مفتوحة الآن. افتح وردية أولاً.");
+      return;
+    }
     if (draftLines.length === 0) return;
 
     setBusy(true);
@@ -163,6 +167,7 @@ export default function OrdersPage() {
       if (!orderId) {
         const o = await createOrder(repos, {
           createdBy: session.user.id,
+          shiftId: shift.id,
           tableLabel: tableLabel.trim() || undefined,
         });
         orderId = o.id;
@@ -218,13 +223,17 @@ export default function OrdersPage() {
   async function onNewCheckForTable(label: string) {
     if (!can.takeOrders) return;
     if (!session.user) return;
+    if (!shift?.id) {
+      alert("لا يوجد وردية مفتوحة الآن. افتح وردية أولاً.");
+      return;
+    }
     const ok = draftLines.length > 0 ? confirm("سيتم مسح المسودة وفتح حساب جديد لنفس الترابيزة. متابعة؟") : true;
     if (!ok) return;
 
     setBusy(true);
     try {
       clearDraft();
-      const o = await createOrder(repos, { createdBy: session.user.id, tableLabel: label });
+      const o = await createOrder(repos, { createdBy: session.user.id, shiftId: shift.id, tableLabel: label });
       setActiveOrderId(o.id);
       await load();
     } finally {

@@ -123,7 +123,7 @@ export default function ShishaPage() {
   return (
     <MobileShell title="الشيشة" topRight={<div className="text-xs text-neutral-500">{session.user?.name}</div>}>
       <div className="mt-3 flex items-center justify-between">
-        <div className="text-xs text-neutral-500">تحديث تلقائي عند كل حركة (ديمو: زر تحديث)</div>
+        <div className="text-xs text-neutral-500">تحديث تلقائي</div>
         <button onClick={refresh} className="rounded-xl bg-neutral-100 px-3 py-2 text-sm">
           تحديث
         </button>

@@ -110,7 +110,7 @@ export default function StaffPage() {
   }
 
   return (
-    <MobileShell title="الموظفين">
+    <MobileShell title="الموظفين" backHref="/owner">
       <div className="rounded-3xl border border-amber-200/70 bg-white p-4 shadow-sm">
         <div className="mb-3 text-right font-bold text-amber-950">إضافة موظف</div>
 

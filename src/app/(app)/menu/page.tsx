@@ -44,7 +44,11 @@ export default function MenuPage() {
   }, [products]);
 
   if (!can.manageMenu) {
-    return <MobileShell title="المنيو">غير مسموح</MobileShell>;
+    return (
+      <MobileShell title="المنيو" backHref="/owner">
+        غير مسموح
+      </MobileShell>
+    );
   }
 
   async function onAdd() {
@@ -87,7 +91,11 @@ export default function MenuPage() {
   }
 
   return (
-    <MobileShell title="المنيو" topRight={<div className="text-xs text-neutral-500">{session.user?.name}</div>}>
+    <MobileShell
+      title="المنيو"
+      backHref="/owner"
+      topRight={<div className="text-xs text-neutral-500">{session.user?.name}</div>}
+    >
       <div className="space-y-3">
         <div className="rounded-2xl border p-3">
           <div className="mb-2 font-semibold">إضافة صنف</div>
