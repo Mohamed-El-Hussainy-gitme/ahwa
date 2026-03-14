@@ -10,6 +10,8 @@ import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
+import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
+import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 
 export default function OrdersPage() {
@@ -42,6 +44,7 @@ export default function OrdersPage() {
     () => sessionItemsForSession(data?.sessionItems ?? [], effectiveSessionId),
     [data?.sessionItems, effectiveSessionId],
   );
+  const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
 
   const submitCommand = useOpsCommand(
     async () => {
@@ -82,12 +85,13 @@ export default function OrdersPage() {
   );
 
   const remakeCommand = useOpsCommand(
-    async (item: SessionOrderItem, quantity: number) => {
+    async (item: SessionOrderItem, quantity: number, notes?: string) => {
       await opsClient.createComplaint({
         serviceSessionId: item.serviceSessionId,
         orderItemId: item.orderItemId,
         complaintKind: 'quality_issue',
         quantity,
+        notes,
         action: 'remake',
       });
       setRemakeSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
@@ -129,7 +133,27 @@ export default function OrdersPage() {
   }
 
   return (
-    <MobileShell title="الطلبات" topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}>
+    <MobileShell
+      title="الطلبات"
+      topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}
+      stickyFooter={
+        <StickyActionBar>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 text-right">
+              <div className="text-sm font-semibold text-slate-900">{creatingNew ? 'جلسة جديدة' : currentSessionLabel || 'اختر جلسة'}</div>
+              <div className="mt-1 text-xs text-slate-500">{draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر الأصناف ثم أرسل مرة واحدة'}</div>
+            </div>
+            <button
+              onClick={() => void submitCommand.run()}
+              disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
+              className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {submitCommand.busy ? '...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
+            </button>
+          </div>
+        </StickyActionBar>
+      }
+    >
       {effectiveError ? (
         <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {effectiveError}
@@ -184,6 +208,24 @@ export default function OrdersPage() {
               الجلسة الحالية: <span className="font-semibold">{currentSessionLabel}</span>
             </div>
           ) : null}
+
+          {!creatingNew && effectiveSessionId ? (
+            <InlineSessionComplaintComposer
+              sessionId={effectiveSessionId}
+              sessionLabel={currentSessionLabel}
+              busy={submitCommand.busy}
+              onSubmit={async ({ serviceSessionId, complaintKind, notes }) => {
+                await opsClient.createComplaint({
+                  mode: 'general',
+                  serviceSessionId,
+                  complaintKind,
+                  notes,
+                  action: 'none',
+                });
+                await reload();
+              }}
+            />
+          ) : null}
         </div>
 
         <div className="rounded-2xl border border-slate-200 p-3">
@@ -226,13 +268,6 @@ export default function OrdersPage() {
               </div>
             ))}
           </div>
-          <button
-            onClick={() => void submitCommand.run()}
-            disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
-            className="mt-3 w-full rounded-2xl bg-emerald-600 px-4 py-4 font-semibold text-white disabled:opacity-50"
-          >
-            {submitCommand.busy ? '...' : creatingNew ? 'فتح جلسة وإرسال الطلب' : 'إرسال للجلسة الحالية'}
-          </button>
         </div>
 
         <ReadyDeliveryPanel

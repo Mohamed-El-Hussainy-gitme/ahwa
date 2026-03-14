@@ -40,10 +40,24 @@ export type BillingSession = { sessionId: string; sessionLabel: string; items: B
 export type BillingWorkspace = { shift: OpsShift | null; sessions: BillingSession[]; deferredNames: string[] };
 export type DashboardWorkspace = { shift: OpsShift | null; openSessions: number; waitingBarista: number; waitingShisha: number; readyForDelivery: number; billableQty: number; deferredOutstanding: number };
 
+export type OpsNavSummary = {
+  shift: OpsShift | null;
+  openSessions: number;
+  waitingBarista: number;
+  waitingShisha: number;
+  readyForDelivery: number;
+  billableQty: number;
+  deferredOutstanding: number;
+  deferredCustomerCount: number;
+};
+
 export type MenuWorkspace = {
   sections: OpsSection[];
   products: OpsProduct[];
 };
+
+export type DeferredCustomerStatus = 'active' | 'late' | 'settled';
+export type DeferredAgingBucket = 'today' | 'three_days' | 'week' | 'older' | 'settled';
 
 export type DeferredCustomerSummary = {
   id: string;
@@ -52,7 +66,13 @@ export type DeferredCustomerSummary = {
   debtTotal: number;
   repaymentTotal: number;
   lastEntryAt: string | null;
+  lastDebtAt: string | null;
+  lastRepaymentAt: string | null;
+  lastEntryKind: 'debt' | 'repayment' | 'adjustment' | null;
   entryCount: number;
+  status: DeferredCustomerStatus;
+  agingBucket: DeferredAgingBucket;
+  ageDays: number | null;
 };
 
 export type DeferredLedgerEntry = {
@@ -70,6 +90,15 @@ export type DeferredLedgerEntry = {
 export type DeferredCustomerLedgerWorkspace = {
   debtorName: string;
   balance: number;
+  debtTotal: number;
+  repaymentTotal: number;
+  entryCount: number;
+  lastEntryAt: string | null;
+  lastDebtAt: string | null;
+  lastRepaymentAt: string | null;
+  status: DeferredCustomerStatus;
+  agingBucket: DeferredAgingBucket;
+  ageDays: number | null;
   entries: DeferredLedgerEntry[];
 };
 
@@ -164,6 +193,8 @@ export type PeriodReport = {
   shifts: ReportShiftRow[];
   products: ProductReportRow[];
   staff: StaffPerformanceRow[];
+  complaints: ReportComplaintEntry[];
+  itemIssues: ReportItemIssueEntry[];
 };
 
 export type ReportsWorkspace = {
@@ -171,6 +202,8 @@ export type ReportsWorkspace = {
   currentShift: ReportShiftRow | null;
   currentProducts: ProductReportRow[];
   currentStaff: StaffPerformanceRow[];
+  currentComplaints: ReportComplaintEntry[];
+  currentItemIssues: ReportItemIssueEntry[];
   periods: Record<ReportPeriodKey, PeriodReport>;
   deferredCustomers: DeferredCustomerSummary[];
 };
@@ -239,6 +272,18 @@ export type ComplaintRecord = {
   resolvedAt: string | null;
   createdByLabel: string | null;
   resolvedByLabel: string | null;
+};
+
+export type ReportComplaintEntry = ComplaintRecord & {
+  shiftId: string;
+  shiftKind: string;
+  businessDate: string | null;
+};
+
+export type ReportItemIssueEntry = ItemIssueRecord & {
+  shiftId: string;
+  shiftKind: string;
+  businessDate: string | null;
 };
 
 export type ComplaintsWorkspace = {

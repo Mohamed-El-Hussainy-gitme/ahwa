@@ -2,6 +2,7 @@ import type {
   BillingWorkspace,
   ComplaintsWorkspace,
   DashboardWorkspace,
+  OpsNavSummary,
   DeferredCustomerLedgerWorkspace,
   DeferredCustomerSummary,
   MenuWorkspace,
@@ -18,6 +19,7 @@ const post = apiPost;
 export const opsClient = {
   waiterWorkspace: () => post<WaiterWorkspace>('/api/ops/workspaces/waiter'),
   dashboardWorkspace: () => post<DashboardWorkspace>('/api/ops/workspaces/dashboard'),
+  navSummary: () => post<OpsNavSummary>('/api/ops/workspaces/nav-summary'),
   stationWorkspace: (stationCode: StationCode) =>
     post<StationWorkspace>('/api/ops/workspaces/station', { stationCode }),
   billingWorkspace: () => post<BillingWorkspace>('/api/ops/workspaces/billing'),
@@ -71,8 +73,8 @@ export const opsClient = {
   defer: (debtorName: string, allocations: Array<{ orderItemId: string; quantity: number }>) =>
     post<{ ok: true }>('/api/ops/billing/defer', { debtorName, allocations }),
 
-  repay: (debtorName: string, amount: number) =>
-    post<{ ok: true }>('/api/ops/deferred/repay', { debtorName, amount }),
+  repay: (debtorName: string, amount: number, notes?: string) =>
+    post<{ ok: true }>('/api/ops/deferred/repay', { debtorName, amount, notes }),
 
   addDeferredDebt: (debtorName: string, amount: number, notes?: string) =>
     post<{ ok: true }>('/api/ops/deferred/add-debt', { debtorName, amount, notes }),

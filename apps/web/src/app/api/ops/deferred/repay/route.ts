@@ -9,9 +9,14 @@ type RepaymentRpcResult = {
 
 export async function POST(req: Request) {
   try {
-    const { debtorName, amount } = (await req.json()) as { debtorName?: string; amount?: number };
+    const { debtorName, amount, notes } = (await req.json()) as {
+      debtorName?: string;
+      amount?: number;
+      notes?: string;
+    };
     const name = String(debtorName ?? '').trim();
     const numericAmount = Number(amount ?? 0);
+    const repaymentNotes = String(notes ?? '').trim() || null;
     if (!name || !Number.isFinite(numericAmount) || numericAmount <= 0) throw new Error('INVALID_INPUT');
 
     const ctx = requireDeferredAccess(await requireOpsActorContext());
@@ -21,6 +26,7 @@ export async function POST(req: Request) {
       p_shift_id: shift.id,
       p_debtor_name: name,
       p_amount: numericAmount,
+      p_notes: repaymentNotes,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
     });
 
@@ -33,7 +39,7 @@ export async function POST(req: Request) {
       type: 'deferred.repaid',
       entityId: paymentId,
       shiftId: String(shift.id),
-      data: { debtorName: name, amount: Number(rpc.repayment_amount ?? numericAmount) },
+      data: { debtorName: name, amount: Number(rpc.repayment_amount ?? numericAmount), notes: repaymentNotes },
     });
 
     return ok({ ok: true });

@@ -8,6 +8,7 @@ import { opsClient } from '@/lib/ops/client';
 import type { BillingWorkspace } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { StickyActionBar } from '@/ui/StickyActionBar';
 
 export default function BillingPage() {
   const { can, shift } = useAuthz();
@@ -76,9 +77,46 @@ export default function BillingPage() {
 
   const effectiveError = localError ?? error;
   const busy = settleCommand.busy || deferCommand.busy;
+  const selectedAllocations = allocations();
+  const selectedQtyTotal = selectedAllocations.reduce((sum, item) => sum + item.quantity, 0);
+  const selectedAmountTotal = selectedAllocations.reduce((sum, item) => {
+    const match = current?.items.find((candidate) => candidate.orderItemId === item.orderItemId);
+    return sum + item.quantity * Number(match?.unitPrice ?? 0);
+  }, 0);
 
   return (
-    <MobileShell title="الحساب" topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}>
+    <MobileShell
+      title="الحساب"
+      topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}
+      stickyFooter={
+        <StickyActionBar>
+          <div className="space-y-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0 text-right">
+                <div className="text-sm font-semibold text-slate-900">{current?.sessionLabel ?? 'اختر جلسة للحساب'}</div>
+                <div className="mt-1 text-xs text-slate-500">{selectedQtyTotal > 0 ? `المحدد ${selectedQtyTotal} • ${selectedAmountTotal} ج` : 'حدد البنود ثم اختر تحصيل أو ترحيل'}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                disabled={busy || selectedQtyTotal === 0}
+                onClick={() => void settleCommand.run()}
+                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                تحصيل المحدد
+              </button>
+              <button
+                disabled={busy || !debtorName.trim() || selectedQtyTotal === 0}
+                onClick={() => void deferCommand.run()}
+                className="rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                ترحيل المحدد
+              </button>
+            </div>
+          </div>
+        </StickyActionBar>
+      }
+    >
       {effectiveError ? (
         <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {effectiveError}
@@ -159,22 +197,6 @@ export default function BillingPage() {
           </div>
         </div>
       ) : null}
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <button
-          disabled={busy}
-          onClick={() => void settleCommand.run()}
-          className="rounded-2xl bg-emerald-600 px-4 py-4 font-semibold text-white disabled:opacity-60"
-        >
-          تحصيل المحدد
-        </button>
-        <button
-          disabled={busy || !debtorName.trim()}
-          onClick={() => void deferCommand.run()}
-          className="rounded-2xl bg-amber-600 px-4 py-4 font-semibold text-white disabled:opacity-60"
-        >
-          ترحيل المحدد
-        </button>
-      </div>
       <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
         تُغلق الجلسة تلقائيًا عندما تنتهي كل كمياتها المسلّمة والمسددة/المرحلة، ولا يوجد زر قفل يدوي هنا.
       </div>

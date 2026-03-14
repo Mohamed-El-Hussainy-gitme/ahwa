@@ -16,6 +16,8 @@ export async function POST(request: Request) {
       endsAt?: string;
       graceDays?: number;
       status?: 'trial' | 'active' | 'expired' | 'suspended';
+      amountPaid?: number | string;
+      isComplimentary?: boolean;
       notes?: string;
     };
 
@@ -24,6 +26,11 @@ export async function POST(request: Request) {
     }
 
     const graceDays = Number.isFinite(body.graceDays) ? Number(body.graceDays) : 0;
+    const amountPaid = Number(body.amountPaid ?? 0);
+    if (!Number.isFinite(amountPaid) || amountPaid < 0) {
+      return platformFail(400, 'INVALID_INPUT', 'Subscription amount must be a non-negative number.');
+    }
+
     const status =
       body.status === 'trial' ||
       body.status === 'active' ||
@@ -42,6 +49,8 @@ export async function POST(request: Request) {
       p_ends_at: body.endsAt,
       p_grace_days: graceDays,
       p_status: status,
+      p_amount_paid: amountPaid,
+      p_is_complimentary: body.isComplimentary === true,
       p_notes: body.notes?.trim() || null,
     });
 

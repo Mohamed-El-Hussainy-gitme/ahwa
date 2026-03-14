@@ -16,6 +16,13 @@ export async function POST(request: Request) {
       ownerFullName?: string;
       ownerPhone?: string;
       ownerPassword?: string;
+      subscriptionStartsAt?: string;
+      subscriptionEndsAt?: string;
+      subscriptionGraceDays?: number;
+      subscriptionStatus?: 'trial' | 'active' | 'expired' | 'suspended';
+      subscriptionAmountPaid?: number | string;
+      subscriptionIsComplimentary?: boolean;
+      subscriptionNotes?: string;
     };
 
     if (
@@ -28,6 +35,11 @@ export async function POST(request: Request) {
       return platformFail(400, 'INVALID_INPUT', 'Cafe and owner fields are required.');
     }
 
+    const subscriptionAmountPaid = Number(body.subscriptionAmountPaid ?? 0);
+    if (!Number.isFinite(subscriptionAmountPaid) || subscriptionAmountPaid < 0) {
+      return platformFail(400, 'INVALID_INPUT', 'Subscription amount must be a non-negative number.');
+    }
+
     assertPlatformEnv();
 
     const admin = supabaseAdmin();
@@ -38,6 +50,13 @@ export async function POST(request: Request) {
       p_owner_full_name: body.ownerFullName.trim(),
       p_owner_phone: body.ownerPhone.trim(),
       p_owner_password: body.ownerPassword,
+      p_subscription_starts_at: body.subscriptionStartsAt?.trim() || null,
+      p_subscription_ends_at: body.subscriptionEndsAt?.trim() || null,
+      p_subscription_grace_days: Number.isFinite(body.subscriptionGraceDays) ? Number(body.subscriptionGraceDays) : 0,
+      p_subscription_status: body.subscriptionStatus ?? 'trial',
+      p_subscription_amount_paid: subscriptionAmountPaid,
+      p_subscription_is_complimentary: body.subscriptionIsComplimentary === true,
+      p_subscription_notes: body.subscriptionNotes?.trim() || null,
     });
 
     if (error) {

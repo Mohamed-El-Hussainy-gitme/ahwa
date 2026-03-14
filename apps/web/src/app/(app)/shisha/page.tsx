@@ -10,6 +10,8 @@ import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
+import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
+import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 
 export default function ShishaPage() {
@@ -46,6 +48,7 @@ export default function ShishaPage() {
     [orderData?.sessionItems, effectiveSessionId],
   );
   const draftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
+  const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const currentSessionLabel = sessions.find((session) => session.id === effectiveSessionId)?.label ?? '';
 
   const readyCommand = useOpsCommand(
@@ -67,12 +70,13 @@ export default function ShishaPage() {
   );
 
   const remakeCommand = useOpsCommand(
-    async (item: SessionOrderItem, quantity: number) => {
+    async (item: SessionOrderItem, quantity: number, notes?: string) => {
       await opsClient.createComplaint({
         serviceSessionId: item.serviceSessionId,
         orderItemId: item.orderItemId,
         complaintKind: 'quality_issue',
         quantity,
+        notes,
         action: 'remake',
       });
       setRemakeSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
@@ -150,7 +154,27 @@ export default function ShishaPage() {
   const effectiveError = localError ?? stationError ?? orderError;
 
   return (
-    <MobileShell title="الشيشة" topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}>
+    <MobileShell
+      title="الشيشة"
+      topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}
+      stickyFooter={
+        <StickyActionBar>
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 text-right">
+              <div className="text-sm font-semibold text-slate-900">{creatingNew ? 'جلسة شيشة جديدة' : currentSessionLabel || 'اختر جلسة شيشة'}</div>
+              <div className="mt-1 text-xs text-slate-500">{draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر أصناف الشيشة ثم أرسل مرة واحدة'}</div>
+            </div>
+            <button
+              onClick={() => void submitCommand.run()}
+              disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
+              className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              {submitCommand.busy ? '...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
+            </button>
+          </div>
+        </StickyActionBar>
+      }
+    >
       {effectiveError ? (
         <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {effectiveError}
@@ -206,6 +230,24 @@ export default function ShishaPage() {
               الجلسة الحالية: <span className="font-semibold">{currentSessionLabel}</span>
             </div>
           ) : null}
+
+          {!creatingNew && effectiveSessionId ? (
+            <InlineSessionComplaintComposer
+              sessionId={effectiveSessionId}
+              sessionLabel={currentSessionLabel}
+              busy={submitCommand.busy}
+              onSubmit={async ({ serviceSessionId, complaintKind, notes }) => {
+                await opsClient.createComplaint({
+                  mode: 'general',
+                  serviceSessionId,
+                  complaintKind,
+                  notes,
+                  action: 'none',
+                });
+                await Promise.all([reloadStation(), reloadOrders()]);
+              }}
+            />
+          ) : null}
         </div>
 
         <div className="rounded-2xl border border-slate-200 p-3">
@@ -238,13 +280,6 @@ export default function ShishaPage() {
               </div>
             ))}
           </div>
-          <button
-            onClick={() => void submitCommand.run()}
-            disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
-            className="mt-3 w-full rounded-2xl bg-emerald-600 px-4 py-4 font-semibold text-white disabled:opacity-50"
-          >
-            {submitCommand.busy ? '...' : creatingNew ? 'فتح جلسة شيشة وإرسال الطلب' : 'إرسال شيشة للجلسة الحالية'}
-          </button>
         </div>
 
         <div className="space-y-2">

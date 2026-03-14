@@ -6,6 +6,7 @@ import type {
   ComplaintRecord,
   ComplaintsWorkspace,
   DashboardWorkspace,
+  OpsNavSummary,
   DeferredCustomerLedgerWorkspace,
   DeferredCustomerSummary,
   DeferredLedgerEntry,
@@ -321,6 +322,48 @@ export async function buildBillingWorkspace(cafeId: string): Promise<BillingWork
   return { shift: normalizeShift(shift.data ?? null), sessions: Array.from(bySession.values()), deferredNames };
 }
 
+type DeferredDerivedState = {
+  status: DeferredCustomerSummary['status'];
+  agingBucket: DeferredCustomerSummary['agingBucket'];
+  ageDays: number | null;
+};
+
+function startOfUtcDay(value: Date): number {
+  return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
+}
+
+function computeDeferredDerivedState(balance: number, lastDebtAt: string | null): DeferredDerivedState {
+  if (balance <= 0) {
+    return { status: 'settled', agingBucket: 'settled', ageDays: null };
+  }
+
+  if (!lastDebtAt) {
+    return { status: 'active', agingBucket: 'today', ageDays: 0 };
+  }
+
+  const parsed = new Date(lastDebtAt);
+  if (Number.isNaN(parsed.getTime())) {
+    return { status: 'active', agingBucket: 'today', ageDays: 0 };
+  }
+
+  const now = new Date();
+  const ageDays = Math.max(Math.floor((startOfUtcDay(now) - startOfUtcDay(parsed)) / 86_400_000), 0);
+
+  if (ageDays >= 7) {
+    return { status: 'late', agingBucket: 'older', ageDays };
+  }
+
+  if (ageDays >= 4) {
+    return { status: 'active', agingBucket: 'week', ageDays };
+  }
+
+  if (ageDays >= 1) {
+    return { status: 'active', agingBucket: 'three_days', ageDays };
+  }
+
+  return { status: 'active', agingBucket: 'today', ageDays };
+}
+
 export async function buildDeferredCustomersWorkspace(cafeId: string): Promise<DeferredCustomerSummary[]> {
   const admin = adminOps();
   const { data, error } = await admin
@@ -345,29 +388,50 @@ export async function buildDeferredCustomersWorkspace(cafeId: string): Promise<D
       debtTotal: 0,
       repaymentTotal: 0,
       lastEntryAt: createdAt || null,
+      lastDebtAt: null,
+      lastRepaymentAt: null,
+      lastEntryKind: null,
       entryCount: 0,
-    };
+      status: 'settled',
+      agingBucket: 'settled',
+      ageDays: null,
+    } satisfies DeferredCustomerSummary;
 
     current.entryCount += 1;
     if (!current.lastEntryAt || createdAt > current.lastEntryAt) {
       current.lastEntryAt = createdAt;
+      current.lastEntryKind = entryKind === 'debt' || entryKind === 'repayment' || entryKind === 'adjustment'
+        ? entryKind
+        : null;
     }
+
     if (entryKind === 'debt') {
       current.debtTotal += amount;
       current.balance += amount;
+      if (!current.lastDebtAt || createdAt > current.lastDebtAt) {
+        current.lastDebtAt = createdAt;
+      }
     } else if (entryKind === 'repayment') {
       current.repaymentTotal += amount;
       current.balance -= amount;
+      if (!current.lastRepaymentAt || createdAt > current.lastRepaymentAt) {
+        current.lastRepaymentAt = createdAt;
+      }
     }
     byName.set(debtorName, current);
   }
 
-  return Array.from(byName.values()).sort(
-    (left, right) =>
-      right.balance - left.balance ||
-      (right.lastEntryAt ?? '').localeCompare(left.lastEntryAt ?? '') ||
-      left.debtorName.localeCompare(right.debtorName, 'ar'),
-  );
+  return Array.from(byName.values())
+    .map((item) => {
+      const derived = computeDeferredDerivedState(item.balance, item.lastDebtAt);
+      return { ...item, ...derived };
+    })
+    .sort(
+      (left, right) =>
+        right.balance - left.balance ||
+        (right.lastEntryAt ?? '').localeCompare(left.lastEntryAt ?? '') ||
+        left.debtorName.localeCompare(right.debtorName, 'ar'),
+    );
 }
 
 export async function buildDeferredCustomerLedgerWorkspace(
@@ -385,12 +449,27 @@ export async function buildDeferredCustomerLedgerWorkspace(
   if (error) throw error;
 
   let balance = 0;
+  let debtTotal = 0;
+  let repaymentTotal = 0;
+  let lastEntryAt: string | null = null;
+  let lastDebtAt: string | null = null;
+  let lastRepaymentAt: string | null = null;
   const orderedAsc = [...(data ?? [])].reverse();
   for (const row of orderedAsc) {
     const amount = Number((row as any).amount ?? 0);
     const entryKind = String((row as any).entry_kind ?? '');
-    if (entryKind === 'debt') balance += amount;
-    if (entryKind === 'repayment') balance -= amount;
+    const createdAt = String((row as any).created_at ?? '');
+    if (!lastEntryAt || createdAt > lastEntryAt) lastEntryAt = createdAt;
+    if (entryKind === 'debt') {
+      debtTotal += amount;
+      balance += amount;
+      if (!lastDebtAt || createdAt > lastDebtAt) lastDebtAt = createdAt;
+    }
+    if (entryKind === 'repayment') {
+      repaymentTotal += amount;
+      balance -= amount;
+      if (!lastRepaymentAt || createdAt > lastRepaymentAt) lastRepaymentAt = createdAt;
+    }
   }
 
   const entries: DeferredLedgerEntry[] = (data ?? []).map(
@@ -408,7 +487,20 @@ export async function buildDeferredCustomerLedgerWorkspace(
       }) satisfies DeferredLedgerEntry,
   );
 
-  return { debtorName, balance, entries };
+  const derived = computeDeferredDerivedState(balance, lastDebtAt);
+
+  return {
+    debtorName,
+    balance,
+    debtTotal,
+    repaymentTotal,
+    entryCount: entries.length,
+    lastEntryAt,
+    lastDebtAt,
+    lastRepaymentAt,
+    ...derived,
+    entries,
+  };
 }
 
 export async function buildComplaintsWorkspace(cafeId: string): Promise<ComplaintsWorkspace> {
@@ -571,5 +663,17 @@ export async function buildDashboardWorkspace(cafeId: string): Promise<Dashboard
     readyForDelivery: waiter.readyItems.reduce((sum, item) => sum + item.qtyReadyForDelivery, 0),
     billableQty: billing.sessions.reduce((sum, session) => sum + session.totalBillableQty, 0),
     deferredOutstanding,
+  };
+}
+
+export async function buildOpsNavSummary(cafeId: string): Promise<OpsNavSummary> {
+  const [dashboard, deferredCustomers] = await Promise.all([
+    buildDashboardWorkspace(cafeId),
+    buildDeferredCustomersWorkspace(cafeId),
+  ]);
+
+  return {
+    ...dashboard,
+    deferredCustomerCount: deferredCustomers.filter((item) => item.balance > 0).length,
   };
 }

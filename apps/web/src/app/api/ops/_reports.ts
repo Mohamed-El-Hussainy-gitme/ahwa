@@ -1,9 +1,13 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import type {
+  ComplaintRecord,
   DeferredCustomerSummary,
+  ItemIssueRecord,
   PeriodReport,
   ProductReportRow,
   ReportBusinessDayRow,
+  ReportComplaintEntry,
+  ReportItemIssueEntry,
   ReportPeriodKey,
   ReportsWorkspace,
   ReportShiftRow,
@@ -46,19 +50,47 @@ type PaymentRow = {
   by_owner_id: string | null;
 };
 type SessionRow = { shift_id: string; status: string | null };
-type ComplaintAggRow = {
+type ComplaintDetailRow = {
   shift_id: string;
+  id: string;
+  order_item_id: string | null;
+  service_session_id: string;
+  station_code: string | null;
+  complaint_kind: string | null;
+  complaint_scope: string | null;
   status: string | null;
   resolution_kind: string | null;
-  complaint_scope: string | null;
+  requested_quantity: number | string | null;
+  resolved_quantity: number | string | null;
+  notes: string | null;
+  created_at: string;
+  resolved_at: string | null;
   created_by_staff_id: string | null;
   created_by_owner_id: string | null;
+  resolved_by_staff_id: string | null;
+  resolved_by_owner_id: string | null;
+  service_sessions: { session_label: string | null } | { session_label: string | null }[] | null;
 };
-type ItemIssueAggRow = {
+type ItemIssueDetailRow = {
   shift_id: string;
+  id: string;
+  order_item_id: string;
+  service_session_id: string;
+  station_code: string | null;
+  issue_kind: string | null;
   action_kind: string | null;
+  status: string | null;
+  requested_quantity: number | string | null;
+  resolved_quantity: number | string | null;
+  notes: string | null;
+  created_at: string;
+  resolved_at: string | null;
   created_by_staff_id: string | null;
   created_by_owner_id: string | null;
+  resolved_by_staff_id: string | null;
+  resolved_by_owner_id: string | null;
+  service_sessions: { session_label: string | null } | { session_label: string | null }[] | null;
+  order_items: { menu_products: { product_name: string | null } | { product_name: string | null }[] | null } | { menu_products: { product_name: string | null } | { product_name: string | null }[] | null }[] | null;
 };
 type FulfillmentAggRow = {
   shift_id: string;
@@ -74,6 +106,8 @@ type AggregateMaps = {
   shiftRowsById: Map<string, ReportShiftRow>;
   productsByShift: Map<string, Map<string, ProductReportRow>>;
   staffByShift: Map<string, Map<string, StaffPerformanceRow>>;
+  complaintsByShift: Map<string, ReportComplaintEntry[]>;
+  itemIssuesByShift: Map<string, ReportItemIssueEntry[]>;
 };
 
 function adminOps() {
@@ -316,6 +350,8 @@ function buildPeriodReport(input: {
   shiftRows: ReportShiftRow[];
   productsByShift: Map<string, Map<string, ProductReportRow>>;
   staffByShift: Map<string, Map<string, StaffPerformanceRow>>;
+  complaintsByShift: Map<string, ReportComplaintEntry[]>;
+  itemIssuesByShift: Map<string, ReportItemIssueEntry[]>;
 }): PeriodReport {
   const shifts = sortShifts(
     input.shiftRows.filter((row) => inDateRange(row.businessDate, input.startDate, input.endDate)),
@@ -324,6 +360,8 @@ function buildPeriodReport(input: {
   const daysByDate = new Map<string, ReportBusinessDayRow>();
   const productsById = new Map<string, ProductReportRow>();
   const staffByLabel = new Map<string, StaffPerformanceRow>();
+  const complaints: ReportComplaintEntry[] = [];
+  const itemIssues: ReportItemIssueEntry[] = [];
 
   for (const row of shifts) {
     addTotals(totals, row);
@@ -344,6 +382,9 @@ function buildPeriodReport(input: {
       mergeStaffRows(current, staff);
       staffByLabel.set(staff.actorLabel, current);
     }
+
+    complaints.push(...(input.complaintsByShift.get(row.shiftId) ?? []));
+    itemIssues.push(...(input.itemIssuesByShift.get(row.shiftId) ?? []));
   }
 
   return {
@@ -356,6 +397,8 @@ function buildPeriodReport(input: {
     shifts,
     products: sortProducts(Array.from(productsById.values())),
     staff: sortStaff(Array.from(staffByLabel.values())),
+    complaints: sortComplaintEntries(complaints).slice(0, 80),
+    itemIssues: sortComplaintEntries(itemIssues).slice(0, 80),
   };
 }
 
@@ -384,6 +427,15 @@ function toStringValue(value: unknown, fallback = ''): string {
 
 function toNullableString(value: unknown): string | null {
   return typeof value === 'string' && value.trim() ? value : null;
+}
+
+function firstRelation<T>(value: T | T[] | null | undefined): T | null {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+}
+
+function sortComplaintEntries<T extends { createdAt: string }>(rows: T[]): T[] {
+  return [...rows].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 function parseSnapshotShiftRow(snapshot: any, fallback: ShiftRow): ReportShiftRow {
@@ -481,14 +533,122 @@ function parseSnapshotStaff(snapshot: any): Map<string, StaffPerformanceRow> {
   return byLabel;
 }
 
+function parseSnapshotComplaintEntries(snapshot: any, fallback: ShiftRow): ReportComplaintEntry[] {
+  const rows = Array.isArray(snapshot?.complaints) ? snapshot.complaints : [];
+  return sortComplaintEntries(
+    rows.map((raw: any) => ({
+      shiftId: fallback.id,
+      shiftKind: fallback.shift_kind,
+      businessDate: fallback.business_date,
+      id: toStringValue(raw?.id),
+      orderItemId: null,
+      serviceSessionId: toStringValue(raw?.service_session_id),
+      sessionLabel: toStringValue(raw?.session_label),
+      productName: null,
+      stationCode: null,
+      complaintKind: toStringValue(raw?.complaint_kind, 'other') as ComplaintRecord['complaintKind'],
+      status: toStringValue(raw?.status, 'open') as ComplaintRecord['status'],
+      resolutionKind: toNullableString(raw?.resolution_kind) === 'dismissed' ? 'dismissed' : toStringValue(raw?.status) === 'resolved' ? 'resolved' : null,
+      requestedQuantity: raw?.requested_quantity == null ? null : toNumber(raw?.requested_quantity),
+      resolvedQuantity: raw?.resolved_quantity == null ? null : toNumber(raw?.resolved_quantity),
+      notes: toNullableString(raw?.notes),
+      createdAt: toStringValue(raw?.created_at),
+      resolvedAt: toNullableString(raw?.resolved_at),
+      createdByLabel: toNullableString(raw?.created_by_label),
+      resolvedByLabel: toNullableString(raw?.resolved_by_label),
+    }) satisfies ReportComplaintEntry),
+  );
+}
+
+function parseSnapshotItemIssueEntries(snapshot: any, fallback: ShiftRow): ReportItemIssueEntry[] {
+  const rows = Array.isArray(snapshot?.item_issues) ? snapshot.item_issues : [];
+  return sortComplaintEntries(
+    rows.map((raw: any) => ({
+      shiftId: fallback.id,
+      shiftKind: fallback.shift_kind,
+      businessDate: fallback.business_date,
+      id: toStringValue(raw?.id),
+      orderItemId: toStringValue(raw?.order_item_id),
+      serviceSessionId: toStringValue(raw?.service_session_id),
+      sessionLabel: toStringValue(raw?.session_label),
+      productName: toStringValue(raw?.product_name),
+      stationCode: toNullableString(raw?.station_code) as StationCode | null,
+      issueKind: toStringValue(raw?.issue_kind, 'other') as ItemIssueRecord['issueKind'],
+      actionKind: toStringValue(raw?.action_kind, 'note') as ItemIssueRecord['actionKind'],
+      status: toStringValue(raw?.status, 'logged') as ItemIssueRecord['status'],
+      requestedQuantity: raw?.requested_quantity == null ? null : toNumber(raw?.requested_quantity),
+      resolvedQuantity: raw?.resolved_quantity == null ? null : toNumber(raw?.resolved_quantity),
+      notes: toNullableString(raw?.notes),
+      createdAt: toStringValue(raw?.created_at),
+      resolvedAt: toNullableString(raw?.resolved_at),
+      createdByLabel: toNullableString(raw?.created_by_label),
+      resolvedByLabel: toNullableString(raw?.resolved_by_label),
+    }) satisfies ReportItemIssueEntry),
+  );
+}
+
+function parseLiveComplaintEntry(row: ComplaintDetailRow, shift: ShiftRow, actorMaps: ActorMaps): ReportComplaintEntry {
+  const sessionRef = firstRelation(row.service_sessions);
+  return {
+    shiftId: shift.id,
+    shiftKind: shift.shift_kind,
+    businessDate: shift.business_date,
+    id: String(row.id),
+    orderItemId: row.order_item_id ? String(row.order_item_id) : null,
+    serviceSessionId: String(row.service_session_id),
+    sessionLabel: toStringValue(sessionRef?.session_label),
+    productName: null,
+    stationCode: row.station_code ? (String(row.station_code) as StationCode) : null,
+    complaintKind: toStringValue(row.complaint_kind, 'other') as ComplaintRecord['complaintKind'],
+    status: toStringValue(row.status, 'open') as ComplaintRecord['status'],
+    resolutionKind: toNullableString(row.resolution_kind) === 'dismissed' ? 'dismissed' : toStringValue(row.status) === 'resolved' ? 'resolved' : null,
+    requestedQuantity: row.requested_quantity == null ? null : toNumber(row.requested_quantity),
+    resolvedQuantity: row.resolved_quantity == null ? null : toNumber(row.resolved_quantity),
+    notes: toNullableString(row.notes),
+    createdAt: String(row.created_at),
+    resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
+    createdByLabel: actorLabelFromIds({ by_staff_id: row.created_by_staff_id, by_owner_id: row.created_by_owner_id }, actorMaps),
+    resolvedByLabel: actorLabelFromIds({ by_staff_id: row.resolved_by_staff_id, by_owner_id: row.resolved_by_owner_id }, actorMaps),
+  };
+}
+
+function parseLiveItemIssueEntry(row: ItemIssueDetailRow, shift: ShiftRow, actorMaps: ActorMaps): ReportItemIssueEntry {
+  const sessionRef = firstRelation(row.service_sessions);
+  const orderItemRef = firstRelation(row.order_items);
+  const productRef = firstRelation(orderItemRef?.menu_products as { product_name: string | null } | { product_name: string | null }[] | null | undefined);
+  return {
+    shiftId: shift.id,
+    shiftKind: shift.shift_kind,
+    businessDate: shift.business_date,
+    id: String(row.id),
+    orderItemId: String(row.order_item_id),
+    serviceSessionId: String(row.service_session_id),
+    sessionLabel: toStringValue(sessionRef?.session_label),
+    productName: toStringValue(productRef?.product_name),
+    stationCode: row.station_code ? (String(row.station_code) as StationCode) : null,
+    issueKind: toStringValue(row.issue_kind, 'other') as ItemIssueRecord['issueKind'],
+    actionKind: toStringValue(row.action_kind, 'note') as ItemIssueRecord['actionKind'],
+    status: toStringValue(row.status, 'logged') as ItemIssueRecord['status'],
+    requestedQuantity: row.requested_quantity == null ? null : toNumber(row.requested_quantity),
+    resolvedQuantity: row.resolved_quantity == null ? null : toNumber(row.resolved_quantity),
+    notes: toNullableString(row.notes),
+    createdAt: String(row.created_at),
+    resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
+    createdByLabel: actorLabelFromIds({ by_staff_id: row.created_by_staff_id, by_owner_id: row.created_by_owner_id }, actorMaps),
+    resolvedByLabel: actorLabelFromIds({ by_staff_id: row.resolved_by_staff_id, by_owner_id: row.resolved_by_owner_id }, actorMaps),
+  };
+}
+
 async function loadSnapshotAggregates(cafeId: string, shiftRows: ShiftRow[]): Promise<AggregateMaps> {
   const shiftRowsById = new Map<string, ReportShiftRow>();
   const productsByShift = new Map<string, Map<string, ProductReportRow>>();
   const staffByShift = new Map<string, Map<string, StaffPerformanceRow>>();
+  const complaintsByShift = new Map<string, ReportComplaintEntry[]>();
+  const itemIssuesByShift = new Map<string, ReportItemIssueEntry[]>();
 
   const closedShiftIds = shiftRows.filter((row) => row.status === 'closed').map((row) => row.id);
   if (!closedShiftIds.length) {
-    return { shiftRowsById, productsByShift, staffByShift };
+    return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
   }
 
   const { data, error } = await adminOps()
@@ -507,22 +667,28 @@ async function loadSnapshotAggregates(cafeId: string, shiftRows: ShiftRow[]): Pr
     shiftRowsById.set(shiftId, parseSnapshotShiftRow(snapshot, meta));
     productsByShift.set(shiftId, parseSnapshotProducts(snapshot));
     staffByShift.set(shiftId, parseSnapshotStaff(snapshot));
+    complaintsByShift.set(shiftId, parseSnapshotComplaintEntries(snapshot, meta));
+    itemIssuesByShift.set(shiftId, parseSnapshotItemIssueEntries(snapshot, meta));
   }
 
-  return { shiftRowsById, productsByShift, staffByShift };
+  return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
 }
 
 async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps: ActorMaps): Promise<AggregateMaps> {
   const shiftRowsById = new Map<string, ReportShiftRow>();
   const productsByShift = new Map<string, Map<string, ProductReportRow>>();
   const staffByShift = new Map<string, Map<string, StaffPerformanceRow>>();
-  if (!shifts.length) return { shiftRowsById, productsByShift, staffByShift };
+  const complaintsByShift = new Map<string, ReportComplaintEntry[]>();
+  const itemIssuesByShift = new Map<string, ReportItemIssueEntry[]>();
+  if (!shifts.length) return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
 
   const shiftIds = shifts.map((row) => row.id);
   const shiftMap = new Map<string, ReportShiftRow>();
+  const shiftMetaById = new Map<string, ShiftRow>();
   for (const shift of shifts) {
     const row = createShiftRow(shift);
     shiftMap.set(shift.id, row);
+    shiftMetaById.set(shift.id, shift);
     shiftRowsById.set(shift.id, row);
   }
 
@@ -551,12 +717,13 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
       .in('shift_id', shiftIds),
     adminOps()
       .from('complaints')
-      .select('shift_id, status, resolution_kind, complaint_scope, created_by_staff_id, created_by_owner_id')
+      .select('shift_id, id, order_item_id, service_session_id, station_code, complaint_kind, complaint_scope, status, resolution_kind, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label)')
       .eq('cafe_id', cafeId)
-      .in('shift_id', shiftIds),
+      .in('shift_id', shiftIds)
+      .eq('complaint_scope', 'general'),
     adminOps()
       .from('order_item_issues')
-      .select('shift_id, action_kind, created_by_staff_id, created_by_owner_id')
+      .select('shift_id, id, order_item_id, service_session_id, station_code, issue_kind, action_kind, status, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items!inner(menu_products(product_name))')
       .eq('cafe_id', cafeId)
       .in('shift_id', shiftIds),
     adminOps()
@@ -653,11 +820,11 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     shift.totalSessions += 1;
   }
 
-  for (const row of (complaintRows ?? []) as ComplaintAggRow[]) {
-    if (String(row.complaint_scope ?? 'general') !== 'general') continue;
+  for (const row of (complaintRows ?? []) as ComplaintDetailRow[]) {
     const shiftId = String(row.shift_id ?? '');
     const shift = shiftMap.get(shiftId);
-    if (!shift) continue;
+    const shiftMeta = shiftMetaById.get(shiftId);
+    if (!shift || !shiftMeta) continue;
     shift.complaintTotal += 1;
     const status = String(row.status ?? '');
     if (status === 'open') shift.complaintOpen += 1;
@@ -668,18 +835,23 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     if (resolutionKind === 'cancel_undelivered') shift.complaintCancel += 1;
     if (resolutionKind === 'waive_delivered') shift.complaintWaive += 1;
     const actorLabel = actorLabelFromIds({ by_staff_id: row.created_by_staff_id, by_owner_id: row.created_by_owner_id }, actorMaps);
-    if (!actorLabel) continue;
-    const shiftStaff = staffByShift.get(shiftId) ?? new Map<string, StaffPerformanceRow>();
-    const staff = shiftStaff.get(actorLabel) ?? createStaffRow(actorLabel);
-    staff.complaintCount += 1;
-    shiftStaff.set(actorLabel, staff);
-    staffByShift.set(shiftId, shiftStaff);
+    if (actorLabel) {
+      const shiftStaff = staffByShift.get(shiftId) ?? new Map<string, StaffPerformanceRow>();
+      const staff = shiftStaff.get(actorLabel) ?? createStaffRow(actorLabel);
+      staff.complaintCount += 1;
+      shiftStaff.set(actorLabel, staff);
+      staffByShift.set(shiftId, shiftStaff);
+    }
+    const details = complaintsByShift.get(shiftId) ?? [];
+    details.push(parseLiveComplaintEntry(row, shiftMeta, actorMaps));
+    complaintsByShift.set(shiftId, details);
   }
 
-  for (const row of (itemIssueRows ?? []) as ItemIssueAggRow[]) {
+  for (const row of (itemIssueRows ?? []) as ItemIssueDetailRow[]) {
     const shiftId = String(row.shift_id ?? '');
     const shift = shiftMap.get(shiftId);
-    if (!shift) continue;
+    const shiftMeta = shiftMetaById.get(shiftId);
+    if (!shift || !shiftMeta) continue;
     shift.itemIssueTotal += 1;
     const actionKind = String(row.action_kind ?? 'note');
     if (actionKind === 'note') shift.itemIssueNote += 1;
@@ -687,12 +859,16 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     if (actionKind === 'cancel_undelivered') shift.itemIssueCancel += 1;
     if (actionKind === 'waive_delivered') shift.itemIssueWaive += 1;
     const actorLabel = actorLabelFromIds({ by_staff_id: row.created_by_staff_id, by_owner_id: row.created_by_owner_id }, actorMaps);
-    if (!actorLabel) continue;
-    const shiftStaff = staffByShift.get(shiftId) ?? new Map<string, StaffPerformanceRow>();
-    const staff = shiftStaff.get(actorLabel) ?? createStaffRow(actorLabel);
-    staff.itemIssueCount += 1;
-    shiftStaff.set(actorLabel, staff);
-    staffByShift.set(shiftId, shiftStaff);
+    if (actorLabel) {
+      const shiftStaff = staffByShift.get(shiftId) ?? new Map<string, StaffPerformanceRow>();
+      const staff = shiftStaff.get(actorLabel) ?? createStaffRow(actorLabel);
+      staff.itemIssueCount += 1;
+      shiftStaff.set(actorLabel, staff);
+      staffByShift.set(shiftId, shiftStaff);
+    }
+    const details = itemIssuesByShift.get(shiftId) ?? [];
+    details.push(parseLiveItemIssueEntry(row, shiftMeta, actorMaps));
+    itemIssuesByShift.set(shiftId, details);
   }
 
   for (const row of (fulfillmentRows ?? []) as FulfillmentAggRow[]) {
@@ -715,7 +891,14 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     staffByShift.set(shiftId, shiftStaff);
   }
 
-  return { shiftRowsById, productsByShift, staffByShift };
+  for (const [shiftId, rows] of complaintsByShift.entries()) {
+    complaintsByShift.set(shiftId, sortComplaintEntries(rows));
+  }
+  for (const [shiftId, rows] of itemIssuesByShift.entries()) {
+    itemIssuesByShift.set(shiftId, sortComplaintEntries(rows));
+  }
+
+  return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
 }
 
 export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWorkspace> {
@@ -759,17 +942,21 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
       shiftRowsById: new Map(),
       productsByShift: new Map(),
       staffByShift: new Map(),
+      complaintsByShift: new Map(),
+      itemIssuesByShift: new Map(),
     };
     return {
       referenceDate,
       currentShift: null,
       currentProducts: [],
       currentStaff: [],
+      currentComplaints: [],
+      currentItemIssues: [],
       periods: {
-        day: buildPeriodReport({ ...ranges.day, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift }),
-        week: buildPeriodReport({ ...ranges.week, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift }),
-        month: buildPeriodReport({ ...ranges.month, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift }),
-        year: buildPeriodReport({ ...ranges.year, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift }),
+        day: buildPeriodReport({ ...ranges.day, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+        week: buildPeriodReport({ ...ranges.week, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+        month: buildPeriodReport({ ...ranges.month, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+        year: buildPeriodReport({ ...ranges.year, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
       },
       deferredCustomers: deferredCustomers as DeferredCustomerSummary[],
     };
@@ -785,10 +972,14 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
   const combinedShiftRowsById = new Map<string, ReportShiftRow>(snapshotAggregates.shiftRowsById);
   const combinedProductsByShift = new Map<string, Map<string, ProductReportRow>>(snapshotAggregates.productsByShift);
   const combinedStaffByShift = new Map<string, Map<string, StaffPerformanceRow>>(snapshotAggregates.staffByShift);
+  const combinedComplaintsByShift = new Map<string, ReportComplaintEntry[]>(snapshotAggregates.complaintsByShift);
+  const combinedItemIssuesByShift = new Map<string, ReportItemIssueEntry[]>(snapshotAggregates.itemIssuesByShift);
 
   for (const [key, value] of liveAggregates.shiftRowsById.entries()) combinedShiftRowsById.set(key, value);
   for (const [key, value] of liveAggregates.productsByShift.entries()) combinedProductsByShift.set(key, value);
   for (const [key, value] of liveAggregates.staffByShift.entries()) combinedStaffByShift.set(key, value);
+  for (const [key, value] of liveAggregates.complaintsByShift.entries()) combinedComplaintsByShift.set(key, value);
+  for (const [key, value] of liveAggregates.itemIssuesByShift.entries()) combinedItemIssuesByShift.set(key, value);
 
   const shiftRows = shifts
     .map((row) => combinedShiftRowsById.get(row.id))
@@ -801,17 +992,25 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
   const currentStaff = currentShift
     ? sortStaff(Array.from(combinedStaffByShift.get(currentShift.shiftId)?.values() ?? []))
     : [];
+  const currentComplaints = currentShift
+    ? sortComplaintEntries(combinedComplaintsByShift.get(currentShift.shiftId) ?? []).slice(0, 50)
+    : [];
+  const currentItemIssues = currentShift
+    ? sortComplaintEntries(combinedItemIssuesByShift.get(currentShift.shiftId) ?? []).slice(0, 50)
+    : [];
 
   return {
     referenceDate,
     currentShift,
     currentProducts,
     currentStaff,
+    currentComplaints,
+    currentItemIssues,
     periods: {
-      day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift }),
-      week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift }),
-      month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift }),
-      year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift }),
+      day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+      week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+      month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+      year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
     },
     deferredCustomers: deferredCustomers as DeferredCustomerSummary[],
   };

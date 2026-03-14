@@ -28,6 +28,8 @@ type SubscriptionRow = {
   grace_days: number;
   status: SubscriptionStatus;
   effective_status: SubscriptionStatus;
+  amount_paid: number;
+  is_complimentary: boolean;
   notes: string | null;
   created_at: string;
   updated_at: string;
@@ -96,6 +98,11 @@ function formatDateTime(value: string | null | undefined) {
     hour: '2-digit',
     minute: '2-digit',
   }).format(d);
+}
+
+function amountLabel(value: number | null | undefined) {
+  const safe = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  return new Intl.NumberFormat('ar-EG', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(safe);
 }
 
 function countdownLabel(totalSeconds: number) {
@@ -196,7 +203,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
   const [createOwner, setCreateOwner] = useState({ fullName: '', phone: '', password: '', ownerLabel: 'partner' as OwnerLabel });
   const [editOwner, setEditOwner] = useState({ ownerUserId: '', fullName: '', phone: '', ownerLabel: 'partner' as OwnerLabel });
   const [resetPassword, setResetPassword] = useState({ ownerUserId: '', newPassword: '' });
-  const [subscriptionForm, setSubscriptionForm] = useState({ startsAt: toDateInputValue(today), endsAt: toDateInputValue(new Date(today.getTime() + 1000 * 60 * 60 * 24 * 365)), graceDays: '0', status: 'active' as SubscriptionStatus, notes: '' });
+  const [subscriptionForm, setSubscriptionForm] = useState({ startsAt: toDateInputValue(today), endsAt: toDateInputValue(new Date(today.getTime() + 1000 * 60 * 60 * 24 * 365)), graceDays: '0', status: 'active' as SubscriptionStatus, amountPaid: '', isComplimentary: false, notes: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -243,7 +250,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
     }
   }
 
-  function applySubscriptionPreset(days: number, status: SubscriptionStatus) {
+  function applySubscriptionPreset(days: number, status: SubscriptionStatus, isComplimentary = false) {
     const start = new Date();
     const end = new Date(start.getTime() + 1000 * 60 * 60 * 24 * days);
     setSubscriptionForm((value) => ({
@@ -251,6 +258,8 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
       startsAt: toDateInputValue(start),
       endsAt: toDateInputValue(end),
       status,
+      isComplimentary,
+      amountPaid: isComplimentary ? '0' : value.amountPaid,
     }));
   }
 
@@ -318,6 +327,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
             <>
               <div className="mt-4 text-sm text-slate-700">{countdownLabel(currentSubscription.countdown_seconds)}</div>
               <div className="mt-2 text-xs text-slate-500">من {formatDateTime(currentSubscription.starts_at)} إلى {formatDateTime(currentSubscription.ends_at)}</div>
+              <div className="mt-2 text-xs text-slate-600">{currentSubscription.is_complimentary ? 'اشتراك مجاني / استثنائي' : `تم تحصيل ${amountLabel(currentSubscription.amount_paid)} ج.م`}</div>
             </>
           ) : <div className="mt-4 text-sm text-slate-500">لا يوجد اشتراك حالي.</div>}
         </section>
@@ -422,7 +432,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
           <h3 className="text-lg font-bold text-slate-900">إدارة الاشتراك</h3>
           <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" onClick={() => applySubscriptionPreset(30, 'trial')} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">30 يوم تجريبي</button>
+            <button type="button" onClick={() => applySubscriptionPreset(30, 'trial', true)} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">30 يوم مجاني</button>
             <button type="button" onClick={() => applySubscriptionPreset(365, 'active')} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">سنة مدفوعة</button>
             <button type="button" onClick={() => applySubscriptionPreset(30, 'active')} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">شهر مدفوع</button>
           </div>
@@ -436,9 +446,14 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
               <option value="expired">expired</option>
               <option value="suspended">suspended</option>
             </select>
+            <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="القيمة المدفوعة" value={subscriptionForm.amountPaid} onChange={(e) => setSubscriptionForm((v) => ({ ...v, amountPaid: e.target.value }))} />
+            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
+              <input type="checkbox" checked={subscriptionForm.isComplimentary} onChange={(e) => setSubscriptionForm((v) => ({ ...v, isComplimentary: e.target.checked, amountPaid: e.target.checked ? '0' : v.amountPaid }))} />
+              مجاني / استثنائي
+            </label>
             <textarea className="min-h-28 rounded-2xl border border-slate-200 px-4 py-3 md:col-span-2" placeholder="ملاحظات الاشتراك" value={subscriptionForm.notes} onChange={(e) => setSubscriptionForm((v) => ({ ...v, notes: e.target.value }))} />
           </div>
-          <button type="button" disabled={busy || loading} onClick={() => void runAction('/api/platform/subscriptions/create', { cafeId, startsAt: fromDateInputValue(subscriptionForm.startsAt), endsAt: fromDateInputValue(subscriptionForm.endsAt), graceDays: Number(subscriptionForm.graceDays || '0'), status: subscriptionForm.status, notes: subscriptionForm.notes.trim() || null }, 'تم تحديث بيانات الاشتراك.')} className="mt-4 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">حفظ الاشتراك</button>
+          <button type="button" disabled={busy || loading} onClick={() => void runAction('/api/platform/subscriptions/create', { cafeId, startsAt: fromDateInputValue(subscriptionForm.startsAt), endsAt: fromDateInputValue(subscriptionForm.endsAt), graceDays: Number(subscriptionForm.graceDays || '0'), status: subscriptionForm.status, amountPaid: Number(subscriptionForm.amountPaid || '0'), isComplimentary: subscriptionForm.isComplimentary, notes: subscriptionForm.notes.trim() || null }, 'تم تحديث بيانات الاشتراك.')} className="mt-4 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">حفظ الاشتراك</button>
         </section>
 
         <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
@@ -453,6 +468,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
                 <div className="mt-2">البداية: <strong>{formatDateTime(subscription.starts_at)}</strong></div>
                 <div className="mt-1">النهاية: <strong>{formatDateTime(subscription.ends_at)}</strong></div>
                 <div className="mt-1">أيام السماح: <strong>{subscription.grace_days}</strong></div>
+                <div className="mt-1">{subscription.is_complimentary ? 'مجاني / استثنائي' : `تم تحصيل ${amountLabel(subscription.amount_paid)} ج.م`}</div>
                 {subscription.notes ? <div className="mt-2 text-xs text-slate-500">{subscription.notes}</div> : null}
               </div>
             ))}

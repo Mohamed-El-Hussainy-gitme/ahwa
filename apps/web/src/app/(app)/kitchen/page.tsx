@@ -29,6 +29,8 @@ export default function KitchenPage() {
   if (!shift) return <ShiftRequired title="الباريستا" />;
   if (!can.kitchen && !can.owner) return <AccessDenied title="الباريستا" />;
 
+  const totalWaiting = (data?.queue ?? []).reduce((sum, item) => sum + item.qtyWaiting, 0);
+
   function setQty(orderItemId: string, qty: number, max: number) {
     setSelectedQty((state) => ({
       ...state,
@@ -43,6 +45,9 @@ export default function KitchenPage() {
           {localError ?? error}
         </div>
       ) : null}
+      <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+        انتظار الباريستا الآن: <span className="font-semibold">{totalWaiting}</span>
+      </div>
       <div className="space-y-2">
         {(data?.queue ?? []).map((item) => {
           const qty = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, item.qtyWaiting));
