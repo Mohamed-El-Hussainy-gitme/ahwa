@@ -1,104 +1,94 @@
 begin;
 
-with ranked as (
-  select
-    s.id,
-    s.cafe_id,
-    s.shift_kind,
-    s.business_date,
-    s.status,
-    row_number() over (
-      partition by s.cafe_id, s.shift_kind, s.business_date
-      order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc
-    ) as rn,
-    first_value(s.id) over (
-      partition by s.cafe_id, s.shift_kind, s.business_date
-      order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc
-    ) as canonical_id
-  from ops.shifts s
-), dupes as (
-  select id, cafe_id, canonical_id
-  from ranked
-  where rn > 1
-)
-insert into ops.shift_snapshots (cafe_id, shift_id, snapshot_json)
-select ds.cafe_id, ds.canonical_id, ss.snapshot_json
-from dupes ds
-join ops.shift_snapshots ss
-  on ss.cafe_id = ds.cafe_id
- and ss.shift_id = ds.id
-left join ops.shift_snapshots existing
-  on existing.cafe_id = ds.cafe_id
- and existing.shift_id = ds.canonical_id
-where existing.shift_id is null
-on conflict (cafe_id, shift_id) do nothing;
+set local search_path = public, ops;
 
-with ranked as (
-  select s.id, s.cafe_id, s.shift_kind, s.business_date,
-         row_number() over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as rn,
-         first_value(s.id) over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as canonical_id
-  from ops.shifts s
-), dupes as (select id, cafe_id, canonical_id from ranked where rn > 1)
-update ops.shift_role_assignments a set shift_id = d.canonical_id from dupes d where a.cafe_id = d.cafe_id and a.shift_id = d.id;
+-- =========================================================
+-- 0014_shift_resume_latest_and_single_row.sql
+--
+-- الهدف:
+-- 1) تثبيت قاعدة: صف واحد فقط لكل (cafe_id, shift_kind, business_date)
+-- 2) جعل فتح الوردية ذكيًا:
+--    - ينشئ وردية جديدة إذا لم توجد
+--    - يكمل على نفس الوردية إذا كانت مفتوحة
+--    - يعيد متابعة نفس الوردية إذا أُغلقت بالخطأ ولم يبدأ الشيفت التالي
+-- 3) حذف snapshot المؤقت عند استكمال وردية مغلقة بالخطأ
+-- 4) العمل بشكل آمن حتى لو كان القيد الجديد موجودًا بالفعل
+-- =========================================================
 
-with ranked as (
-  select s.id, s.cafe_id, s.shift_kind, s.business_date,
-         row_number() over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as rn,
-         first_value(s.id) over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as canonical_id
-  from ops.shifts s
-), dupes as (select id, cafe_id, canonical_id from ranked where rn > 1)
-update ops.service_sessions ss set shift_id = d.canonical_id from dupes d where ss.cafe_id = d.cafe_id and ss.shift_id = d.id;
+-- ---------------------------------------------------------
+-- 1) إزالة القيد القديم إن كان موجودًا
+-- ---------------------------------------------------------
+alter table ops.shifts
+  drop constraint if exists shifts_cafe_id_shift_kind_business_date_status_key;
 
-with ranked as (
-  select s.id, s.cafe_id, s.shift_kind, s.business_date,
-         row_number() over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as rn,
-         first_value(s.id) over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as canonical_id
-  from ops.shifts s
-), dupes as (select id, cafe_id, canonical_id from ranked where rn > 1)
-update ops.orders o set shift_id = d.canonical_id from dupes d where o.cafe_id = d.cafe_id and o.shift_id = d.id;
+-- ---------------------------------------------------------
+-- 2) فحص آمن: لو توجد بيانات مكررة حاليًا لنفس اليوم/النوع/القهوة
+--    نوقف المايجريشن برسالة واضحة بدل أي دمج خطر
+-- ---------------------------------------------------------
+do $$
+begin
+  if exists (
+    select 1
+    from ops.shifts
+    group by cafe_id, shift_kind, business_date
+    having count(*) > 1
+  ) then
+    raise exception 'duplicate_shift_rows_exist_for_same_cafe_kind_business_date';
+  end if;
+end $$;
 
-with ranked as (
-  select s.id, s.cafe_id, s.shift_kind, s.business_date,
-         row_number() over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as rn,
-         first_value(s.id) over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as canonical_id
-  from ops.shifts s
-), dupes as (select id, cafe_id, canonical_id from ranked where rn > 1)
-update ops.order_items oi set shift_id = d.canonical_id from dupes d where oi.cafe_id = d.cafe_id and oi.shift_id = d.id;
+-- ---------------------------------------------------------
+-- 3) تثبيت القيد الجديد فقط إذا لم يكن موجودًا بالفعل
+-- ---------------------------------------------------------
+do $$
+declare
+  v_constraint_exists boolean;
+  v_relkind "char";
+begin
+  select exists (
+    select 1
+    from pg_constraint
+    where conrelid = 'ops.shifts'::regclass
+      and conname = 'shifts_cafe_id_shift_kind_business_date_key'
+  )
+  into v_constraint_exists;
 
-with ranked as (
-  select s.id, s.cafe_id, s.shift_kind, s.business_date,
-         row_number() over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as rn,
-         first_value(s.id) over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as canonical_id
-  from ops.shifts s
-), dupes as (select id, cafe_id, canonical_id from ranked where rn > 1)
-update ops.fulfillment_events fe set shift_id = d.canonical_id from dupes d where fe.cafe_id = d.cafe_id and fe.shift_id = d.id;
+  if v_constraint_exists then
+    raise notice 'constraint shifts_cafe_id_shift_kind_business_date_key already exists, skipping';
+    return;
+  end if;
 
-with ranked as (
-  select s.id, s.cafe_id, s.shift_kind, s.business_date,
-         row_number() over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as rn,
-         first_value(s.id) over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as canonical_id
-  from ops.shifts s
-), dupes as (select id, cafe_id, canonical_id from ranked where rn > 1)
-update ops.payments p set shift_id = d.canonical_id from dupes d where p.cafe_id = d.cafe_id and p.shift_id = d.id;
+  select c.relkind
+  into v_relkind
+  from pg_class c
+  join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'ops'
+    and c.relname = 'shifts_cafe_id_shift_kind_business_date_key'
+  limit 1;
 
-with ranked as (
-  select s.id, s.cafe_id, s.shift_kind, s.business_date,
-         row_number() over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as rn,
-         first_value(s.id) over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as canonical_id
-  from ops.shifts s
-), dupes as (select id, cafe_id, canonical_id from ranked where rn > 1)
-delete from ops.shift_snapshots ss using dupes d where ss.cafe_id = d.cafe_id and ss.shift_id = d.id;
+  if v_relkind = 'i' then
+    execute 'drop index if exists ops.shifts_cafe_id_shift_kind_business_date_key';
+  elsif v_relkind is not null then
+    raise exception 'relation shifts_cafe_id_shift_kind_business_date_key exists but is not an index';
+  end if;
 
-with ranked as (
-  select s.id, s.cafe_id, s.shift_kind, s.business_date,
-         row_number() over (partition by s.cafe_id, s.shift_kind, s.business_date order by case when s.status = 'open' then 0 else 1 end, s.opened_at asc, s.id asc) as rn
-  from ops.shifts s
-)
-delete from ops.shifts s using ranked r where s.id = r.id and r.rn > 1;
+  execute $sql$
+    alter table ops.shifts
+      add constraint shifts_cafe_id_shift_kind_business_date_key
+      unique (cafe_id, shift_kind, business_date)
+      deferrable initially immediate
+  $sql$;
+end $$;
 
-alter table ops.shifts drop constraint if exists shifts_cafe_id_shift_kind_business_date_status_key;
-alter table ops.shifts add constraint shifts_cafe_id_shift_kind_business_date_key unique (cafe_id, shift_kind, business_date) deferrable initially immediate;
+-- ---------------------------------------------------------
+-- 4) لم نعد نحتاج reopen عام كدالة مستقلة
+--    لو كانت موجودة من محاولة قديمة احذفها بهدوء
+-- ---------------------------------------------------------
+drop function if exists public.ops_reopen_shift(uuid, uuid, text);
 
+-- ---------------------------------------------------------
+-- 5) فتح الوردية الذكي
+-- ---------------------------------------------------------
 create or replace function public.ops_open_shift(
   p_cafe_id uuid,
   p_shift_kind text,
@@ -112,80 +102,144 @@ security definer
 set search_path = public, ops
 as $$
 declare
-  v_open_shift_id uuid;
-  v_open_shift_kind text;
-  v_open_business_date date;
-  v_candidate_id uuid;
-  v_candidate_date date;
-  v_has_later_shift boolean;
-  v_shift_id uuid;
-  v_requested_sort int;
+  v_same_shift_id uuid;
+  v_same_shift_status text;
+  v_any_open_shift_id uuid;
+  v_has_next_shift boolean := false;
+  v_new_shift_id uuid;
+  v_current_rank integer;
 begin
-  if p_cafe_id is null then raise exception 'cafe_id_required'; end if;
-  if p_shift_kind not in ('morning', 'evening') then raise exception 'invalid_shift_kind'; end if;
-  if p_business_date is null then raise exception 'business_date_required'; end if;
-  if p_opened_by_owner_id is null then raise exception 'opened_by_owner_id_required'; end if;
-
-  v_requested_sort := case p_shift_kind when 'morning' then 1 else 2 end;
-
-  select s.id, s.shift_kind, s.business_date
-  into v_open_shift_id, v_open_shift_kind, v_open_business_date
-  from ops.shifts s
-  where s.cafe_id = p_cafe_id and s.status = 'open'
-  order by s.opened_at desc
-  limit 1;
-
-  if v_open_shift_id is not null then
-    if v_open_shift_kind = p_shift_kind and v_open_business_date = p_business_date then
-      return jsonb_build_object('shift_id', v_open_shift_id, 'reused', true, 'mode', 'resumed_open');
-    end if;
-    raise exception 'another_shift_is_already_open';
+  if p_cafe_id is null then
+    raise exception 'cafe_id_required';
   end if;
 
-  select s.id, s.business_date
-  into v_candidate_id, v_candidate_date
+  if p_shift_kind not in ('morning', 'evening') then
+    raise exception 'invalid_shift_kind';
+  end if;
+
+  if p_business_date is null then
+    raise exception 'business_date_required';
+  end if;
+
+  if p_opened_by_owner_id is null then
+    raise exception 'opened_by_owner_id_required';
+  end if;
+
+  v_current_rank :=
+    case p_shift_kind
+      when 'morning' then 1
+      when 'evening' then 2
+      else 99
+    end;
+
+  -- نفس الوردية لنفس اليوم/النوع
+  select s.id, s.status
+  into v_same_shift_id, v_same_shift_status
   from ops.shifts s
   where s.cafe_id = p_cafe_id
     and s.shift_kind = p_shift_kind
-    and s.status = 'closed'
-    and (s.business_date = p_business_date or (p_shift_kind = 'evening' and s.business_date = p_business_date - 1))
-  order by s.business_date desc, s.opened_at desc
+    and s.business_date = p_business_date
   limit 1;
 
-  if v_candidate_id is not null then
-    select exists (
-      select 1
-      from ops.shifts s
-      where s.cafe_id = p_cafe_id
-        and s.id <> v_candidate_id
-        and (s.business_date > v_candidate_date or (s.business_date = v_candidate_date and case s.shift_kind when 'morning' then 1 else 2 end > v_requested_sort))
-    ) into v_has_later_shift;
+  -- أي وردية مفتوحة حاليًا لهذا المقهى
+  select s.id
+  into v_any_open_shift_id
+  from ops.shifts s
+  where s.cafe_id = p_cafe_id
+    and s.status = 'open'
+  order by s.opened_at desc nulls last, s.id desc
+  limit 1;
 
-    if not v_has_later_shift then
-      delete from ops.shift_snapshots where cafe_id = p_cafe_id and shift_id = v_candidate_id;
-
-      update ops.shifts
-      set status = 'open',
-          closed_at = null,
-          closed_by_owner_id = null,
-          notes = case
-            when p_notes is null or btrim(p_notes) = '' then notes
-            when notes is null or btrim(notes) = '' then p_notes
-            else notes || E'\n[resume] ' || p_notes
-          end
-      where cafe_id = p_cafe_id and id = v_candidate_id and status = 'closed';
-
-      return jsonb_build_object('shift_id', v_candidate_id, 'reused', true, 'mode', 'resumed_closed');
-    end if;
-
-    raise exception 'cannot_resume_shift_after_next_shift_started';
+  -- الحالة 1: نفس الوردية مفتوحة بالفعل => كمل عليها
+  if v_same_shift_id is not null and v_same_shift_status = 'open' then
+    return jsonb_build_object(
+      'shift_id', v_same_shift_id,
+      'mode', 'resumed_open'
+    );
   end if;
 
-  insert into ops.shifts (cafe_id, shift_kind, business_date, status, opened_by_owner_id, notes)
-  values (p_cafe_id, p_shift_kind, p_business_date, 'open', p_opened_by_owner_id, p_notes)
-  returning id into v_shift_id;
+  -- الحالة 2: توجد وردية مفتوحة أخرى => ممنوع
+  if v_any_open_shift_id is not null then
+    raise exception 'another_shift_is_already_open';
+  end if;
 
-  return jsonb_build_object('shift_id', v_shift_id, 'reused', false, 'mode', 'created');
+  -- الحالة 3: نفس الوردية موجودة ولكن مغلقة
+  -- نسمح باستكمالها فقط إذا لم يبدأ بعدها الشيفت التالي
+  if v_same_shift_id is not null and v_same_shift_status = 'closed' then
+    select exists (
+      select 1
+      from ops.shifts s2
+      where s2.cafe_id = p_cafe_id
+        and s2.id <> v_same_shift_id
+        and (
+          s2.business_date > p_business_date
+          or (
+            s2.business_date = p_business_date
+            and (
+              case s2.shift_kind
+                when 'morning' then 1
+                when 'evening' then 2
+                else 99
+              end
+            ) > v_current_rank
+          )
+        )
+    )
+    into v_has_next_shift;
+
+    if v_has_next_shift then
+      raise exception 'cannot_resume_shift_after_next_shift_started';
+    end if;
+
+    -- حذف snapshot السابق لهذه الوردية لأنها ستُستكمل ثم تُغلق لاحقًا نهائيًا
+    if to_regclass('ops.shift_snapshots') is not null then
+      execute 'delete from ops.shift_snapshots where shift_id = $1'
+      using v_same_shift_id;
+    elsif to_regclass('ops.shift_snapshot') is not null then
+      execute 'delete from ops.shift_snapshot where shift_id = $1'
+      using v_same_shift_id;
+    end if;
+
+    update ops.shifts
+    set
+      status = 'open',
+      closed_at = null,
+      closed_by_owner_id = null,
+      notes = case
+        when p_notes is null or btrim(p_notes) = '' then notes
+        when notes is null or btrim(notes) = '' then p_notes
+        else notes || E'\n' || p_notes
+      end
+    where id = v_same_shift_id;
+
+    return jsonb_build_object(
+      'shift_id', v_same_shift_id,
+      'mode', 'resumed_closed'
+    );
+  end if;
+
+  -- الحالة 4: لا توجد وردية لهذا اليوم/النوع => أنشئ واحدة جديدة
+  insert into ops.shifts (
+    cafe_id,
+    shift_kind,
+    business_date,
+    status,
+    opened_by_owner_id,
+    notes
+  ) values (
+    p_cafe_id,
+    p_shift_kind,
+    p_business_date,
+    'open',
+    p_opened_by_owner_id,
+    p_notes
+  )
+  returning id into v_new_shift_id;
+
+  return jsonb_build_object(
+    'shift_id', v_new_shift_id,
+    'mode', 'created'
+  );
 end;
 $$;
 

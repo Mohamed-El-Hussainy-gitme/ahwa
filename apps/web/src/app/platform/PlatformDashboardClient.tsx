@@ -1,12 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { PlatformAdminSession } from '@/lib/platform-auth/session';
 import {
   extractPlatformApiErrorMessage,
   isPlatformApiOk,
 } from '@/lib/platform-auth/api';
+import PlatformPortfolioOverview from './PlatformPortfolioOverview';
 
 type OwnerLabel = 'owner' | 'partner';
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'suspended';
@@ -279,6 +281,7 @@ export default function PlatformDashboardClient({
   const [owners, setOwners] = useState<OwnerUser[]>([]);
   const [subscriptions, setSubscriptions] = useState<CafeSubscriptionRow[]>([]);
   const [selectedCafeId, setSelectedCafeId] = useState<string>('');
+  const [portfolioRefreshRevision, setPortfolioRefreshRevision] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
@@ -393,6 +396,7 @@ export default function PlatformDashboardClient({
   const refreshSelectedCafe = useCallback(async (preferredCafeId?: string) => {
     const { nextSelected } = await loadCafes(preferredCafeId);
     await Promise.all([loadOwners(nextSelected), loadSubscriptions(nextSelected)]);
+    setPortfolioRefreshRevision((value) => value + 1);
   }, [loadCafes, loadOwners, loadSubscriptions]);
 
   useEffect(() => {
@@ -730,6 +734,12 @@ export default function PlatformDashboardClient({
           </div>
         ) : null}
 
+        <PlatformPortfolioOverview
+          selectedCafeId={selectedCafeId}
+          onSelectCafe={setSelectedCafeId}
+          refreshRevision={portfolioRefreshRevision}
+        />
+
         <div className="grid gap-6 lg:grid-cols-[1.1fr_1fr]">
           <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold">إنشاء قهوة + مالك أساسي</h2>
@@ -870,15 +880,23 @@ export default function PlatformDashboardClient({
                   </div>
                 </div>
                 {selectedCafe ? (
-                  <button
-                    disabled={busy}
-                    onClick={() => submitToggleCafe(!selectedCafe.is_active)}
-                    className={`rounded-2xl px-4 py-2 text-sm font-medium text-white ${
-                      selectedCafe.is_active ? 'bg-rose-600' : 'bg-emerald-600'
-                    } disabled:opacity-60`}
-                  >
-                    {selectedCafe.is_active ? 'تعطيل القهوة' : 'تفعيل القهوة'}
-                  </button>
+                  <div className="flex flex-wrap gap-2">
+                    <Link
+                      href={`/platform/cafes/${selectedCafe.id}`}
+                      className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                    >
+                      فتح التفاصيل
+                    </Link>
+                    <button
+                      disabled={busy}
+                      onClick={() => submitToggleCafe(!selectedCafe.is_active)}
+                      className={`rounded-2xl px-4 py-2 text-sm font-medium text-white ${
+                        selectedCafe.is_active ? 'bg-rose-600' : 'bg-emerald-600'
+                      } disabled:opacity-60`}
+                    >
+                      {selectedCafe.is_active ? 'تعطيل القهوة' : 'تفعيل القهوة'}
+                    </button>
+                  </div>
                 ) : null}
               </div>
 
