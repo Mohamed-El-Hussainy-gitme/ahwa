@@ -47,18 +47,18 @@ export const opsClient = {
     post<{ ok: true }>('/api/ops/fulfillment/remake', { orderItemId, quantity }),
 
   createComplaint: (input: {
+    mode?: 'general' | 'item';
     serviceSessionId?: string;
     orderItemId?: string;
     complaintKind?: 'quality_issue' | 'wrong_item' | 'delay' | 'billing_issue' | 'other';
     quantity?: number;
     notes?: string;
     action?: 'none' | 'remake' | 'cancel_undelivered' | 'waive_delivered';
-  }) => post<{ ok: true; complaintId: string }>('/api/ops/complaints/create', input),
+  }) => post<{ ok: true; complaintId?: string; itemIssueId?: string }>('/api/ops/complaints/create', input),
 
   resolveComplaint: (input: {
     complaintId: string;
-    resolutionKind: 'remake' | 'cancel_undelivered' | 'waive_delivered' | 'dismissed';
-    quantity?: number;
+    resolutionKind: 'resolved' | 'dismissed';
     notes?: string;
   }) => post<{ ok: true }>('/api/ops/complaints/resolve', input),
 

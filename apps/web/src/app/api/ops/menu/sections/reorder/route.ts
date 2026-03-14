@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 export async function POST(request: Request) {
   try {
@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     const sectionIds = Array.isArray(body.sectionIds) ? body.sectionIds.map((value) => String(value ?? '').trim()).filter(Boolean) : [];
     if (!sectionIds.length) throw new Error('SECTION_IDS_REQUIRED');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerRole(await requireOpsActorContext());
     const { data, error } = await adminOps().from('menu_sections').select('id').eq('cafe_id', ctx.cafeId).in('id', sectionIds);
     if (error) throw error;
     const existingIds = new Set((data ?? []).map((row) => String(row.id)));

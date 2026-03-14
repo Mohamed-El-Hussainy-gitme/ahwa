@@ -22,6 +22,8 @@
     "verify:phase9": "node ./scripts/verify-phase9-local-runtime.mjs",
     "verify:phase10": "node ./scripts/verify-phase10-regression.mjs",
     "smoke:phase10": "node ./scripts/smoke-phase10-runtime-e2e.mjs",
+    "verify:authz": "node ./scripts/check-ops-authz-coverage.mjs",
+    "verify:1to1-lock": "node ./scripts/check-final-1to1-lock.mjs",
     "verify:release": "node ./scripts/check-release-readiness.mjs"
   }
 }

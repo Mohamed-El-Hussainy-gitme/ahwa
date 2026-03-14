@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadProduct, productUsageCount, renumberProductSortOrders } from '@/app/api/ops/menu/_utils';
 
 export async function POST(request: Request) {
@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const productId = String(body.productId ?? '').trim();
     if (!productId) throw new Error('PRODUCT_ID_REQUIRED');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerRole(await requireOpsActorContext());
     const product = await loadProduct(ctx.cafeId, productId);
     const usageCount = await productUsageCount(ctx.cafeId, productId);
 

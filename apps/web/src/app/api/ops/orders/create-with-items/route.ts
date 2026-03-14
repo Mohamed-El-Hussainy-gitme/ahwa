@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpenOpsShift, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOpenOpsShift, requireOpsActorContext, requireSessionOrderAccess } from '@/app/api/ops/_helpers';
 
 type CreateOrderRequestBody = {
   serviceSessionId?: string;
@@ -28,7 +28,7 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId);
 
     const rpc = await callOpsRpc<CreateOrderRpcResult>('ops_create_order_with_items', {

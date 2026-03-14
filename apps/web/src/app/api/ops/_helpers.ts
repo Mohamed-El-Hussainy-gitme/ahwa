@@ -3,15 +3,23 @@ import { getEnrichedRuntimeMeFromCookie } from '@/lib/runtime/me';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { publishOpsEvent } from '@/lib/ops/events';
 
+export type OpsShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
+export type OpsStationCode = 'barista' | 'shisha';
+
 export type OpsActorContext = {
   cafeId: string;
   runtimeUserId: string;
   fullName: string;
   accountKind: 'owner' | 'employee';
   shiftId: string | null;
-  shiftRole: 'supervisor' | 'waiter' | 'barista' | 'shisha' | null;
+  shiftRole: OpsShiftRole | null;
   actorOwnerId: string | null;
   actorStaffId: string | null;
+};
+
+export type OwnerOpsActorContext = OpsActorContext & {
+  accountKind: 'owner';
+  actorOwnerId: string;
 };
 
 export async function requireOpsActorContext(): Promise<OpsActorContext> {
@@ -25,7 +33,7 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
   const fullName = String(me.fullName ?? '').trim();
   const accountKind: 'owner' | 'employee' = me.accountKind === 'owner' ? 'owner' : 'employee';
   const shiftId = me.shiftId ? String(me.shiftId) : null;
-  const shiftRole = me.shiftRole ? String(me.shiftRole) as 'supervisor' | 'waiter' | 'barista' | 'shisha' : null;
+  const shiftRole = me.shiftRole ? (String(me.shiftRole) as OpsShiftRole) : null;
   const actorOwnerId = me.actorOwnerId ? String(me.actorOwnerId) : null;
   const actorStaffId = me.actorStaffId ? String(me.actorStaffId) : null;
 
@@ -51,6 +59,78 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
     actorOwnerId,
     actorStaffId,
   };
+}
+
+function isOwner(ctx: OpsActorContext): ctx is OwnerOpsActorContext {
+  return ctx.accountKind === 'owner' && !!ctx.actorOwnerId;
+}
+
+function hasAnyShiftRole(ctx: OpsActorContext, roles: OpsShiftRole[]) {
+  return !!ctx.shiftRole && roles.includes(ctx.shiftRole);
+}
+
+function requireRoleAccess(ctx: OpsActorContext, allowedShiftRoles: OpsShiftRole[] = []) {
+  if (isOwner(ctx) || hasAnyShiftRole(ctx, allowedShiftRoles)) {
+    return ctx;
+  }
+
+  throw new Error('FORBIDDEN');
+}
+
+export function requireOwnerRole(ctx: OpsActorContext): OwnerOpsActorContext {
+  if (isOwner(ctx)) {
+    return ctx;
+  }
+
+  throw new Error('FORBIDDEN');
+}
+
+export function requireOwnerOrSupervisor(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor']);
+}
+
+export function requireBillingAccess(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor']);
+}
+
+export function requireDeferredAccess(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor']);
+}
+
+export function requireReportsAccess(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor']);
+}
+
+export function requireComplaintsAccess(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+}
+
+export function requireWaiterWorkspaceAccess(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+}
+
+export function requireSessionOrderAccess(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+}
+
+export function requireDeliveryAccess(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+}
+
+export function requireStationAccess(ctx: OpsActorContext, stationCode: OpsStationCode) {
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor') {
+    return ctx;
+  }
+
+  if (stationCode === 'barista' && ctx.shiftRole === 'barista') {
+    return ctx;
+  }
+
+  if (stationCode === 'shisha' && ctx.shiftRole === 'shisha') {
+    return ctx;
+  }
+
+  throw new Error('FORBIDDEN');
 }
 
 export async function requireOpenOpsShift(cafeId: string) {
@@ -83,7 +163,6 @@ export function jsonError(error: unknown, status = 400) {
 export function ok(data: unknown) {
   return NextResponse.json(data, { status: 200 });
 }
-
 
 export function publishOpsMutation(
   ctx: Pick<OpsActorContext, 'cafeId' | 'shiftId'>,

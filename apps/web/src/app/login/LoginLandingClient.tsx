@@ -17,16 +17,23 @@ export default function LoginLandingClient() {
   }, []);
 
   function slugify(raw: string) {
-    // slug can be latin or arabic; normalize spaces to '-'
-    // Keep: letters/numbers (unicode), '-' and '_'
     return (raw ?? "")
       .trim()
       .toLowerCase()
       .replace(/\s+/g, "-")
-      // Keep: unicode letters/numbers, '_' and '-' (place '-' last to avoid regex range parsing issues)
       .replace(/[^\p{L}\p{N}_-]/gu, "")
       .replace(/-+/g, "-")
       .replace(/^[-_]+|[-_]+$/g, "");
+  }
+
+  function ownerHref(preferredSlug?: string) {
+    const next = sp.get("next");
+    const qs = new URLSearchParams();
+    const effectiveSlug = slugify(preferredSlug ?? slug);
+    if (effectiveSlug) qs.set("slug", effectiveSlug);
+    if (next) qs.set("next", next);
+    const query = qs.toString();
+    return `/owner-login${query ? `?${query}` : ""}`;
   }
 
   async function go() {
@@ -63,9 +70,27 @@ export default function LoginLandingClient() {
     }
   }
 
-  function goOwner() {
-    const next = sp.get("next");
-    r.push(next ? `/owner-login?next=${encodeURIComponent(next)}` : "/owner-login");
+  async function goOwner() {
+    setErr(null);
+    const s = slugify(slug) || (typeof window !== "undefined" ? slugify(localStorage.getItem("ahwa.lastCafeSlug") ?? "") : "");
+    if (!s) {
+      r.push(ownerHref());
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/auth/cafe-exists?slug=${encodeURIComponent(s)}`);
+      const j = await res.json().catch(() => ({}));
+      if (!res.ok || !j.ok || !j.exists) {
+        setErr(!j.exists ? "CAFE_NOT_FOUND" : "CHECK_FAILED");
+        return;
+      }
+      localStorage.setItem("ahwa.lastCafeSlug", s);
+      r.push(ownerHref(s));
+    } finally {
+      setBusy(false);
+    }
   }
 
   const e = sp.get("e");
@@ -122,7 +147,8 @@ export default function LoginLandingClient() {
 
         <button
           onClick={goOwner}
-          className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 font-semibold text-neutral-900"
+          disabled={busy}
+          className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 font-semibold text-neutral-900 disabled:opacity-60"
         >
           دخول المعلم (أونر)
         </button>

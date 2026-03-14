@@ -1,14 +1,10 @@
 import { NextResponse } from 'next/server';
-import { requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerOrSupervisor } from '@/app/api/ops/_helpers';
 import { listStaffMembers } from '@/lib/ops/owner-admin';
 
 export async function GET() {
   try {
-    const ctx = await requireOpsActorContext();
-    const allowed = ctx.accountKind === 'owner' || ctx.shiftRole === 'supervisor';
-    if (!allowed) {
-      return NextResponse.json({ ok: false, error: 'FORBIDDEN' }, { status: 403 });
-    }
+    const ctx = requireOwnerOrSupervisor(await requireOpsActorContext());
 
     const staff = await listStaffMembers(ctx.cafeId, true);
     return NextResponse.json({

@@ -1,9 +1,9 @@
 import { buildDeferredCustomersWorkspace } from '@/app/api/ops/_server';
-import { jsonError, ok, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, requireDeferredAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 export async function POST() {
   try {
-    const ctx = await requireOpsActorContext();
+    const ctx = requireDeferredAccess(await requireOpsActorContext());
     return ok({ items: await buildDeferredCustomersWorkspace(ctx.cafeId) });
   } catch (error) {
     return jsonError(error, 400);

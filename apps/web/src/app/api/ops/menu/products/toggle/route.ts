@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 export async function POST(request: Request) {
   try {
@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     const productId = String(body.productId ?? '').trim();
     if (!productId) throw new Error('PRODUCT_ID_REQUIRED');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerRole(await requireOpsActorContext());
     const isActive = Boolean(body.isActive);
     const { error } = await adminOps()
       .from('menu_products')

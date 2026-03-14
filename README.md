@@ -2,36 +2,60 @@
 
 Ops-first cafe SaaS workspace.
 
+## Canonical source of truth
+
+The current project must be read from these layers in this order:
+
+1. `database/migrations/`
+2. `apps/web/src/`
+3. `docs/architecture/source-of-truth.md`
+4. `docs/domain/canonical-runtime-reference.md`
+5. `docs/domain/glossary.md`, `docs/domain/invariants.md`, `docs/domain/state-machines.md`
+6. `database/README.md`
+
+Historical phase notes under `docs/codebase/` and older execution notes are archival context only. They are **not** the canonical runtime reference.
+
 ## Current architecture
 
 - `database/` is the source of truth for `ops.*` and `platform.*`
-- `apps/web/` is the active application shell and now owns:
+- `apps/web/` owns:
   - platform admin flow
-  - runtime login/device activation
+  - runtime login and device activation
   - ops workspaces and commands
-  - owner shift/staff management
+  - owner shift and staff management
   - realtime updates via SSE
-- `packages/shared/` keeps the remaining shared contracts and validation used by the current workspace
+- `packages/shared/` keeps the remaining shared contracts and validation used by the active workspace
 
-## Removed through phase 9
+## Canonical runtime model
 
-The active tree no longer depends on:
+The live runtime model is:
 
-- `tables`
-- `table_sessions`
-- `bill_accounts`
-- `deferred-accounts`
-- `canonical-runtime`
-- `runtime/proxy`
-- root-level duplicate Next files
-- the old `apps/api` runtime backend slice
-- web-to-api bridge helpers under `apps/web/src/lib/api/*`
+`cafe -> shift -> service_session -> order -> order_item -> fulfillment/payment/deferred -> shift_snapshot`
+
+The canonical runtime does **not** use these as active daily entities:
+
+- `table`
+- `table_session`
+- `bill_account`
+- `deferred_account` as a separate runtime container
+
+## Current platform/admin model
+
+The super admin surface is administrative only. The canonical platform surface is:
+
+- overview
+- cafes
+- owners
+- money follow
+- subscriptions
+
+The platform surface should not expose detailed per-cafe operating sales, complaint payloads, or other sensitive runtime internals.
 
 ## Local environment
 
 - Do not create or depend on a root runtime `.env`
 - Copy `apps/web/.env.example` to `apps/web/.env.local` for local development only
-- Keep real secrets out of git and Vercel-manage them per environment
+- Keep real secrets out of git and let Vercel manage them per environment
 - Prefer modern Supabase keys: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` + `SUPABASE_SECRET_KEY`
 
 ## Verification helpers
@@ -40,14 +64,9 @@ The active tree no longer depends on:
 - `node scripts/verify-phase5-6-cleanup.mjs`
 - `node scripts/verify-phase7-8-realtime.mjs`
 - `node scripts/verify-phase9-local-runtime.mjs`
-
-
-## Validation
-
-- `npm run verify:phase9` checks post-phase-9 runtime localization.
-- `npm run verify:phase10` checks that the regression/smoke assets for the unified runtime remain in place.
-- `npm run smoke:phase10` runs the full HTTP + cookie end-to-end smoke flow against a running local web app.
-
+- `npm run verify:phase9`
+- `npm run verify:phase10`
+- `npm run smoke:phase10`
 
 ## Deployment hardening
 

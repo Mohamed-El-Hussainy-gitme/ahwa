@@ -1,71 +1,48 @@
-# State Machines (V2)
+# State machines (canonical runtime)
 
-هذا الملف يحدد الانتقالات الرسمية لحالات التشغيل الأساسية.
+هذا الملف يطابق النظام الحديث فقط. أي وصف قديم لـ `table session` أو `bill account` لم يعد مرجعية تشغيلية.
 
 ## Shift
 
 ### States
-- `draft`
 - `open`
-- `closing`
 - `closed`
-- `cancelled`
 
-### Allowed Transitions
-- `draft -> open`
-- `draft -> cancelled`
-- `open -> closing`
-- `closing -> closed`
+### Allowed transitions
+- `open -> closed`
 
-### Forbidden
-- `closed -> open`
-- `cancelled -> open`
-- `open -> closed` مباشرة بدون مرحلة closing
+### Notes
+- لا توجد مرحلة `draft` أو `closing` في الـ schema الحالية.
+- إغلاق الوردية يجب أن ينتهي بإنشاء `shift_snapshot` canonical.
 
 ---
 
-## Table Session
+## Shift role assignment
 
-### States
-- `open`
-- `locked`
-- `settling`
-- `closed`
-- `cancelled`
-
-### Allowed Transitions
-- `open -> locked`
-- `locked -> open`
-- `open -> settling`
-- `locked -> settling`
-- `settling -> closed`
-- `open -> cancelled`
+### Role rules
+- `supervisor`: active singleton per shift
+- `barista`: active singleton per shift
+- `waiter`: multiple active assignments allowed
+- `shisha`: multiple active assignments allowed
 
 ### Notes
-- `locked` تعني أن الجلسة مفتوحة ولكن لا تقبل تعديلات معينة مؤقتًا.
-- `settling` تعني أن الحسابات دخلت مرحلة التحصيل والإغلاق.
+- المالك لا يحتاج تعيينًا داخل الوردية حتى يعمل داخل القهوة.
+- assignment نفسه ليس state machine معقدة؛ التفعيل/التعطيل يتم عبر `is_active`.
 
 ---
 
-## Bill Account
+## Service session
 
 ### States
 - `open`
-- `partially_paid`
-- `settled`
 - `closed`
-- `void`
 
-### Allowed Transitions
-- `open -> partially_paid`
-- `open -> settled`
-- `partially_paid -> settled`
-- `settled -> closed`
-- `open -> void`
+### Allowed transitions
+- `open -> closed`
 
 ### Notes
-- لا يصل الحساب إلى `closed` إلا بعد اكتمال التسوية.
-- `void` حالة استثنائية يجب أن تظل نادرة وتُراجع.
+- الجلسة تُفتح أو تُستأنف بالـ `session_label`.
+- لا يوجد `table session` ككيان مستقل.
 
 ---
 
@@ -74,85 +51,41 @@
 ### States
 - `draft`
 - `submitted`
-- `partially_fulfilled`
-- `fulfilled`
+- `completed`
 - `cancelled`
 
-### Allowed Transitions
+### Allowed transitions
 - `draft -> submitted`
-- `submitted -> partially_fulfilled`
-- `submitted -> fulfilled`
-- `partially_fulfilled -> fulfilled`
+- `submitted -> completed`
+- `submitted -> cancelled`
 - `draft -> cancelled`
-- `submitted -> cancelled`
-
----
-
-## Order Item
-
-### States
-- `draft`
-- `submitted`
-- `accepted`
-- `in_preparation`
-- `ready`
-- `delivered`
-- `remade`
-- `cancelled`
-- `voided`
-
-### Allowed Transitions
-- `draft -> submitted`
-- `submitted -> accepted`
-- `submitted -> cancelled`
-- `accepted -> in_preparation`
-- `accepted -> cancelled`
-- `in_preparation -> ready`
-- `in_preparation -> cancelled`
-- `ready -> delivered`
-- `ready -> cancelled`
-- `delivered -> remade`
-- `draft|submitted|accepted|in_preparation|ready -> voided` وفق policy خاصة
 
 ### Notes
-- `remade` لا تعني محو التاريخ. يجب أن تقود إلى عنصر جديد أو دورة تنفيذ جديدة قابلة للتتبع.
-- `voided` تختلف عن `cancelled` لأنها عادة قرار إداري/مالي أعلى أثرًا.
+- تفاصيل التنفيذ الفعلية للصنف لا تُستنتج من `orders.status` وحده، بل من كميات وحركات `order_items` و `fulfillment_events`.
 
 ---
 
-## Fulfillment Ticket
+## Order item
 
-### States
-- `queued`
-- `accepted`
-- `in_preparation`
-- `ready`
-- `handed_over`
-- `cancelled`
+لا يوجد عمود `status` canonical في `ops.order_items`. المرجعية الفعلية هنا **quantity-driven** وليست enum-driven.
 
-### Allowed Transitions
-- `queued -> accepted`
-- `accepted -> in_preparation`
-- `in_preparation -> ready`
-- `ready -> handed_over`
-- `queued|accepted|in_preparation|ready -> cancelled`
+### Canonical progress dimensions
+- submitted quantity
+- ready quantity
+- delivered quantity
+- paid quantity
+- deferred quantity
+- remade quantity
+- cancelled quantity
 
----
-
-## Payment
-
-### States
-- `pending`
-- `completed`
-- `failed`
-- `cancelled`
-- `refunded`
-
-### Allowed Transitions
-- `pending -> completed`
-- `pending -> failed`
-- `pending -> cancelled`
-- `completed -> refunded`
+### Effective runtime progression
+- submitted quantity increases first
+- then ready quantity increases
+- then delivered quantity increases
+- then paid/deferred quantities settle delivered quantity
+- remake creates additional tracked preparation work without erasing history
+- cancel applies to undelivered quantity only
+- waive applies to delivered quantity without collecting payment
 
 ---
 
@@ -160,12 +93,46 @@
 
 ### States
 - `open`
-- `in_review`
 - `resolved`
 - `dismissed`
 
-### Allowed Transitions
-- `open -> in_review`
+### Allowed transitions
 - `open -> resolved`
-- `in_review -> resolved`
-- `in_review -> dismissed`
+- `open -> dismissed`
+
+### Notes
+- هذا المسار خاص بـ `ops.complaints` فقط.
+- الشكوى العامة ليست هي المرجعية الوحيدة لعمليات remake/waive/cancel على الصنف.
+
+---
+
+## Order item issue
+
+### States
+- `logged`
+- `applied`
+- `dismissed`
+
+### Allowed transitions
+- `logged -> applied`
+- `logged -> dismissed`
+
+### Notes
+- هذا المسار يخص `ops.order_item_issues`.
+- `action_kind` الحالية: `note`, `remake`, `cancel_undelivered`, `waive_delivered`.
+- هذا هو المسار canonical لأسباب الإجراء المرتبط بالصنف.
+
+---
+
+## Payment / deferred settlement
+
+لا توجد state machine مستقلة باسم `bill account` في النظام الحديث.
+
+### Canonical settlement outcomes
+- delivered quantity can move to paid quantity
+- delivered quantity can move to deferred quantity
+- deferred quantity can later be repaid through `deferred_ledger_entries`
+
+### Notes
+- الحساب مبني على كميات الأصناف المسلمة وليس على أسماء الأشخاص.
+- الاسم البشري الإلزامي الوحيد هنا هو اسم المدين في الآجل.

@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireBillingAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { resolveBillingContext } from '@/app/api/ops/_billing';
 
 type SettleAllocationInput = {
@@ -20,7 +20,7 @@ type SettleRpcResult = {
 export async function POST(req: Request) {
   try {
     const { allocations } = (await req.json()) as SettleRequestBody;
-    const ctx = await requireOpsActorContext();
+    const ctx = requireBillingAccess(await requireOpsActorContext());
     const billing = await resolveBillingContext(ctx.cafeId, allocations);
 
     const rpc = await callOpsRpc<SettleRpcResult>('ops_settle_selected_quantities', {

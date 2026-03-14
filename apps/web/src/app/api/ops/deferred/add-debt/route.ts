@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext, requireOpenOpsShift } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireDeferredAccess, requireOpsActorContext, requireOpenOpsShift } from '@/app/api/ops/_helpers';
 
 export async function POST(req: Request) {
   try {
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
     const numericAmount = Number(amount ?? 0);
     if (!name || numericAmount <= 0) throw new Error('INVALID_INPUT');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireDeferredAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId);
     const admin = adminOps();
     const payload: Record<string, unknown> = {

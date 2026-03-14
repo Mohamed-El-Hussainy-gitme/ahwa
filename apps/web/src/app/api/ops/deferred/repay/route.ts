@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext, requireOpenOpsShift } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireDeferredAccess, requireOpsActorContext, requireOpenOpsShift } from '@/app/api/ops/_helpers';
 
 type RepaymentRpcResult = {
   ok?: boolean;
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     const numericAmount = Number(amount ?? 0);
     if (!name || !Number.isFinite(numericAmount) || numericAmount <= 0) throw new Error('INVALID_INPUT');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireDeferredAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId);
     const rpc = await callOpsRpc<RepaymentRpcResult>('ops_record_repayment', {
       p_cafe_id: ctx.cafeId,

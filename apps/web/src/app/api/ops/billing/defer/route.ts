@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireBillingAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { resolveBillingContext } from '@/app/api/ops/_billing';
 
 type DeferAllocationInput = {
@@ -26,7 +26,7 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireBillingAccess(await requireOpsActorContext());
     const billing = await resolveBillingContext(ctx.cafeId, allocations);
 
     const rpc = await callOpsRpc<DeferRpcResult>('ops_defer_selected_quantities', {

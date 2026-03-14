@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadSection, renumberSectionSortOrders, sectionUsageCount } from '@/app/api/ops/menu/_utils';
 
 export async function POST(request: Request) {
@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const sectionId = String(body.sectionId ?? '').trim();
     if (!sectionId) throw new Error('SECTION_ID_REQUIRED');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerRole(await requireOpsActorContext());
     const section = await loadSection(ctx.cafeId, sectionId);
     const usageCount = await sectionUsageCount(ctx.cafeId, sectionId);
 

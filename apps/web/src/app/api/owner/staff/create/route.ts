@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
 import { createStaffMember, listStaffMembers } from '@/lib/ops/owner-admin';
 import { publishOpsEvent } from '@/lib/ops/events';
 
@@ -18,10 +18,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ctx = await requireOpsActorContext();
-    if (ctx.accountKind !== 'owner' || !ctx.actorOwnerId) {
-      return NextResponse.json({ ok: false, error: 'FORBIDDEN' }, { status: 403 });
-    }
+    const ctx = requireOwnerRole(await requireOpsActorContext());
 
     const staffId = await createStaffMember({
       cafeId: ctx.cafeId,

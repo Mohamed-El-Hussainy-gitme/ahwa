@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadSection, nextProductSortOrder, normalizeStationCode } from '@/app/api/ops/menu/_utils';
 import type { StationCode } from '@/lib/ops/types';
 
@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerRole(await requireOpsActorContext());
     await loadSection(ctx.cafeId, sectionId);
     const sortOrder = await nextProductSortOrder(ctx.cafeId, sectionId);
     const { data, error } = await adminOps()

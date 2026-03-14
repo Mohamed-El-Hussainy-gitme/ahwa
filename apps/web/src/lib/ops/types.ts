@@ -97,6 +97,11 @@ export type ReportTotals = {
   complaintRemake: number;
   complaintCancel: number;
   complaintWaive: number;
+  itemIssueTotal: number;
+  itemIssueNote: number;
+  itemIssueRemake: number;
+  itemIssueCancel: number;
+  itemIssueWaive: number;
   openSessions: number;
   closedSessions: number;
   totalSessions: number;
@@ -146,6 +151,7 @@ export type StaffPerformanceRow = {
   deferredSales: number;
   repaymentTotal: number;
   complaintCount: number;
+  itemIssueCount: number;
 };
 
 export type PeriodReport = {
@@ -169,7 +175,7 @@ export type ReportsWorkspace = {
   deferredCustomers: DeferredCustomerSummary[];
 };
 
-export type ComplaintResolutionKind = 'remake' | 'cancel_undelivered' | 'waive_delivered' | 'dismissed' | null;
+export type ComplaintResolutionKind = 'resolved' | 'dismissed' | null;
 
 export type ComplaintItemCandidate = {
   orderItemId: string;
@@ -188,6 +194,34 @@ export type ComplaintItemCandidate = {
   qtyWaived: number;
 };
 
+
+export type ComplaintSessionOption = {
+  id: string;
+  label: string;
+};
+
+export type ItemIssueActionKind = 'note' | 'remake' | 'cancel_undelivered' | 'waive_delivered';
+
+export type ItemIssueStatus = 'logged' | 'applied' | 'dismissed';
+
+export type ItemIssueRecord = {
+  id: string;
+  orderItemId: string;
+  serviceSessionId: string;
+  sessionLabel: string;
+  productName: string;
+  stationCode: StationCode | null;
+  issueKind: 'quality_issue' | 'wrong_item' | 'delay' | 'billing_issue' | 'other';
+  actionKind: ItemIssueActionKind;
+  status: ItemIssueStatus;
+  requestedQuantity: number | null;
+  resolvedQuantity: number | null;
+  notes: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  createdByLabel: string | null;
+  resolvedByLabel: string | null;
+};
 export type ComplaintRecord = {
   id: string;
   orderItemId: string | null;
@@ -209,8 +243,10 @@ export type ComplaintRecord = {
 
 export type ComplaintsWorkspace = {
   shift: OpsShift | null;
+  sessions: ComplaintSessionOption[];
   items: ComplaintItemCandidate[];
   complaints: ComplaintRecord[];
+  itemIssues: ItemIssueRecord[];
 };
 
 export type OpsRealtimeEvent = {

@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOpsActorContext, requireStationAccess } from '@/app/api/ops/_helpers';
 
 type MarkReadyRpcResult = {
   ok?: boolean;
@@ -15,14 +15,16 @@ export async function POST(req: Request) {
     }
 
     const ctx = await requireOpsActorContext();
+    const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId);
+    const stationCode = item.stationCode === 'shisha' ? 'shisha' : 'barista';
+    requireStationAccess(ctx, stationCode);
+
     await callOpsRpc<MarkReadyRpcResult>('ops_mark_ready', {
       p_cafe_id: ctx.cafeId,
       p_order_item_id: normalizedOrderItemId,
       p_quantity: normalizedQuantity,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
     });
-
-    const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId);
 
     publishOpsMutation(ctx, {
       type: 'station.ready',

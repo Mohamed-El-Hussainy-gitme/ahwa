@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { publishOpsEvent } from '@/lib/ops/events';
-import { requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
 import { closeShift } from '@/lib/ops/owner-admin';
 import { apiFail } from '@/app/api/_shared';
 import { NextResponse } from 'next/server';
@@ -27,10 +27,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ctx = await requireOpsActorContext();
-    if (ctx.accountKind !== 'owner' || !ctx.actorOwnerId) {
-      return apiFail(403, 'FORBIDDEN', 'FORBIDDEN');
-    }
+    const ctx = requireOwnerRole(await requireOpsActorContext());
 
     const shiftId = parsed.data.shiftId ?? ctx.shiftId;
     if (!shiftId) {

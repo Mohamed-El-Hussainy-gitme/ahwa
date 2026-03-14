@@ -58,3 +58,6 @@ for (const key of requiredKeys) {
 }
 
 console.log('release-readiness: ok');
+
+execSync('node ./scripts/check-ops-authz-coverage.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/check-final-1to1-lock.mjs', { stdio: 'inherit' });

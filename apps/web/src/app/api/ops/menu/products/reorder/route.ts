@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 export async function POST(request: Request) {
   try {
@@ -8,7 +8,7 @@ export async function POST(request: Request) {
     const productIds = Array.isArray(body.productIds) ? body.productIds.map((value) => String(value ?? '').trim()).filter(Boolean) : [];
     if (!sectionId || !productIds.length) throw new Error('INVALID_INPUT');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerRole(await requireOpsActorContext());
     const { data, error } = await adminOps().from('menu_products').select('id').eq('cafe_id', ctx.cafeId).eq('section_id', sectionId).in('id', productIds);
     if (error) throw error;
     const existingIds = new Set((data ?? []).map((row) => String(row.id)));

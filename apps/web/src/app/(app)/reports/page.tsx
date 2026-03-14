@@ -39,7 +39,8 @@ function TotalsGrid({ totals }: { totals: ReportTotals }) {
     ['طلبات إعادة مجانية', String(totals.remadeQty)],
     ['إلغاء', String(totals.cancelledQty)],
     ['إسقاط', String(totals.waivedQty)],
-    ['شكاوى', String(totals.complaintTotal)],
+    ['شكاوى عامة', String(totals.complaintTotal)],
+    ['إجراءات أصناف', String(totals.itemIssueTotal)],
     ['جلسات', String(totals.totalSessions)],
     ['ورديات', String(totals.shiftCount)],
     ['تم تجهيزه', String(totals.readyQty)],
@@ -89,7 +90,7 @@ function StaffList({ items }: { items: StaffPerformanceRow[] }) {
             <div className="text-right">
               <div className="font-semibold">{row.actorLabel}</div>
               <div className="mt-1 text-xs text-neutral-500">مسلّم أصلي {row.deliveredQty} • بديل مجاني مسلّم {row.replacementDeliveredQty} • تم تجهيزه {row.readyQty}</div>
-              <div className="mt-1 text-xs text-neutral-500">طلبات إعادة مجانية {row.remadeQty} • إلغاء {row.cancelledQty} • شكاوى {row.complaintCount}</div>
+              <div className="mt-1 text-xs text-neutral-500">طلبات إعادة مجانية {row.remadeQty} • إلغاء {row.cancelledQty} • شكاوى عامة {row.complaintCount} • إجراءات أصناف {row.itemIssueCount}</div>
             </div>
             <div className="text-left">
               <div className="text-sm font-bold">{formatMoney(row.paymentTotal)} ج</div>
@@ -112,7 +113,7 @@ function ShiftList({ items }: { items: ReportShiftRow[] }) {
             <div className="text-right">
               <div className="font-semibold">{shiftKindLabel(row.kind)}</div>
               <div className="mt-1 text-xs text-neutral-500">{row.businessDate ?? ''}</div>
-              <div className="mt-1 text-xs text-neutral-500">{row.status === 'open' ? 'مفتوحة' : 'مقفولة'} • جلسات {row.totalSessions} • شكاوى {row.complaintTotal}</div>
+              <div className="mt-1 text-xs text-neutral-500">{row.status === 'open' ? 'مفتوحة' : 'مقفولة'} • جلسات {row.totalSessions} • شكاوى عامة {row.complaintTotal} • إجراءات أصناف {row.itemIssueTotal}</div>
             </div>
             <div className="text-left">
               <div className="text-sm font-bold">{formatMoney(row.netSales)} ج</div>
@@ -134,7 +135,7 @@ function DayBreakdown({ period }: { period: PeriodReport }) {
           <div className="flex items-center justify-between gap-3">
             <div className="text-right">
               <div className="font-semibold">{row.businessDate}</div>
-              <div className="mt-1 text-xs text-neutral-500">ورديات {row.shiftCount} • جلسات {row.totalSessions} • شكاوى {row.complaintTotal}</div>
+              <div className="mt-1 text-xs text-neutral-500">ورديات {row.shiftCount} • جلسات {row.totalSessions} • شكاوى عامة {row.complaintTotal} • إجراءات أصناف {row.itemIssueTotal}</div>
             </div>
             <div className="text-left">
               <div className="text-sm font-bold">{formatMoney(row.netSales)} ج</div>
@@ -239,7 +240,7 @@ export default function ReportsPage() {
             ) : (
               <>
                 <TotalsGrid totals={currentShift} />
-                <div className="mt-3 rounded-2xl bg-neutral-50 p-3 text-xs text-neutral-600">الشكاوى: مفتوح {currentShift.complaintOpen} • محلول {currentShift.complaintResolved} • مرفوض {currentShift.complaintDismissed}</div>
+                <div className="mt-3 rounded-2xl bg-neutral-50 p-3 text-xs text-neutral-600">الشكاوى العامة: مفتوح {currentShift.complaintOpen} • محلول {currentShift.complaintResolved} • مغلق {currentShift.complaintDismissed} • إجراءات أصناف {currentShift.itemIssueTotal} • ملاحظات {currentShift.itemIssueNote} • إعادة {currentShift.itemIssueRemake} • إلغاء {currentShift.itemIssueCancel} • إسقاط {currentShift.itemIssueWaive}</div>
               </>
             )}
           </div>
@@ -256,7 +257,7 @@ export default function ReportsPage() {
               <div className="text-xs text-neutral-500">{selectedPeriod.startDate} ← {selectedPeriod.endDate}</div>
             </div>
             <TotalsGrid totals={selectedPeriod.totals} />
-            <div className="mt-3 rounded-2xl bg-neutral-50 p-3 text-xs text-neutral-600">الشكاوى: مفتوح {selectedPeriod.totals.complaintOpen} • محلول {selectedPeriod.totals.complaintResolved} • طلبات إعادة مجانية {selectedPeriod.totals.complaintRemake} • إلغاء {selectedPeriod.totals.complaintCancel} • إسقاط {selectedPeriod.totals.complaintWaive}</div>
+            <div className="mt-3 rounded-2xl bg-neutral-50 p-3 text-xs text-neutral-600">الشكاوى العامة: مفتوح {selectedPeriod.totals.complaintOpen} • محلول {selectedPeriod.totals.complaintResolved} • مغلق {selectedPeriod.totals.complaintDismissed} • إجراءات أصناف {selectedPeriod.totals.itemIssueTotal} • ملاحظات {selectedPeriod.totals.itemIssueNote} • إعادة {selectedPeriod.totals.itemIssueRemake} • إلغاء {selectedPeriod.totals.itemIssueCancel} • إسقاط {selectedPeriod.totals.itemIssueWaive}</div>
           </div>
           <div className="rounded-2xl border bg-white p-3"><div className="font-semibold">التجميع اليومي</div><div className="mt-3"><DayBreakdown period={selectedPeriod} /></div></div>
           <div className="rounded-2xl border bg-white p-3"><div className="font-semibold">تفصيل الورديات</div><div className="mt-3"><ShiftList items={selectedPeriod.shifts} /></div></div>

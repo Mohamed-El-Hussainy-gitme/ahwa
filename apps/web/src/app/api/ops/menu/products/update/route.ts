@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadProduct, loadSection, nextProductSortOrder, normalizeStationCode, renumberProductSortOrders } from '@/app/api/ops/menu/_utils';
 import type { StationCode } from '@/lib/ops/types';
 
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const unitPrice = Number(body.unitPrice ?? 0);
     if (!productId || !sectionId || !productName || !Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('INVALID_INPUT');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerRole(await requireOpsActorContext());
     const current = await loadProduct(ctx.cafeId, productId);
     await loadSection(ctx.cafeId, sectionId);
     const nextSortOrder = String(current.section_id) === sectionId ? Number(current.sort_order ?? 0) : await nextProductSortOrder(ctx.cafeId, sectionId);

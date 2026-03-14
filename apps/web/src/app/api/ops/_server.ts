@@ -424,10 +424,21 @@ export async function buildComplaintsWorkspace(cafeId: string): Promise<Complain
 
   const normalizedShift = normalizeShift(shift);
   if (!normalizedShift) {
-    return { shift: null, items: [], complaints: [] };
+    return { shift: null, sessions: [], items: [], complaints: [], itemIssues: [] };
   }
 
-  const [{ data: itemRows, error: itemError }, { data: complaintRows, error: complaintError }] = await Promise.all([
+  const [
+    { data: sessionRows, error: sessionError },
+    { data: itemRows, error: itemError },
+    { data: complaintRows, error: complaintError },
+    { data: issueRows, error: issueError },
+  ] = await Promise.all([
+    admin
+      .from('service_sessions')
+      .select('id, session_label, opened_at')
+      .eq('cafe_id', cafeId)
+      .eq('shift_id', normalizedShift.id)
+      .order('opened_at', { ascending: false }),
     admin
       .from('order_items')
       .select('id, service_session_id, station_code, unit_price, qty_total, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled, menu_products!inner(product_name), service_sessions!inner(session_label)')
@@ -436,15 +447,29 @@ export async function buildComplaintsWorkspace(cafeId: string): Promise<Complain
       .order('created_at', { ascending: false }),
     admin
       .from('complaints')
-      .select('id, order_item_id, service_session_id, station_code, complaint_kind, status, resolution_kind, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items(menu_products(product_name))')
+      .select('id, order_item_id, service_session_id, station_code, complaint_kind, complaint_scope, status, resolution_kind, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items(menu_products(product_name))')
+      .eq('cafe_id', cafeId)
+      .eq('shift_id', normalizedShift.id)
+      .eq('complaint_scope', 'general')
+      .order('created_at', { ascending: false })
+      .limit(50),
+    admin
+      .from('order_item_issues')
+      .select('id, order_item_id, service_session_id, station_code, issue_kind, action_kind, status, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items!inner(menu_products(product_name))')
       .eq('cafe_id', cafeId)
       .eq('shift_id', normalizedShift.id)
       .order('created_at', { ascending: false })
-      .limit(50),
+      .limit(100),
   ]);
 
+  if (sessionError) throw sessionError;
   if (itemError) throw itemError;
   if (complaintError) throw complaintError;
+  if (issueError) throw issueError;
+
+  const sessions = (sessionRows ?? []).map(
+    (row: any) => ({ id: String(row.id), label: String(row.session_label ?? '') }),
+  );
 
   const items: ComplaintItemCandidate[] = (itemRows ?? [])
     .map((row: any) => {
@@ -482,7 +507,11 @@ export async function buildComplaintsWorkspace(cafeId: string): Promise<Complain
       stationCode: row.station_code ? (String(row.station_code) as StationCode) : null,
       complaintKind: String(row.complaint_kind) as ComplaintRecord['complaintKind'],
       status: String(row.status) as ComplaintRecord['status'],
-      resolutionKind: row.resolution_kind ? (String(row.resolution_kind) as ComplaintRecord['resolutionKind']) : null,
+      resolutionKind: row.resolution_kind && String(row.resolution_kind) === 'dismissed'
+        ? 'dismissed'
+        : row.status === 'resolved'
+          ? 'resolved'
+          : null,
       requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
       resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
       notes: row.notes ? String(row.notes) : null,
@@ -493,7 +522,30 @@ export async function buildComplaintsWorkspace(cafeId: string): Promise<Complain
     } satisfies ComplaintRecord;
   });
 
-  return { shift: normalizedShift, items, complaints };
+  const itemIssues = (issueRows ?? []).map((row: any) => {
+    const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
+    const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
+    return {
+      id: String(row.id),
+      orderItemId: String(row.order_item_id),
+      serviceSessionId: String(row.service_session_id),
+      sessionLabel: String(row.service_sessions?.session_label ?? ''),
+      productName: String(menuProductRef?.product_name ?? ''),
+      stationCode: row.station_code ? (String(row.station_code) as StationCode) : null,
+      issueKind: String(row.issue_kind ?? 'other') as ComplaintsWorkspace['itemIssues'][number]['issueKind'],
+      actionKind: String(row.action_kind ?? 'note') as ComplaintsWorkspace['itemIssues'][number]['actionKind'],
+      status: String(row.status ?? 'logged') as ComplaintsWorkspace['itemIssues'][number]['status'],
+      requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
+      resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
+      notes: row.notes ? String(row.notes) : null,
+      createdAt: String(row.created_at),
+      resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
+      createdByLabel: row.created_by_owner_id ? 'owner' : row.created_by_staff_id ? 'staff' : null,
+      resolvedByLabel: row.resolved_by_owner_id ? 'owner' : row.resolved_by_staff_id ? 'staff' : null,
+    } satisfies ComplaintsWorkspace['itemIssues'][number];
+  });
+
+  return { shift: normalizedShift, sessions, items, complaints, itemIssues };
 }
 
 export async function buildDashboardWorkspace(cafeId: string): Promise<DashboardWorkspace> {

@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireDeliveryAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 type DeliverRequestBody = {
   orderItemId?: string;
@@ -22,7 +22,7 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireDeliveryAccess(await requireOpsActorContext());
     const rpc = await callOpsRpc<DeliverRpcResult>('ops_deliver_available_quantities', {
       p_cafe_id: ctx.cafeId,
       p_order_item_id: normalizedOrderItemId,

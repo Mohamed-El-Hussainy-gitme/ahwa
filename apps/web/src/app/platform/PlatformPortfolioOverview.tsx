@@ -40,18 +40,6 @@ type PortfolioCafeRow = {
   has_open_shift: boolean;
   open_shift_business_date: string | null;
   open_shift_started_at: string | null;
-  usage_days_7: number;
-  usage_days_30: number;
-  shifts_today: number;
-  sessions_today: number;
-  served_qty_today: number;
-  net_sales_today: number;
-  remake_qty_today: number;
-  cancelled_qty_today: number;
-  complaints_today: number;
-  open_complaints_count: number;
-  active_staff_today: number;
-  deferred_outstanding: number;
   attention_reasons: string[];
 };
 
@@ -86,9 +74,7 @@ type PlatformOverviewSummary = {
   active_today: number;
   inactive: number;
   needs_attention: number;
-  net_sales_today: number;
-  served_qty_today: number;
-  complaints_today: number;
+  open_shifts_now: number;
 };
 
 type PlatformOverview = {
@@ -159,18 +145,6 @@ function isPortfolioCafeRow(value: unknown): value is PortfolioCafeRow {
     typeof value.has_open_shift === 'boolean' &&
     (typeof value.open_shift_business_date === 'string' || value.open_shift_business_date === null) &&
     (typeof value.open_shift_started_at === 'string' || value.open_shift_started_at === null) &&
-    typeof value.usage_days_7 === 'number' &&
-    typeof value.usage_days_30 === 'number' &&
-    typeof value.shifts_today === 'number' &&
-    typeof value.sessions_today === 'number' &&
-    typeof value.served_qty_today === 'number' &&
-    typeof value.net_sales_today === 'number' &&
-    typeof value.remake_qty_today === 'number' &&
-    typeof value.cancelled_qty_today === 'number' &&
-    typeof value.complaints_today === 'number' &&
-    typeof value.open_complaints_count === 'number' &&
-    typeof value.active_staff_today === 'number' &&
-    typeof value.deferred_outstanding === 'number' &&
     isStringArray(value.attention_reasons)
   );
 }
@@ -214,9 +188,7 @@ function isPlatformOverviewSummary(value: unknown): value is PlatformOverviewSum
     typeof value.active_today === 'number' &&
     typeof value.inactive === 'number' &&
     typeof value.needs_attention === 'number' &&
-    typeof value.net_sales_today === 'number' &&
-    typeof value.served_qty_today === 'number' &&
-    typeof value.complaints_today === 'number'
+    typeof value.open_shifts_now === 'number'
   );
 }
 
@@ -237,72 +209,99 @@ function isOverviewResponse(value: unknown): value is OverviewResponse {
   return isRecord(value) && value.ok === true && (value.data === null || isPlatformOverview(value.data));
 }
 
-function formatMoney(value: number) {
-  return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
-}
-
 function formatDateTime(value: string | null | undefined) {
   if (!value) return '—';
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat('ar-EG', {
-    year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
   }).format(date);
+}
+
+function countdownLabel(totalSeconds: number) {
+  const safe = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(totalSeconds)) : 0;
+  const days = Math.floor(safe / 86400);
+  const hours = Math.floor((safe % 86400) / 3600);
+  if (days > 0) return `${days} يوم و ${hours} ساعة`;
+  const minutes = Math.floor((safe % 3600) / 60);
+  return `${hours} ساعة و ${minutes} دقيقة`;
 }
 
 function badgeClassForPayment(state: PaymentState) {
   switch (state) {
-    case 'paid_current': return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    case 'overdue': return 'border-amber-200 bg-amber-50 text-amber-700';
-    case 'suspended': return 'border-rose-200 bg-rose-50 text-rose-700';
-    default: return 'border-slate-200 bg-slate-50 text-slate-700';
+    case 'paid_current':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'overdue':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case 'suspended':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-700';
   }
 }
 
 function badgeClassForUsage(state: UsageState) {
   switch (state) {
-    case 'active_now': return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-    case 'active_today': return 'border-sky-200 bg-sky-50 text-sky-700';
-    case 'active_recently': return 'border-violet-200 bg-violet-50 text-violet-700';
-    default: return 'border-slate-200 bg-slate-50 text-slate-700';
+    case 'active_now':
+      return 'border-sky-200 bg-sky-50 text-sky-700';
+    case 'active_today':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'active_recently':
+      return 'border-violet-200 bg-violet-50 text-violet-700';
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-700';
   }
 }
 
-function paymentLabel(state: PaymentState) {
-  switch (state) {
-    case 'paid_current': return 'مدفوع حالي';
-    case 'overdue': return 'منتهي/متأخر';
-    case 'suspended': return 'معلق';
-    default: return 'تجريبي/بدون اشتراك';
+function reasonLabel(reason: string) {
+  switch (reason) {
+    case 'cafe_disabled':
+      return 'القهوة معطلة';
+    case 'no_active_owner':
+      return 'لا يوجد مالك أو شريك نشط';
+    case 'no_subscription':
+      return 'لا يوجد اشتراك';
+    case 'expired_but_active':
+      return 'الاشتراك منتهي مع استمرار النشاط';
+    case 'suspended_but_active':
+      return 'الاشتراك معلق مع استمرار النشاط';
+    case 'open_shift_too_long':
+      return 'وردية مفتوحة منذ مدة طويلة';
+    case 'paid_but_inactive':
+      return 'اشتراك مدفوع لكن النشاط متوقف';
+    default:
+      return reason;
   }
 }
 
 function usageLabel(state: UsageState) {
   switch (state) {
-    case 'active_now': return 'شغالة الآن';
-    case 'active_today': return 'شغلت اليوم';
-    case 'active_recently': return 'نشطة مؤخرًا';
-    default: return 'خاملة';
+    case 'active_now':
+      return 'نشاط الآن';
+    case 'active_today':
+      return 'نشاط اليوم';
+    case 'active_recently':
+      return 'نشاط حديث';
+    default:
+      return 'غير نشطة';
   }
 }
 
-function attentionReasonLabel(reason: string) {
-  switch (reason) {
-    case 'cafe_disabled': return 'القهوة معطلة';
-    case 'no_active_owner': return 'لا يوجد مالك/شريك نشط';
-    case 'no_subscription': return 'لا يوجد اشتراك';
-    case 'expired_but_active': return 'الاشتراك منتهي مع نشاط';
-    case 'suspended_but_active': return 'الاشتراك معلق مع نشاط';
-    case 'open_shift_too_long': return 'وردية مفتوحة مدة طويلة';
-    case 'open_complaints': return 'شكاوى مفتوحة';
-    case 'paid_but_inactive': return 'مدفوع لكن بدون استخدام';
-    default: return reason;
+function paymentLabel(state: PaymentState) {
+  switch (state) {
+    case 'paid_current':
+      return 'مدفوع';
+    case 'overdue':
+      return 'متأخر';
+    case 'suspended':
+      return 'معلق';
+    default:
+      return 'تجريبي أو مجاني';
   }
-}
-
-function toCapacityInput(bytes: number | null) {
-  if (!bytes || bytes <= 0) return '';
-  return String(Number((bytes / (1024 ** 3)).toFixed(2)));
 }
 
 export default function PlatformPortfolioOverview({
@@ -311,32 +310,26 @@ export default function PlatformPortfolioOverview({
   refreshRevision,
 }: {
   selectedCafeId: string;
-  onSelectCafe: (cafeId: string) => void;
+  onSelectCafe: (id: string) => void;
   refreshRevision: number;
 }) {
   const [data, setData] = useState<PlatformOverview | null>(null);
   const [loading, setLoading] = useState(false);
-  const [savingCapacity, setSavingCapacity] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
-  const [platformStatus, setPlatformStatus] = useState<'all' | 'active' | 'inactive'>('all');
-  const [paymentFilter, setPaymentFilter] = useState<'all' | PaymentState | 'no_subscription'>('all');
-  const [usageFilter, setUsageFilter] = useState<'all' | UsageState>('all');
-  const [attentionOnly, setAttentionOnly] = useState(false);
-  const [capacityInputGb, setCapacityInputGb] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
     setError(null);
+
     try {
       const res = await fetch('/api/platform/overview', { cache: 'no-store' });
       const json: unknown = await res.json().catch(() => ({}));
+
       if (!res.ok || !isPlatformApiOk(json)) {
         throw new Error(extractPlatformApiErrorMessage(json, 'LOAD_PLATFORM_OVERVIEW_FAILED'));
       }
-      const overview = isOverviewResponse(json) ? json.data : null;
-      setData(overview);
-      setCapacityInputGb(toCapacityInput(overview?.database_usage.capacity_bytes ?? null));
+
+      setData(isOverviewResponse(json) ? json.data : null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'LOAD_PLATFORM_OVERVIEW_FAILED');
     } finally {
@@ -348,214 +341,157 @@ export default function PlatformPortfolioOverview({
     void load();
   }, [load, refreshRevision]);
 
-  const filteredCafes = useMemo(() => {
-    const items = data?.cafes ?? [];
-    const query = search.trim().toLowerCase();
-    return items.filter((cafe) => {
-      if (platformStatus === 'active' && !cafe.is_active) return false;
-      if (platformStatus === 'inactive' && cafe.is_active) return false;
-      if (paymentFilter === 'no_subscription' && cafe.subscription_state !== 'none') return false;
-      if (paymentFilter !== 'all' && paymentFilter !== 'no_subscription' && cafe.payment_state !== paymentFilter) return false;
-      if (usageFilter !== 'all' && cafe.usage_state !== usageFilter) return false;
-      if (attentionOnly && cafe.attention_reasons.length === 0) return false;
-      if (!query) return true;
-      return cafe.display_name.toLowerCase().includes(query) || cafe.slug.toLowerCase().includes(query);
-    });
-  }, [attentionOnly, data?.cafes, paymentFilter, platformStatus, search, usageFilter]);
-
-  async function saveCapacity() {
-    const trimmed = capacityInputGb.trim();
-    const capacityBytes = trimmed
-      ? Math.round(Number(trimmed) * 1024 * 1024 * 1024)
-      : null;
-
-    if (trimmed && (!Number.isFinite(Number(trimmed)) || Number(trimmed) <= 0)) {
-      setError('اكتب سعة صحيحة بالجيجابايت أو اترك الحقل فارغًا لمسحها.');
-      return;
-    }
-
-    setSavingCapacity(true);
-    setError(null);
-    try {
-      const res = await fetch('/api/platform/settings/database-capacity', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ capacityBytes }),
-      });
-      const json: unknown = await res.json().catch(() => ({}));
-      if (!res.ok || !isPlatformApiOk(json)) {
-        throw new Error(extractPlatformApiErrorMessage(json, 'SAVE_DATABASE_CAPACITY_FAILED'));
-      }
-      await load();
-    } catch (saveError) {
-      setError(saveError instanceof Error ? saveError.message : 'SAVE_DATABASE_CAPACITY_FAILED');
-    } finally {
-      setSavingCapacity(false);
-    }
-  }
-
-  const usage = data?.database_usage ?? null;
-  const summary = data?.summary ?? null;
-  const attentionQueue = data?.attention_queue ?? [];
+  const selectedCafe = useMemo(
+    () => data?.cafes.find((item) => item.id === selectedCafeId) ?? null,
+    [data, selectedCafeId],
+  );
 
   return (
-    <section className="space-y-6">
+    <section className="space-y-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 className="text-lg font-bold text-slate-900">Overview</h2>
+          <p className="mt-1 text-sm text-slate-500">
+            ملخص إداري يحافظ على الخصوصية: حالة الاشتراكات، نشاط القهاوي، وآخر استخدام فقط.
+          </p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+          قاعدة البيانات: <strong>{data?.database_usage.database_name ?? '—'}</strong>
+          <div className="mt-1 text-xs text-slate-500">آخر تحديث: {formatDateTime(data?.generated_at)}</div>
+        </div>
+      </div>
+
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="flex items-start justify-between gap-3">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm text-slate-500">المقاهي</div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">{data?.summary.cafes_total ?? 0}</div>
+          <div className="mt-1 text-xs text-slate-500">المفعلة: {data?.summary.cafes_active ?? 0}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm text-slate-500">الاشتراكات</div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">{data?.summary.paid_current ?? 0}</div>
+          <div className="mt-1 text-xs text-slate-500">مدفوع • متأخر {data?.summary.overdue ?? 0} • معلق {data?.summary.suspended ?? 0}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm text-slate-500">النشاط</div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">{data?.summary.active_now ?? 0}</div>
+          <div className="mt-1 text-xs text-slate-500">وردية مفتوحة الآن • نشاط اليوم {data?.summary.active_today ?? 0}</div>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <div className="text-sm text-slate-500">استخدام قاعدة البيانات</div>
+          <div className="mt-2 text-2xl font-bold text-slate-900">{data?.database_usage.used_pretty ?? '—'}</div>
+          <div className="mt-1 text-xs text-slate-500">
+            {data?.database_usage.capacity_pretty
+              ? `من ${data.database_usage.capacity_pretty} • ${data.database_usage.usage_percent ?? 0}%`
+              : 'لا يوجد حد سعة مضبوط'}
+          </div>
+        </div>
+      </div>
+
+      <div className="grid gap-6 xl:grid-cols-[1.4fr_0.9fr]">
+        <section className="rounded-3xl border border-slate-200 p-4">
+          <div className="mb-4 flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-lg font-bold">نظرة عامة على المنصة</h2>
-              <p className="mt-1 text-sm text-slate-500">استخدام حقيقي من قاعدة البيانات + حالة الاشتراك + حالة التشغيل.</p>
+              <h3 className="text-base font-bold text-slate-900">القهاوي</h3>
+              <p className="text-xs text-slate-500">آخر نشاط، حالة الاشتراك، وهل توجد وردية مفتوحة.</p>
             </div>
-            <button onClick={() => void load()} className="rounded-2xl border border-slate-300 px-3 py-2 text-sm" disabled={loading}>
-              {loading ? 'جاري التحديث...' : 'تحديث'}
-            </button>
+            <div className="text-xs text-slate-500">التي تحتاج متابعة: {data?.summary.needs_attention ?? 0}</div>
           </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><div className="text-xs text-slate-500">إجمالي القهاوي</div><div className="mt-2 text-2xl font-bold">{summary?.cafes_total ?? 0}</div><div className="mt-1 text-xs text-slate-500">المفعلة: {summary?.cafes_active ?? 0}</div></div>
-            <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4"><div className="text-xs text-emerald-700">المدفوع الحالي</div><div className="mt-2 text-2xl font-bold text-emerald-800">{summary?.paid_current ?? 0}</div><div className="mt-1 text-xs text-emerald-700">تجريبي/بدون اشتراك: {summary?.trial_or_free ?? 0}</div></div>
-            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><div className="text-xs text-amber-700">متأخر أو منتهي</div><div className="mt-2 text-2xl font-bold text-amber-800">{summary?.overdue ?? 0}</div><div className="mt-1 text-xs text-amber-700">معلقة: {summary?.suspended ?? 0}</div></div>
-            <div className="rounded-2xl border border-violet-200 bg-violet-50 p-4"><div className="text-xs text-violet-700">يحتاج متابعة</div><div className="mt-2 text-2xl font-bold text-violet-800">{summary?.needs_attention ?? 0}</div><div className="mt-1 text-xs text-violet-700">شغالة الآن: {summary?.active_now ?? 0}</div></div>
-          </div>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <div className="rounded-2xl border border-slate-200 p-4"><div className="text-xs text-slate-500">مبيعات اليوم</div><div className="mt-2 text-xl font-semibold">{formatMoney(summary?.net_sales_today ?? 0)} ج</div></div>
-            <div className="rounded-2xl border border-slate-200 p-4"><div className="text-xs text-slate-500">المسلّم اليوم</div><div className="mt-2 text-xl font-semibold">{summary?.served_qty_today ?? 0}</div></div>
-            <div className="rounded-2xl border border-slate-200 p-4"><div className="text-xs text-slate-500">شكاوى اليوم</div><div className="mt-2 text-xl font-semibold">{summary?.complaints_today ?? 0}</div></div>
-          </div>
-        </div>
-
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold">استخدام قاعدة البيانات</h2>
-          <div className="mt-4 space-y-3">
-            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-xs text-slate-500">القاعدة الحالية</div>
-              <div className="mt-2 text-lg font-semibold">{usage?.database_name ?? '—'}</div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 p-4">
-              <div className="text-xs text-slate-500">المستخدم فعليًا من قاعدة البيانات</div>
-              <div className="mt-2 text-2xl font-bold">{usage?.used_pretty ?? '—'}</div>
-              <div className="mt-1 text-xs text-slate-500">{typeof usage?.used_bytes === 'number' ? `${usage.used_bytes.toLocaleString('en-US')} bytes` : '—'}</div>
-            </div>
-            <div className="rounded-2xl border border-slate-200 p-4">
-              <div className="text-xs text-slate-500">السعة المرجعية المخزنة في الداتابيز</div>
-              <div className="mt-2 text-xl font-semibold">{usage?.capacity_pretty ?? 'غير محددة بعد'}</div>
-              <div className="mt-1 text-xs text-slate-500">{usage?.usage_percent == null ? 'أضف السعة ليظهر الاستهلاك النسبي.' : `الاستهلاك الحالي ${usage.usage_percent}%`}</div>
-            </div>
-            <div className="space-y-2 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-medium">تحديث السعة المرجعية</div>
-              <input className="w-full rounded-2xl border border-slate-200 px-4 py-3" inputMode="decimal" placeholder="السعة بالجيجابايت مثل 8" value={capacityInputGb} onChange={(e) => setCapacityInputGb(e.target.value)} />
-              <button onClick={saveCapacity} disabled={savingCapacity} className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-white disabled:opacity-60">{savingCapacity ? 'جارٍ الحفظ...' : 'حفظ السعة المرجعية'}</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold">فلترة محفظة القهاوي</h2>
-          <div className="mt-4 grid gap-3 lg:grid-cols-5">
-            <input className="rounded-2xl border border-slate-200 px-4 py-3 lg:col-span-2" placeholder="ابحث باسم القهوة أو الـ slug" value={search} onChange={(e) => setSearch(e.target.value)} />
-            <select className="rounded-2xl border border-slate-200 px-4 py-3" value={platformStatus} onChange={(e) => setPlatformStatus(e.target.value as 'all' | 'active' | 'inactive')}>
-              <option value="all">كل القهاوي</option>
-              <option value="active">المفعلة فقط</option>
-              <option value="inactive">المعطلة فقط</option>
-            </select>
-            <select className="rounded-2xl border border-slate-200 px-4 py-3" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as 'all' | PaymentState | 'no_subscription')}>
-              <option value="all">كل الاشتراكات</option>
-              <option value="paid_current">المدفوع الحالي</option>
-              <option value="trial_or_free">تجريبي/مجاني</option>
-              <option value="overdue">منتهي/متأخر</option>
-              <option value="suspended">معلق</option>
-              <option value="no_subscription">بدون اشتراك</option>
-            </select>
-            <select className="rounded-2xl border border-slate-200 px-4 py-3" value={usageFilter} onChange={(e) => setUsageFilter(e.target.value as 'all' | UsageState)}>
-              <option value="all">كل الاستخدامات</option>
-              <option value="active_now">شغالة الآن</option>
-              <option value="active_today">شغلت اليوم</option>
-              <option value="active_recently">نشطة مؤخرًا</option>
-              <option value="inactive">خاملة</option>
-            </select>
-          </div>
-          <label className="mt-3 flex items-center gap-2 text-sm text-slate-600">
-            <input type="checkbox" checked={attentionOnly} onChange={(e) => setAttentionOnly(e.target.checked)} />
-            اعرض فقط ما يحتاج تدخلي الآن
-          </label>
-          <div className="mt-3 text-sm text-slate-500">النتائج: {filteredCafes.length}</div>
-        </div>
-
-        <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-          <h2 className="text-lg font-bold">يحتاج تدخلك الآن</h2>
-          <div className="mt-4 space-y-3">
-            {attentionQueue.length === 0 ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد تنبيهات حرجة الآن.</div>
-            ) : attentionQueue.map((cafe) => (
-              <button key={cafe.id} onClick={() => onSelectCafe(cafe.id)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-right">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <div className="font-semibold text-slate-900">{cafe.display_name}</div>
-                    <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
+          <div className="space-y-3">
+            {data?.cafes.map((cafe) => {
+              const isSelected = selectedCafe?.id === cafe.id;
+              return (
+                <button
+                  key={cafe.id}
+                  type="button"
+                  onClick={() => onSelectCafe(cafe.id)}
+                  className={`w-full rounded-2xl border p-4 text-right transition ${
+                    isSelected ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-900'
+                  }`}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="font-semibold">{cafe.display_name}</div>
+                      <div className="mt-1 text-xs opacity-80">{cafe.slug}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-[11px] font-semibold">
+                      <span className={`rounded-full border px-2 py-1 ${badgeClassForPayment(cafe.payment_state)}`}>{paymentLabel(cafe.payment_state)}</span>
+                      <span className={`rounded-full border px-2 py-1 ${badgeClassForUsage(cafe.usage_state)}`}>{usageLabel(cafe.usage_state)}</span>
+                    </div>
                   </div>
-                  <div className="flex flex-wrap gap-2 text-[11px]">
-                    <span className={`rounded-full border px-2 py-1 ${badgeClassForPayment(cafe.payment_state)}`}>{paymentLabel(cafe.payment_state)}</span>
-                    <span className={`rounded-full border px-2 py-1 ${badgeClassForUsage(cafe.usage_state)}`}>{usageLabel(cafe.usage_state)}</span>
+                  <div className="mt-3 grid gap-2 text-xs opacity-90 md:grid-cols-3">
+                    <div>آخر نشاط: {formatDateTime(cafe.last_activity_at)}</div>
+                    <div>الملاك النشطون: {cafe.active_owner_count}/{cafe.owner_count}</div>
+                    <div>{cafe.has_open_shift ? `وردية مفتوحة من ${formatDateTime(cafe.open_shift_started_at)}` : 'لا توجد وردية مفتوحة'}</div>
+                  </div>
+                  {cafe.current_subscription ? (
+                    <div className="mt-2 text-xs opacity-90">
+                      ينتهي الاشتراك: {formatDateTime(cafe.current_subscription.ends_at)} • {countdownLabel(cafe.current_subscription.countdown_seconds)}
+                    </div>
+                  ) : (
+                    <div className="mt-2 text-xs opacity-90">لا يوجد اشتراك حالي.</div>
+                  )}
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {cafe.attention_reasons.length ? cafe.attention_reasons.map((reason) => (
+                      <span key={reason} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">
+                        {reasonLabel(reason)}
+                      </span>
+                    )) : <span className="text-xs opacity-80">لا توجد ملاحظات حرجة.</span>}
+                  </div>
+                </button>
+              );
+            })}
+            {!loading && !data?.cafes.length ? (
+              <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد قهاوي لعرضها.</div>
+            ) : null}
+          </div>
+        </section>
+
+        <section className="space-y-4">
+          <div className="rounded-3xl border border-slate-200 p-4">
+            <h3 className="text-base font-bold text-slate-900">طابور المتابعة</h3>
+            <div className="mt-3 space-y-3">
+              {data?.attention_queue.length ? data.attention_queue.map((item) => (
+                <div key={item.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                  <div className="font-semibold text-slate-900">{item.display_name}</div>
+                  <div className="mt-1 text-xs text-slate-500">{item.slug} • آخر نشاط {formatDateTime(item.last_activity_at)}</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {item.attention_reasons.map((reason) => (
+                      <span key={reason} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">
+                        {reasonLabel(reason)}
+                      </span>
+                    ))}
                   </div>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2 text-[11px] text-slate-600">
-                  {cafe.attention_reasons.map((reason) => (<span key={reason} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700">{attentionReasonLabel(reason)}</span>))}
-                </div>
-                <div className="mt-2 text-xs text-slate-500">آخر نشاط: {formatDateTime(cafe.last_activity_at)}</div>
-              </button>
-            ))}
+              )) : (
+                <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد عناصر تحتاج متابعة الآن.</div>
+              )}
+            </div>
           </div>
-        </div>
-      </div>
 
-      <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-bold">محفظة القهاوي</h2>
-        <div className="mt-4 grid gap-3 xl:grid-cols-2">
-          {filteredCafes.map((cafe) => (
-            <button
-              key={cafe.id}
-              onClick={() => onSelectCafe(cafe.id)}
-              className={`rounded-3xl border p-4 text-right transition ${selectedCafeId === cafe.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-900 hover:border-slate-300'}`}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-lg font-bold">{cafe.display_name}</div>
-                  <div className="mt-1 text-xs opacity-80">{cafe.slug}</div>
+          <div className="rounded-3xl border border-slate-200 p-4">
+            <h3 className="text-base font-bold text-slate-900">القهوة المختارة</h3>
+            {selectedCafe ? (
+              <div className="mt-3 space-y-3 text-sm text-slate-700">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="font-semibold text-slate-900">{selectedCafe.display_name}</div>
+                  <div className="mt-1 text-xs text-slate-500">{selectedCafe.slug}</div>
                 </div>
-                <div className="flex flex-wrap justify-end gap-2 text-[11px]">
-                  <span className={`rounded-full border px-2 py-1 ${cafe.is_active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-rose-200 bg-rose-50 text-rose-700'}`}>{cafe.is_active ? 'مفعلة' : 'معطلة'}</span>
-                  <span className={`rounded-full border px-2 py-1 ${badgeClassForPayment(cafe.payment_state)}`}>{paymentLabel(cafe.payment_state)}</span>
-                  <span className={`rounded-full border px-2 py-1 ${badgeClassForUsage(cafe.usage_state)}`}>{usageLabel(cafe.usage_state)}</span>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div>الحالة: <strong>{selectedCafe.is_active ? 'مفعلة' : 'معطلة'}</strong></div>
+                  <div className="mt-1">آخر نشاط: <strong>{formatDateTime(selectedCafe.last_activity_at)}</strong></div>
+                  <div className="mt-1">وردية الآن: <strong>{selectedCafe.has_open_shift ? 'نعم' : 'لا'}</strong></div>
                 </div>
               </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3"><div className="text-[11px] opacity-70">مبيعات اليوم</div><div className="mt-1 font-semibold">{formatMoney(cafe.net_sales_today)} ج</div></div>
-                <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3"><div className="text-[11px] opacity-70">جلسات اليوم</div><div className="mt-1 font-semibold">{cafe.sessions_today}</div></div>
-                <div className="rounded-2xl border border-slate-200/70 bg-white/70 p-3"><div className="text-[11px] opacity-70">مسلّم اليوم</div><div className="mt-1 font-semibold">{cafe.served_qty_today}</div></div>
-              </div>
-              <div className="mt-3 grid gap-2 sm:grid-cols-4 text-sm">
-                <div>آخر نشاط: <span className="font-medium">{formatDateTime(cafe.last_activity_at)}</span></div>
-                <div>نشاط 7 أيام: <span className="font-medium">{cafe.usage_days_7}</span></div>
-                <div>شكاوى مفتوحة: <span className="font-medium">{cafe.open_complaints_count}</span></div>
-                <div>آجل قائم: <span className="font-medium">{formatMoney(cafe.deferred_outstanding)} ج</span></div>
-              </div>
-              {cafe.attention_reasons.length > 0 ? (
-                <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
-                  {cafe.attention_reasons.map((reason) => (
-                    <span key={reason} className={`rounded-full border px-2 py-1 ${selectedCafeId === cafe.id ? 'border-white/30 bg-white/10 text-white' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>{attentionReasonLabel(reason)}</span>
-                  ))}
-                </div>
-              ) : null}
-            </button>
-          ))}
-          {filteredCafes.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد قهاوي مطابقة لهذه الفلاتر.</div> : null}
-        </div>
+            ) : (
+              <div className="mt-3 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">اختر قهوة من القائمة لعرض ملخصها هنا.</div>
+            )}
+          </div>
+        </section>
       </div>
     </section>
   );

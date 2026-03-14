@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { publishOpsEvent } from '@/lib/ops/events';
-import { requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
 import { openShiftWithAssignments } from '@/lib/ops/owner-admin';
 
 const ShiftKind = z.enum(['morning', 'evening']);
@@ -31,10 +31,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ctx = await requireOpsActorContext();
-    if (ctx.accountKind !== 'owner' || !ctx.actorOwnerId) {
-      return NextResponse.json({ ok: false, error: 'FORBIDDEN' }, { status: 403 });
-    }
+    const ctx = requireOwnerRole(await requireOpsActorContext());
 
     const opened = await openShiftWithAssignments({
       cafeId: ctx.cafeId,

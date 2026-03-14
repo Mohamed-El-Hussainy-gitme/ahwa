@@ -1,5 +1,5 @@
 import { callOpsRpc, actorRpcParams } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpenOpsShift, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOpenOpsShift, requireOpsActorContext, requireSessionOrderAccess } from '@/app/api/ops/_helpers';
 
 type OpenOrResumeSessionRpcResult = {
   service_session_id?: string;
@@ -10,7 +10,7 @@ type OpenOrResumeSessionRpcResult = {
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as { label?: string };
-    const ctx = await requireOpsActorContext();
+    const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId);
     const label = String(body.label ?? '').trim();
 

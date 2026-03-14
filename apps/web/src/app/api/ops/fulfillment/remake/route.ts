@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireComplaintsAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 type RemakeRpcResult = {
   ok?: boolean;
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireComplaintsAccess(await requireOpsActorContext());
     await callOpsRpc<RemakeRpcResult>('ops_request_remake', {
       p_cafe_id: ctx.cafeId,
       p_order_item_id: normalizedOrderItemId,

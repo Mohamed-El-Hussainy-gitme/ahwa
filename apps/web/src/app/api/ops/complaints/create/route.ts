@@ -1,8 +1,9 @@
 import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireComplaintsAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 type ComplaintKind = 'quality_issue' | 'wrong_item' | 'delay' | 'billing_issue' | 'other';
 type ComplaintAction = 'none' | 'remake' | 'cancel_undelivered' | 'waive_delivered';
+type ComplaintMode = 'general' | 'item';
 
 type CreateComplaintRpcResult = {
   complaint_id?: string;
@@ -11,13 +12,14 @@ type CreateComplaintRpcResult = {
   order_item_id?: string | null;
 };
 
-type ResolveComplaintRpcResult = {
-  complaint_id?: string;
-  resolution_kind?: string;
-  resolved_quantity?: number;
-  order_item_id?: string | null;
+type CreateItemIssueRpcResult = {
+  item_issue_id?: string;
   shift_id?: string;
   service_session_id?: string;
+  order_item_id?: string | null;
+  action_kind?: string | null;
+  status?: string | null;
+  resolved_quantity?: number | null;
 };
 
 function normalizeComplaintKind(input: unknown): ComplaintKind {
@@ -26,7 +28,6 @@ function normalizeComplaintKind(input: unknown): ComplaintKind {
     case 'wrong_item':
     case 'delay':
     case 'billing_issue':
-    case 'other':
       return input;
     default:
       return 'other';
@@ -44,9 +45,16 @@ function normalizeAction(input: unknown): ComplaintAction {
   }
 }
 
+function normalizeMode(input: unknown, orderItemId: string): ComplaintMode {
+  if (input === 'general') return 'general';
+  if (input === 'item') return 'item';
+  return orderItemId ? 'item' : 'general';
+}
+
 export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as {
+      mode?: ComplaintMode;
       serviceSessionId?: string;
       orderItemId?: string;
       complaintKind?: ComplaintKind;
@@ -61,6 +69,7 @@ export async function POST(req: Request) {
     const notes = body.notes ? String(body.notes).trim() : undefined;
     const complaintKind = normalizeComplaintKind(body.complaintKind);
     const action = normalizeAction(body.action);
+    const mode = normalizeMode(body.mode, orderItemId);
 
     if (!serviceSessionId && !orderItemId) {
       throw new Error('INVALID_INPUT');
@@ -69,66 +78,74 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const ctx = await requireOpsActorContext();
-    const created = await callOpsRpc<CreateComplaintRpcResult>('ops_create_complaint', {
+    const ctx = requireComplaintsAccess(await requireOpsActorContext());
+
+    if (mode === 'general' && !orderItemId) {
+      const created = await callOpsRpc<CreateComplaintRpcResult>('ops_create_complaint', {
+        p_cafe_id: ctx.cafeId,
+        p_service_session_id: serviceSessionId || null,
+        p_order_item_id: null,
+        p_complaint_kind: complaintKind,
+        p_requested_quantity: quantity ?? null,
+        p_notes: notes ?? null,
+        ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
+      });
+
+      const complaintId = String(created.complaint_id ?? '').trim();
+      if (!complaintId) {
+        throw new Error('CREATE_COMPLAINT_FAILED');
+      }
+
+      publishOpsMutation(ctx, {
+        type: 'complaint.created',
+        entityId: complaintId,
+        shiftId: created.shift_id ? String(created.shift_id) : ctx.shiftId,
+        data: {
+          orderItemId: null,
+          serviceSessionId: created.service_session_id ? String(created.service_session_id) : serviceSessionId || null,
+          complaintKind,
+          quantity: quantity ?? null,
+          mode: 'general',
+        },
+      });
+
+      return ok({ ok: true, complaintId });
+    }
+
+    const created = await callOpsRpc<CreateItemIssueRpcResult>('ops_log_order_item_issue', {
       p_cafe_id: ctx.cafeId,
       p_service_session_id: serviceSessionId || null,
       p_order_item_id: orderItemId || null,
-      p_complaint_kind: complaintKind,
+      p_issue_kind: complaintKind,
+      p_action_kind: action === 'none' ? 'note' : action,
       p_requested_quantity: quantity ?? null,
       p_notes: notes ?? null,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
     });
 
-    const complaintId = String(created.complaint_id ?? '').trim();
-    if (!complaintId) {
-      throw new Error('CREATE_COMPLAINT_FAILED');
+    const itemIssueId = String(created.item_issue_id ?? '').trim();
+    if (!itemIssueId) {
+      throw new Error('CREATE_ITEM_ISSUE_FAILED');
     }
 
+    const effectiveOrderItemId = created.order_item_id ? String(created.order_item_id) : orderItemId || null;
     publishOpsMutation(ctx, {
-      type: 'complaint.created',
-      entityId: complaintId,
+      type: 'item_issue.created',
+      entityId: itemIssueId,
       shiftId: created.shift_id ? String(created.shift_id) : ctx.shiftId,
       data: {
-        orderItemId: created.order_item_id ? String(created.order_item_id) : null,
+        orderItemId: effectiveOrderItemId,
         serviceSessionId: created.service_session_id ? String(created.service_session_id) : serviceSessionId || null,
         complaintKind,
         quantity: quantity ?? null,
-        action,
+        action: action === 'none' ? 'note' : action,
+        status: created.status ? String(created.status) : 'logged',
       },
     });
 
-    if (action === 'none') {
-      return ok({ ok: true, complaintId });
-    }
-
-    const resolved = await callOpsRpc<ResolveComplaintRpcResult>('ops_resolve_complaint', {
-      p_cafe_id: ctx.cafeId,
-      p_complaint_id: complaintId,
-      p_resolution_kind: action,
-      p_quantity: quantity ?? null,
-      p_notes: notes ?? null,
-      ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-    });
-
-    const effectiveOrderItemId = resolved.order_item_id ? String(resolved.order_item_id) : orderItemId || null;
-    const resolvedQuantity = Number(resolved.resolved_quantity ?? quantity ?? 0);
-    const resolvedShiftId = resolved.shift_id ? String(resolved.shift_id) : created.shift_id ? String(created.shift_id) : ctx.shiftId;
-
-    publishOpsMutation(ctx, {
-      type: 'complaint.updated',
-      entityId: complaintId,
-      shiftId: resolvedShiftId,
-      data: {
-        status: 'resolved',
-        resolutionKind: action,
-        quantity: resolvedQuantity,
-        orderItemId: effectiveOrderItemId,
-      },
-    });
-
-    if (effectiveOrderItemId) {
+    if (effectiveOrderItemId && action !== 'none') {
       const item = await loadOrderItemMutationContext(ctx.cafeId, effectiveOrderItemId);
+      const resolvedQuantity = Number(created.resolved_quantity ?? quantity ?? 0);
       const eventType = action === 'remake'
         ? 'station.remake_requested'
         : action === 'cancel_undelivered'
@@ -143,12 +160,12 @@ export async function POST(req: Request) {
           quantity: resolvedQuantity,
           serviceSessionId: item.serviceSessionId,
           stationCode: item.stationCode,
-          complaintId,
+          itemIssueId,
         },
       });
     }
 
-    return ok({ ok: true, complaintId });
+    return ok({ ok: true, itemIssueId });
   } catch (e) {
     return jsonError(e, 400);
   }

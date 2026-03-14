@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerOrSupervisor } from '@/app/api/ops/_helpers';
 import { readCurrentShiftState } from '@/lib/ops/owner-admin';
 
 export async function GET() {
   try {
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerOrSupervisor(await requireOpsActorContext());
     const allowed = ctx.accountKind === 'owner' || ctx.shiftRole === 'supervisor';
     if (!allowed) {
       return NextResponse.json({ ok: false, error: 'FORBIDDEN' }, { status: 403 });

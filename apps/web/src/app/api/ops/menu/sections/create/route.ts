@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { nextSectionSortOrder, normalizeStationCode } from '@/app/api/ops/menu/_utils';
 import type { StationCode } from '@/lib/ops/types';
 
@@ -10,7 +10,7 @@ export async function POST(request: Request) {
     const stationCode = normalizeStationCode(body.stationCode);
     if (!title) throw new Error('TITLE_REQUIRED');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerRole(await requireOpsActorContext());
     const sortOrder = Number.isInteger(body.sortOrder) ? Number(body.sortOrder) : await nextSectionSortOrder(ctx.cafeId);
     const { data, error } = await adminOps()
       .from('menu_sections')

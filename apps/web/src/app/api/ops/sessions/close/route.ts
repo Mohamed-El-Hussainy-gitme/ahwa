@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireBillingAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 type CloseSessionRpcResult = {
   ok?: boolean;
@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     const normalizedServiceSessionId = String(serviceSessionId ?? '').trim();
     if (!normalizedServiceSessionId) throw new Error('INVALID_INPUT');
 
-    const ctx = await requireOpsActorContext();
+    const ctx = requireBillingAccess(await requireOpsActorContext());
     const rpc = await callOpsRpc<CloseSessionRpcResult>('ops_close_service_session', {
       p_cafe_id: ctx.cafeId,
       p_service_session_id: normalizedServiceSessionId,

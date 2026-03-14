@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { publishOpsEvent } from '@/lib/ops/events';
-import { requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerOrSupervisor } from '@/app/api/ops/_helpers';
 
 const Input = z.object({
   shiftId: z.string().uuid().optional(),
@@ -16,7 +16,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ctx = await requireOpsActorContext();
+    const ctx = requireOwnerOrSupervisor(await requireOpsActorContext());
     const admin = supabaseAdmin().schema('ops');
 
     let shiftId = parsed.data.shiftId;

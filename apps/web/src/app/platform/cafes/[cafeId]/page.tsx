@@ -21,7 +21,7 @@ export default async function PlatformCafeDetailPage({
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold text-slate-900">تفاصيل القهوة</h1>
-            <p className="mt-1 text-sm text-slate-500">الحساب، الاشتراك، الاستخدام، صحة التشغيل، وإجراءات الدعم من مكان واحد.</p>
+            <p className="mt-1 text-sm text-slate-500">تفاصيل إدارية فقط: الملاك، الاشتراك، آخر نشاط، وحالة القهوة بدون بيانات تشغيل حساسة.</p>
           </div>
           <Link href="/platform" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">
             رجوع إلى لوحة المنصة

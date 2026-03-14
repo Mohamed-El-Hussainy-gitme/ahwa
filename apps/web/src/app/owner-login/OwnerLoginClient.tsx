@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
 export default function OwnerLoginClient() {
   const r = useRouter();
@@ -10,6 +10,20 @@ export default function OwnerLoginClient() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [resolvedSlug, setResolvedSlug] = useState("");
+
+  const slugFromQuery = useMemo(() => (sp.get("slug") || "").trim().toLowerCase(), [sp]);
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" ? localStorage.getItem("ahwa.lastCafeSlug") : null;
+    const nextSlug = slugFromQuery || (saved ? saved.trim().toLowerCase() : "");
+    if (nextSlug) {
+      setResolvedSlug(nextSlug);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("ahwa.lastCafeSlug", nextSlug);
+      }
+    }
+  }, [slugFromQuery]);
 
   async function onSubmit() {
     setErr(null);
@@ -20,12 +34,15 @@ export default function OwnerLoginClient() {
         method: "POST",
         credentials: "include",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ phone, password, slug: sp.get("slug") || undefined }),
+        body: JSON.stringify({ phone, password, slug: resolvedSlug || undefined }),
       });
       const j = await res.json().catch(() => ({}));
       if (!res.ok || !j.ok) {
         setErr(j.error ?? "LOGIN_FAILED");
         return;
+      }
+      if (resolvedSlug && typeof window !== "undefined") {
+        localStorage.setItem("ahwa.lastCafeSlug", resolvedSlug);
       }
       const next = sp.get("next");
       r.replace(next && next.startsWith("/") ? next : "/dashboard");
@@ -42,6 +59,7 @@ export default function OwnerLoginClient() {
           <div>
             <div className="text-xl font-semibold text-neutral-900">دخول المعلم</div>
             <div className="mt-0.5 text-sm text-neutral-500">رقم الموبايل + كلمة المرور</div>
+            {resolvedSlug ? <div className="mt-1 text-xs text-neutral-500">القهوة: <span className="font-semibold">{resolvedSlug}</span></div> : null}
           </div>
         </div>
 
@@ -77,7 +95,7 @@ export default function OwnerLoginClient() {
                 : err === "PARTNER_NOT_FOUND" || err === "invalid_owner_credentials"
                   ? "بيانات الدخول غير صحيحة"
                   : err === "MISSING_CAFE_SLUG"
-                    ? "افتح القهوة أولاً من شاشة الدخول"
+                    ? "حدد القهوة أولاً من شاشة الدخول"
                     : err === "CAFE_NOT_FOUND"
                       ? "القهوة غير موجودة أو غير مفعلة"
                       : "حدث خطأ"}
