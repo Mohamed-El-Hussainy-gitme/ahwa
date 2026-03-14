@@ -1,36 +1,58 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ahwa Workspace
 
-## Getting Started
+Ops-first cafe SaaS workspace.
 
-First, run the development server:
+## Current architecture
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+- `database/` is the source of truth for `ops.*` and `platform.*`
+- `apps/web/` is the active application shell and now owns:
+  - platform admin flow
+  - runtime login/device activation
+  - ops workspaces and commands
+  - owner shift/staff management
+  - realtime updates via SSE
+- `packages/shared/` keeps the remaining shared contracts and validation used by the current workspace
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Removed through phase 9
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The active tree no longer depends on:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `tables`
+- `table_sessions`
+- `bill_accounts`
+- `deferred-accounts`
+- `canonical-runtime`
+- `runtime/proxy`
+- root-level duplicate Next files
+- the old `apps/api` runtime backend slice
+- web-to-api bridge helpers under `apps/web/src/lib/api/*`
 
-## Learn More
+## Local environment
 
-To learn more about Next.js, take a look at the following resources:
+- Do not create or depend on a root runtime `.env`
+- Copy `apps/web/.env.example` to `apps/web/.env.local` for local development only
+- Keep real secrets out of git and Vercel-manage them per environment
+- Prefer modern Supabase keys: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` + `SUPABASE_SECRET_KEY`
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Verification helpers
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- `node scripts/check-no-legacy-usage.mjs apps/web/src packages/shared/src`
+- `node scripts/verify-phase5-6-cleanup.mjs`
+- `node scripts/verify-phase7-8-realtime.mjs`
+- `node scripts/verify-phase9-local-runtime.mjs`
 
-## Deploy on Vercel
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Validation
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `npm run verify:phase9` checks post-phase-9 runtime localization.
+- `npm run verify:phase10` checks that the regression/smoke assets for the unified runtime remain in place.
+- `npm run smoke:phase10` runs the full HTTP + cookie end-to-end smoke flow against a running local web app.
+
+
+## Deployment hardening
+
+- GitHub CI: `.github/workflows/ci.yml`
+- Release readiness check: `npm run verify:release`
+- GitHub/Vercel checklist: `docs/deployment/github-vercel-checklist.md`
+- First production runbook: `docs/deployment/first-production-release-runbook.md`
+- Secret handling and key rotation notes: `docs/security/secrets-and-key-rotation.md`

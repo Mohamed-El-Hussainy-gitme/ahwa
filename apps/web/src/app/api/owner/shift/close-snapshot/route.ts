@@ -1,0 +1,65 @@
+import { NextResponse } from 'next/server';
+import { z } from 'zod';
+import { supabaseAdmin } from '@/lib/supabase/admin';
+import { publishOpsEvent } from '@/lib/ops/events';
+import { requireOpsActorContext } from '@/app/api/ops/_helpers';
+
+const Input = z.object({
+  shiftId: z.string().uuid().optional(),
+});
+
+export async function POST(request: Request) {
+  const body = await request.json().catch(() => ({}));
+  const parsed = Input.safeParse(body);
+  if (!parsed.success) {
+    return NextResponse.json({ ok: false, error: 'INVALID_INPUT' }, { status: 400 });
+  }
+
+  try {
+    const ctx = await requireOpsActorContext();
+    const admin = supabaseAdmin().schema('ops');
+
+    let shiftId = parsed.data.shiftId;
+    if (!shiftId) {
+      const currentShift = await admin
+        .from('shifts')
+        .select('id')
+        .eq('cafe_id', ctx.cafeId)
+        .eq('status', 'open')
+        .order('opened_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (currentShift.error) {
+        throw currentShift.error;
+      }
+
+      shiftId = currentShift.data?.id;
+    }
+
+    if (!shiftId) {
+      return NextResponse.json({ ok: false, error: 'NO_OPEN_SHIFT' }, { status: 409 });
+    }
+
+    const rpc = await supabaseAdmin().rpc('ops_build_shift_snapshot', {
+      p_cafe_id: ctx.cafeId,
+      p_shift_id: shiftId,
+    });
+
+    if (rpc.error) {
+      throw rpc.error;
+    }
+
+    publishOpsEvent({
+      type: 'shift.snapshot_built',
+      cafeId: ctx.cafeId,
+      shiftId: String(shiftId),
+      entityId: String(shiftId),
+    });
+
+    return NextResponse.json({ ok: true, snapshot: rpc.data });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : 'SHIFT_CLOSE_SNAPSHOT_FAILED';
+    return NextResponse.json({ ok: false, error: code }, { status: 400 });
+  }
+}

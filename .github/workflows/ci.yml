@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+
+jobs:
+  build-and-verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Verify release readiness
+        run: npm run verify:release
+
+      - name: Build shared
+        run: npm run build:shared
+
+      - name: Typecheck web
+        run: npm run typecheck:web
+
+      - name: Lint web
+        run: npm run lint:web
+
+      - name: Build web
+        run: npm run build:web

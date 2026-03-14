@@ -1,31 +1,27 @@
 {
-  "name": "ahwa",
+  "name": "ahwa-workspace",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
-    "build": "next build",
-    "start": "next start",
-    "lint": "eslint"
-  },
-  "dependencies": {
-    "@supabase/ssr": "^0.8.0",
-    "@supabase/supabase-js": "^2.95.3",
-    "next": "16.1.6",
-    "react": "19.2.3",
-    "react-dom": "19.2.3",
-    "zod": "^4.3.6",
-    "zustand": "^5.0.11"
-  },
-  "devDependencies": {
-    "@tailwindcss/postcss": "^4",
-    "@types/node": "^20",
-    "@types/react": "^19",
-    "@types/react-dom": "^19",
-    "babel-plugin-react-compiler": "1.0.0",
-    "eslint": "^9",
-    "eslint-config-next": "16.1.6",
-    "tailwindcss": "^4",
-    "typescript": "^5"
+    "build": "npm run build:shared && npm run build:web",
+    "dev": "node ./scripts/dev-workspace.mjs",
+    "typecheck": "npm run typecheck:shared && npm run typecheck:web",
+    "dev:web": "npm run dev --workspace @ahwa/web",
+    "build:web": "npm run build --workspace @ahwa/web",
+    "lint:web": "npm run lint --workspace @ahwa/web",
+    "build:shared": "npm run build --workspace @ahwa/shared",
+    "typecheck:web": "npm run typecheck --workspace @ahwa/web",
+    "typecheck:shared": "npm run build:shared",
+    "check:legacy:web": "node ./scripts/check-no-legacy-usage.mjs ./apps/web/src ./packages/shared/src",
+    "verify:phase5-6": "node ./scripts/verify-phase5-6-cleanup.mjs",
+    "verify:phase7-8": "node ./scripts/verify-phase7-8-realtime.mjs",
+    "verify:phase9": "node ./scripts/verify-phase9-local-runtime.mjs",
+    "verify:phase10": "node ./scripts/verify-phase10-regression.mjs",
+    "smoke:phase10": "node ./scripts/smoke-phase10-runtime-e2e.mjs",
+    "verify:release": "node ./scripts/check-release-readiness.mjs"
   }
 }

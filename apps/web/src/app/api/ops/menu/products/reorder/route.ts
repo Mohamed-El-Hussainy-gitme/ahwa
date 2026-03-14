@@ -1,0 +1,27 @@
+import { adminOps } from '@/app/api/ops/_server';
+import { jsonError, ok, publishOpsMutation, requireOpsActorContext } from '@/app/api/ops/_helpers';
+
+export async function POST(request: Request) {
+  try {
+    const body = (await request.json().catch(() => ({}))) as { sectionId?: string; productIds?: string[] };
+    const sectionId = String(body.sectionId ?? '').trim();
+    const productIds = Array.isArray(body.productIds) ? body.productIds.map((value) => String(value ?? '').trim()).filter(Boolean) : [];
+    if (!sectionId || !productIds.length) throw new Error('INVALID_INPUT');
+
+    const ctx = await requireOpsActorContext();
+    const { data, error } = await adminOps().from('menu_products').select('id').eq('cafe_id', ctx.cafeId).eq('section_id', sectionId).in('id', productIds);
+    if (error) throw error;
+    const existingIds = new Set((data ?? []).map((row) => String(row.id)));
+    if (existingIds.size !== productIds.length) throw new Error('PRODUCT_NOT_FOUND');
+
+    for (const [index, productId] of productIds.entries()) {
+      const { error: updateError } = await adminOps().from('menu_products').update({ sort_order: index }).eq('cafe_id', ctx.cafeId).eq('id', productId);
+      if (updateError) throw updateError;
+    }
+
+    publishOpsMutation(ctx, { type: 'menu.products_reordered', data: { sectionId, productIds } });
+    return ok({ ok: true });
+  } catch (error) {
+    return jsonError(error, 400);
+  }
+}
