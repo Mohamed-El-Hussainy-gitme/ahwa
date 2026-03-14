@@ -318,6 +318,9 @@ export default function ShiftPage() {
       }
       setOpenNotes("");
       await load();
+      if (typeof json?.message === 'string' && json.message.trim()) {
+        setMessage(json.message);
+      }
     } finally {
       setBusy(false);
     }

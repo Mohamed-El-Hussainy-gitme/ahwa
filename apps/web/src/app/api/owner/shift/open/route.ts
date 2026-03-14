@@ -36,7 +36,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'FORBIDDEN' }, { status: 403 });
     }
 
-    const shiftId = await openShiftWithAssignments({
+    const opened = await openShiftWithAssignments({
       cafeId: ctx.cafeId,
       ownerUserId: ctx.actorOwnerId,
       kind: parsed.data.kind,
@@ -47,14 +47,32 @@ export async function POST(request: Request) {
     publishOpsEvent({
       type: 'shift.opened',
       cafeId: ctx.cafeId,
-      shiftId,
-      entityId: shiftId,
-      data: { kind: parsed.data.kind },
+      shiftId: opened.shiftId,
+      entityId: opened.shiftId,
+      data: { kind: parsed.data.kind, mode: opened.mode },
     });
 
-    return NextResponse.json({ ok: true, shift: { id: shiftId, kind: parsed.data.kind, status: 'open' } });
+    const message =
+      opened.mode === 'resumed_closed'
+        ? 'تمت متابعة آخر وردية مقفولة بالخطأ.'
+        : opened.mode === 'resumed_open'
+          ? 'الوردية الحالية كانت مفتوحة بالفعل وتمت المتابعة عليها.'
+          : 'تم فتح الوردية.';
+
+    return NextResponse.json({
+      ok: true,
+      shift: { id: opened.shiftId, kind: parsed.data.kind, status: 'open' },
+      mode: opened.mode,
+      message,
+    });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'SHIFT_OPEN_FAILED';
-    return NextResponse.json({ ok: false, error: code }, { status: 400 });
+    const message =
+      code === 'another_shift_is_already_open'
+        ? 'هناك وردية مفتوحة بالفعل. لا يمكن فتح وردية ثانية قبل إنهائها.'
+        : code === 'cannot_resume_shift_after_next_shift_started'
+          ? 'لا يمكن متابعة هذه الوردية لأن الشيفت التالي بدأ بالفعل.'
+          : code;
+    return NextResponse.json({ ok: false, error: { code, message } }, { status: 400 });
   }
 }

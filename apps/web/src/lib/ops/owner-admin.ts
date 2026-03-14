@@ -200,7 +200,8 @@ export async function openShiftWithAssignments(input: {
   });
   if (openRpc.error) throw openRpc.error;
 
-  const shiftId = String((openRpc.data as { shift_id?: string } | null)?.shift_id ?? '');
+  const rpcData = (openRpc.data as { shift_id?: string; mode?: string } | null) ?? null;
+  const shiftId = String(rpcData?.shift_id ?? '');
   if (!shiftId) throw new Error('SHIFT_OPEN_FAILED');
 
   for (const assignment of input.assignments) {
@@ -214,7 +215,13 @@ export async function openShiftWithAssignments(input: {
     if (rpc.error) throw rpc.error;
   }
 
-  return shiftId;
+  return {
+    shiftId,
+    mode:
+      rpcData?.mode === 'resumed_open' || rpcData?.mode === 'resumed_closed'
+        ? rpcData.mode
+        : 'created',
+  } as const;
 }
 
 
