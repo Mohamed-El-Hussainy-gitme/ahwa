@@ -14,9 +14,9 @@ function humanizePdfError(code: string) {
     case 'PDF_TARGET_NOT_ALLOWED':
       return 'هذه الصفحة غير متاحة للتصدير بصيغة PDF.';
     case 'PDF_BROWSER_UNAVAILABLE':
-      return 'خدمة حفظ PDF غير جاهزة بعد على الخادم.';
+      return 'خدمة حفظ PDF غير جاهزة على الخادم الآن. سيتم فتح نافذة الطباعة كحل بديل.';
     case 'PDF_BROWSER_LAUNCH_FAILED':
-      return 'تعذر تشغيل محرك حفظ PDF على الخادم.';
+      return 'تعذر تشغيل محرك حفظ PDF على الخادم. سيتم فتح نافذة الطباعة كحل بديل.';
     default:
       return 'تعذر حفظ الملف بصيغة PDF.';
   }
@@ -37,6 +37,9 @@ export function PrintPageFrame({ title, subtitle, exportFilename, children }: { 
     } catch (downloadError) {
       const message = downloadError instanceof Error ? downloadError.message : 'PDF_EXPORT_FAILED';
       setError(humanizePdfError(message));
+      if (message === 'PDF_BROWSER_UNAVAILABLE' || message === 'PDF_BROWSER_LAUNCH_FAILED') {
+        window.print();
+      }
     } finally {
       setBusy(false);
     }

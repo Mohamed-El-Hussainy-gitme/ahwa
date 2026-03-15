@@ -1,6 +1,6 @@
-import { cookies } from 'next/headers';
-import { redirect } from 'next/navigation';
-import { decodePlatformAdminSession, PLATFORM_ADMIN_COOKIE } from '@/lib/platform-auth/session';
+import Link from 'next/link';
+import { PlatformChrome } from '@/app/platform/_components/PlatformChrome';
+import { requirePlatformAdminSession } from '@/app/platform/_lib/server';
 import PlatformCafeDetailClient from './PlatformCafeDetailClient';
 
 export const dynamic = 'force-dynamic';
@@ -10,19 +10,21 @@ export default async function PlatformCafeDetailPage({
 }: {
   params: Promise<{ cafeId: string }>;
 }) {
-  const [{ cafeId }, jar] = await Promise.all([params, cookies()]);
-  const session = decodePlatformAdminSession(jar.get(PLATFORM_ADMIN_COOKIE)?.value);
-  if (!session) redirect('/platform/login');
+  const [{ cafeId }, session] = await Promise.all([params, requirePlatformAdminSession()]);
 
   return (
-    <div className="min-h-screen bg-slate-100 p-6" dir="rtl">
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-4">
-          <h1 className="text-2xl font-bold text-slate-900">تفاصيل القهوة</h1>
-          <p className="mt-1 text-sm text-slate-500">ملف إداري مرتب للقهوة: الملخص، الملاك، الاشتراك، وسجل الدعم الفني بدون تكرار أو ازدحام.</p>
+    <PlatformChrome
+      session={session}
+      title="تفاصيل القهوة"
+      description="ملف إداري مرتب للقهوة: الملخص، الملاك، الاشتراك، وسجل الدعم الفني داخل صفحة مستقلة من نفس shell الجديد."
+    >
+      <div className="space-y-4">
+        <div className="flex flex-wrap gap-2">
+          <Link href="/platform/cafes" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">العودة إلى سجل القهاوي</Link>
+          <Link href="/platform/cafes/new" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">إنشاء قهوة جديدة</Link>
         </div>
         <PlatformCafeDetailClient cafeId={cafeId} />
       </div>
-    </div>
+    </PlatformChrome>
   );
 }

@@ -453,7 +453,7 @@ function priorityLabel(priority: SupportMessagePriority) {
   }
 }
 
-function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: number; selectedCafeId: string }) {
+export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: number; selectedCafeId: string }) {
   const [data, setData] = useState<SupportInboxData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -589,7 +589,7 @@ function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: number; se
   );
 }
 
-function MoneyFollowSection({ refreshKey }: { refreshKey: number }) {
+export function MoneyFollowSection({ refreshKey }: { refreshKey: number }) {
   const [data, setData] = useState<MoneyFollowResponseData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);

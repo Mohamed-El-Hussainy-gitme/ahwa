@@ -176,7 +176,9 @@ async function waitForPrintableState(browser: ChromiumBrowser, url: URL, cookies
 
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   const copy = Uint8Array.from(bytes);
-  return copy.buffer;
+  const arrayBuffer = new ArrayBuffer(copy.byteLength);
+  new Uint8Array(arrayBuffer).set(copy);
+  return arrayBuffer;
 }
 
 export async function exportPrintPageAsPdf({ request, target, filename }: ExportPdfRequest): Promise<{
