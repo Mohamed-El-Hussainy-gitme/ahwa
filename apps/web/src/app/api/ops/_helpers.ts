@@ -1,7 +1,9 @@
+import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getEnrichedRuntimeMeFromCookie } from '@/lib/runtime/me';
 import { supabaseAdmin } from '@/lib/supabase/admin';
 import { publishOpsEvent } from '@/lib/ops/events';
+import { resolveMessage } from '@/lib/messages/catalog';
 
 export type OpsShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
 export type OpsStationCode = 'barista' | 'shisha';
@@ -20,6 +22,19 @@ export type OpsActorContext = {
 export type OwnerOpsActorContext = OpsActorContext & {
   accountKind: 'owner';
   actorOwnerId: string;
+};
+
+type IdempotencyRow = {
+  request_hash?: string | null;
+  status?: string | null;
+  response_status?: number | null;
+  response_body?: unknown;
+};
+
+export type BegunIdempotentMutation = {
+  key: string;
+  actionName: string;
+  requestHash: string;
 };
 
 export async function requireOpsActorContext(): Promise<OpsActorContext> {
@@ -155,8 +170,152 @@ export async function requireOpenOpsShift(cafeId: string) {
   return data;
 }
 
+function stableStringify(value: unknown): string {
+  if (value === null || value === undefined) {
+    return String(value);
+  }
+
+  if (typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`;
+}
+
+function readIdempotencyKey(request: Request) {
+  const key = request.headers.get('x-ahwa-idempotency-key');
+  return key ? key.trim().slice(0, 180) : '';
+}
+
+export async function beginIdempotentMutation(
+  request: Request,
+  ctx: Pick<OpsActorContext, 'cafeId' | 'runtimeUserId' | 'actorOwnerId' | 'actorStaffId'>,
+  actionName: string,
+  payload: unknown,
+): Promise<{ replayResponse: NextResponse | null; mutation: BegunIdempotentMutation | null }> {
+  const key = readIdempotencyKey(request);
+  if (!key) {
+    return { replayResponse: null, mutation: null };
+  }
+
+  const requestHash = crypto
+    .createHash('sha256')
+    .update(`${actionName}|${stableStringify(payload)}`)
+    .digest('hex');
+
+  const admin = supabaseAdmin().schema('ops');
+  const insertPayload = {
+    cafe_id: ctx.cafeId,
+    idempotency_key: key,
+    action_name: actionName,
+    request_hash: requestHash,
+    actor_runtime_user_id: ctx.runtimeUserId,
+    actor_owner_id: ctx.actorOwnerId,
+    actor_staff_id: ctx.actorStaffId,
+  };
+
+  const { error: insertError } = await admin.from('idempotency_keys').insert(insertPayload);
+  if (!insertError) {
+    return {
+      replayResponse: null,
+      mutation: { key, actionName, requestHash },
+    };
+  }
+
+  if ((insertError as { code?: string } | null)?.code != '23505') {
+    throw insertError;
+  }
+
+  const { data, error } = await admin
+    .from('idempotency_keys')
+    .select('request_hash, status, response_status, response_body')
+    .eq('cafe_id', ctx.cafeId)
+    .eq('idempotency_key', key)
+    .maybeSingle();
+
+  if (error) {
+    throw error;
+  }
+
+  const row = (data ?? null) as IdempotencyRow | null;
+  if (!row) {
+    throw new Error('IDEMPOTENCY_RETRY_REQUIRED');
+  }
+
+  if (String(row.request_hash ?? '') !== requestHash) {
+    throw new Error('IDEMPOTENCY_KEY_PAYLOAD_MISMATCH');
+  }
+
+  if (String(row.status ?? '') === 'completed' && row.response_body && typeof row.response_body === 'object') {
+    return {
+      replayResponse: NextResponse.json(row.response_body as Record<string, unknown>, {
+        status: Number(row.response_status ?? 200),
+      }),
+      mutation: null,
+    };
+  }
+
+  throw new Error('IDEMPOTENT_REQUEST_IN_PROGRESS');
+}
+
+export async function completeIdempotentMutation(
+  ctx: Pick<OpsActorContext, 'cafeId'>,
+  mutation: BegunIdempotentMutation | null,
+  responseBody: Record<string, unknown>,
+  responseStatus = 200,
+) {
+  if (!mutation) {
+    return;
+  }
+
+  const admin = supabaseAdmin().schema('ops');
+  const { error } = await admin
+    .from('idempotency_keys')
+    .update({
+      status: 'completed',
+      response_status: responseStatus,
+      response_body: responseBody,
+      completed_at: new Date().toISOString(),
+    })
+    .eq('cafe_id', ctx.cafeId)
+    .eq('idempotency_key', mutation.key)
+    .eq('request_hash', mutation.requestHash);
+
+  if (error) {
+    throw error;
+  }
+}
+
+export async function releaseIdempotentMutation(
+  ctx: Pick<OpsActorContext, 'cafeId'>,
+  mutation: BegunIdempotentMutation | null,
+) {
+  if (!mutation) {
+    return;
+  }
+
+  const admin = supabaseAdmin().schema('ops');
+  const { error } = await admin
+    .from('idempotency_keys')
+    .delete()
+    .eq('cafe_id', ctx.cafeId)
+    .eq('idempotency_key', mutation.key)
+    .eq('request_hash', mutation.requestHash)
+    .eq('status', 'pending');
+
+  if (error) {
+    throw error;
+  }
+}
+
 export function jsonError(error: unknown, status = 400) {
-  const message = error instanceof Error ? error.message : 'REQUEST_FAILED';
+  const message = resolveMessage(error instanceof Error ? error.message : 'REQUEST_FAILED');
   return NextResponse.json({ error: message }, { status });
 }
 

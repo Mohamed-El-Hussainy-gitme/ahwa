@@ -6,15 +6,17 @@ import type {
   DeferredCustomerLedgerWorkspace,
   DeferredCustomerSummary,
   MenuWorkspace,
+  OwnerOnboardingGuide,
   ReportsWorkspace,
   StationCode,
   StationWorkspace,
   WaiterWorkspace,
 } from './types';
 
-import { apiPost } from '@/lib/http/client';
+import { apiGet, apiPost } from '@/lib/http/client';
 
 const post = apiPost;
+const get = apiGet;
 
 export const opsClient = {
   waiterWorkspace: () => post<WaiterWorkspace>('/api/ops/workspaces/waiter'),
@@ -31,6 +33,8 @@ export const opsClient = {
   deferredCustomerLedger: (debtorName: string) =>
     post<DeferredCustomerLedgerWorkspace>('/api/ops/workspaces/deferred-customer-ledger', { debtorName }),
 
+  ownerOnboardingGuide: () => get<OwnerOnboardingGuide>('/api/owner/onboarding/guide'),
+
   openOrResumeSession: (label?: string) =>
     post<{ sessionId: string; label: string }>('/api/ops/sessions/open-or-resume', { label }),
 
@@ -40,13 +44,19 @@ export const opsClient = {
   }) => post<{ ok: true }>('/api/ops/orders/create-with-items', input),
 
   markPartialReady: (orderItemId: string, quantity: number) =>
-    post<{ ok: true }>('/api/ops/fulfillment/partial-ready', { orderItemId, quantity }),
+    post<{ ok: true }>('/api/ops/fulfillment/partial-ready', { orderItemId, quantity }, {
+      idempotency: { scope: 'ops.fulfillment.partial-ready' },
+    }),
 
   markReady: (orderItemId: string, quantity: number) =>
-    post<{ ok: true }>('/api/ops/fulfillment/ready', { orderItemId, quantity }),
+    post<{ ok: true }>('/api/ops/fulfillment/ready', { orderItemId, quantity }, {
+      idempotency: { scope: 'ops.fulfillment.ready' },
+    }),
 
   requestRemake: (orderItemId: string, quantity: number) =>
-    post<{ ok: true }>('/api/ops/fulfillment/remake', { orderItemId, quantity }),
+    post<{ ok: true }>('/api/ops/fulfillment/remake', { orderItemId, quantity }, {
+      idempotency: { scope: 'ops.fulfillment.remake' },
+    }),
 
   createComplaint: (input: {
     mode?: 'general' | 'item';
@@ -65,19 +75,29 @@ export const opsClient = {
   }) => post<{ ok: true }>('/api/ops/complaints/resolve', input),
 
   deliver: (orderItemId: string, quantity: number) =>
-    post<{ ok: true }>('/api/ops/delivery/deliver', { orderItemId, quantity }),
+    post<{ ok: true }>('/api/ops/delivery/deliver', { orderItemId, quantity }, {
+      idempotency: { scope: 'ops.delivery.deliver' },
+    }),
 
   settle: (allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    post<{ ok: true }>('/api/ops/billing/settle', { allocations }),
+    post<{ ok: true }>('/api/ops/billing/settle', { allocations }, {
+      idempotency: { scope: 'ops.billing.settle' },
+    }),
 
   defer: (debtorName: string, allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    post<{ ok: true }>('/api/ops/billing/defer', { debtorName, allocations }),
+    post<{ ok: true }>('/api/ops/billing/defer', { debtorName, allocations }, {
+      idempotency: { scope: 'ops.billing.defer' },
+    }),
 
   repay: (debtorName: string, amount: number, notes?: string) =>
-    post<{ ok: true }>('/api/ops/deferred/repay', { debtorName, amount, notes }),
+    post<{ ok: true }>('/api/ops/deferred/repay', { debtorName, amount, notes }, {
+      idempotency: { scope: 'ops.deferred.repay' },
+    }),
 
   addDeferredDebt: (debtorName: string, amount: number, notes?: string) =>
-    post<{ ok: true }>('/api/ops/deferred/add-debt', { debtorName, amount, notes }),
+    post<{ ok: true }>('/api/ops/deferred/add-debt', { debtorName, amount, notes }, {
+      idempotency: { scope: 'ops.deferred.add-debt' },
+    }),
 
   closeSession: (serviceSessionId: string) =>
     post<{ ok: true }>('/api/ops/sessions/close', { serviceSessionId }),

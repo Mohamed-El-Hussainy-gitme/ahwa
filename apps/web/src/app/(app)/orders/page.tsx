@@ -13,6 +13,8 @@ import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
+import { useOpsChrome } from '@/lib/ops/chrome';
+import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
 
 export default function OrdersPage() {
   const { can, shift } = useAuthz();
@@ -28,6 +30,7 @@ export default function OrdersPage() {
   const { data, error: workspaceError, reload } = useOpsWorkspace<WaiterWorkspace>(loader, {
     enabled: Boolean(shift),
   });
+  const { summary } = useOpsChrome();
 
   const [commandError, setCommandError] = useState<string | null>(null);
 
@@ -160,6 +163,7 @@ export default function OrdersPage() {
         </div>
       ) : null}
       <div className="space-y-3">
+        <QueueHealthStrip health={summary?.queueHealth ?? null} />
         <div className="rounded-2xl border border-slate-200 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-sm font-semibold text-slate-700">الجلسات المفتوحة</div>

@@ -1,11 +1,23 @@
 import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext, requireStationAccess } from '@/app/api/ops/_helpers';
+import {
+  beginIdempotentMutation,
+  type BegunIdempotentMutation,
+  completeIdempotentMutation,
+  jsonError,
+  ok,
+  publishOpsMutation,
+  releaseIdempotentMutation,
+  requireOpsActorContext,
+  requireStationAccess,
+} from '@/app/api/ops/_helpers';
 
 type MarkReadyRpcResult = {
   ok?: boolean;
 };
 
 export async function POST(req: Request) {
+  let mutation: BegunIdempotentMutation | null = null;
+
   try {
     const { orderItemId, quantity } = (await req.json()) as { orderItemId?: string; quantity?: number };
     const normalizedOrderItemId = String(orderItemId ?? '').trim();
@@ -18,6 +30,16 @@ export async function POST(req: Request) {
     const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId);
     const stationCode = item.stationCode === 'shisha' ? 'shisha' : 'barista';
     requireStationAccess(ctx, stationCode);
+
+    const started = await beginIdempotentMutation(req, ctx, 'ops.fulfillment.ready', {
+      orderItemId: normalizedOrderItemId,
+      quantity: normalizedQuantity,
+      stationCode,
+    });
+    if (started.replayResponse) {
+      return started.replayResponse;
+    }
+    mutation = started.mutation;
 
     await callOpsRpc<MarkReadyRpcResult>('ops_mark_ready', {
       p_cafe_id: ctx.cafeId,
@@ -33,8 +55,16 @@ export async function POST(req: Request) {
       data: { quantity: normalizedQuantity, stationCode: item.stationCode ?? '' },
     });
 
-    return ok({ ok: true });
+    const responseBody = { ok: true };
+    await completeIdempotentMutation(ctx, mutation, responseBody);
+    return ok(responseBody);
   } catch (e) {
+    if (mutation) {
+      try {
+        const ctx = await requireOpsActorContext();
+        await releaseIdempotentMutation(ctx, mutation);
+      } catch {}
+    }
     return jsonError(e, 400);
   }
 }

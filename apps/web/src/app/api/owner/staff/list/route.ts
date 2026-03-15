@@ -15,6 +15,7 @@ export async function GET() {
         employeeCode: item.employeeCode,
         accountKind: 'employee',
         isActive: item.isActive,
+        employmentStatus: item.employmentStatus,
         createdAt: item.createdAt,
       })),
     });

@@ -1,3 +1,4 @@
+import { resolveMessage } from '@/lib/messages/catalog';
 export type ApiErrorObject = {
   code?: string;
   message?: string;
@@ -53,28 +54,28 @@ export function extractApiErrorMessage(
   fallback = 'REQUEST_FAILED',
 ): string {
   if (!isRecord(payload)) {
-    return fallback;
+    return resolveMessage(fallback);
   }
 
   const error = payload.error;
 
   if (typeof error === 'string' && error.trim().length > 0) {
-    return error;
+    return resolveMessage(error);
   }
 
   if (isRecord(error)) {
     if (typeof error.message === 'string' && error.message.trim().length > 0) {
-      return error.message;
+      return resolveMessage(error.message);
     }
 
     if (typeof error.code === 'string' && error.code.trim().length > 0) {
-      return error.code;
+      return resolveMessage(error.code);
     }
   }
 
   if (typeof payload.message === 'string' && payload.message.trim().length > 0) {
-    return payload.message;
+    return resolveMessage(payload.message);
   }
 
-  return fallback;
+  return resolveMessage(fallback);
 }

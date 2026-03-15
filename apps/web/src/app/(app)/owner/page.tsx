@@ -5,10 +5,14 @@ import { MobileShell } from "@/ui/MobileShell";
 import { useAuthz } from "@/lib/authz";
 import { useSession } from "@/lib/session";
 import { AccessDenied } from "@/ui/AccessState";
+import { useOpsChrome } from "@/lib/ops/chrome";
+import { OperationalHealthPanel } from "@/ui/ops/OperationalHealthPanel";
+import { OwnerOnboardingGuideCard } from "@/ui/ops/OwnerOnboardingGuide";
 
 export default function OwnerPage() {
   const { can, shift } = useAuthz();
   const session = useSession();
+  const { summary, sync, lastLoadedAt } = useOpsChrome();
 
   if (!can.owner) {
     return <AccessDenied title="المعلم" />;
@@ -20,6 +24,9 @@ export default function OwnerPage() {
       backHref="/dashboard"
       topRight={<div className="text-xs text-neutral-500">{session.user?.name}</div>}
     >
+      <OperationalHealthPanel summary={summary} syncState={sync.state} lastLoadedAt={lastLoadedAt} className="mb-3" />
+      <OwnerOnboardingGuideCard />
+
       {!shift ? (
         <div className="rounded-2xl border border-amber-200/70 bg-amber-50 p-3 text-sm text-amber-900">
           لا توجد وردية مفتوحة. افتح وردية (صباحي/مسائي) من شاشة الوردية.

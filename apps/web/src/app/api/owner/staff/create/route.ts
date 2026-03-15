@@ -45,6 +45,7 @@ export async function POST(request: Request) {
             employeeCode: created.employeeCode,
             accountKind: 'employee',
             isActive: created.isActive,
+            employmentStatus: created.employmentStatus,
             createdAt: created.createdAt,
           }
         : null,

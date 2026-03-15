@@ -4,10 +4,15 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { MobileShell } from "@/ui/MobileShell";
 import { useAuthz } from "@/lib/authz";
 import { AccessDenied } from "@/ui/AccessState";
+import { apiPost } from '@/lib/http/client';
+import { extractApiErrorMessage } from '@/lib/api/errors';
+import { RecoveryPanel } from '@/ui/ops/RecoveryPanel';
 
 type ShiftKind = "morning" | "evening";
 type ShiftRole = "supervisor" | "waiter" | "barista" | "shisha";
 type ShiftStatus = "open" | "closing" | "closed" | "draft" | "cancelled";
+
+type StaffEmploymentStatus = 'active' | 'inactive' | 'left';
 
 type StaffRow = {
   id: string;
@@ -15,6 +20,7 @@ type StaffRow = {
   employeeCode: string | null;
   accountKind: string;
   isActive: boolean;
+  employmentStatus?: StaffEmploymentStatus;
 };
 
 type AssignmentRow = {
@@ -213,7 +219,7 @@ export default function ShiftPage() {
   const [snapshotBusyFor, setSnapshotBusyFor] = useState<string | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<RawShiftSnapshot | null>(null);
 
-  const activeStaff = useMemo(() => staff.filter((item) => item.isActive), [staff]);
+  const activeStaff = useMemo(() => staff.filter((item) => item.isActive && (item.employmentStatus ?? 'active') === 'active'), [staff]);
   const selectedSupervisorId = useMemo(
     () => Object.entries(assignments).find(([, role]) => role === "supervisor")?.[0] ?? "",
     [assignments],
@@ -242,21 +248,13 @@ export default function ShiftPage() {
 
     if (!staffJson?.ok) {
       setStaff([]);
-      setMessage(
-        typeof staffJson?.error === "string"
-          ? staffJson.error
-          : staffJson?.error?.message ?? "FAILED_TO_LOAD_STAFF",
-      );
+      setMessage(extractApiErrorMessage(staffJson, 'FAILED_TO_LOAD_STAFF'));
       return;
     }
 
     if (!stateJson?.ok) {
       setShift(null);
-      setMessage(
-        typeof stateJson?.error === "string"
-          ? stateJson.error
-          : stateJson?.error?.message ?? "FAILED_TO_LOAD_SHIFT",
-      );
+      setMessage(extractApiErrorMessage(stateJson, 'FAILED_TO_LOAD_SHIFT'));
       return;
     }
 
@@ -309,11 +307,7 @@ export default function ShiftPage() {
       });
       const json = await res.json().catch(() => null);
       if (!json?.ok) {
-        setMessage(
-          typeof json?.error === "string"
-            ? json.error
-            : json?.error?.message ?? "FAILED_TO_OPEN_SHIFT",
-        );
+        setMessage(extractApiErrorMessage(json, 'FAILED_TO_OPEN_SHIFT'));
         return;
       }
       setOpenNotes("");
@@ -331,23 +325,16 @@ export default function ShiftPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/owner/shift/close", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ shiftId: shift.id, notes: closeNotes || undefined }),
-      });
-      const json = await res.json().catch(() => null);
-      if (!json?.ok) {
-        setMessage(
-          typeof json?.error === "string"
-            ? json.error
-            : json?.error?.message ?? "FAILED_TO_CLOSE_SHIFT",
-        );
-        return;
-      }
+      await apiPost<{ ok: true }>(
+        "/api/owner/shift/close",
+        { shiftId: shift.id, notes: closeNotes || undefined },
+        { idempotency: { scope: 'owner.shift.close' } },
+      );
       setCloseNotes("");
       await load();
       await loadSnapshot(shift.id);
+    } catch (error) {
+      setMessage(error instanceof Error && error.message ? error.message : 'FAILED_TO_CLOSE_SHIFT');
     } finally {
       setBusy(false);
     }
@@ -364,11 +351,7 @@ export default function ShiftPage() {
       });
       const json = await res.json().catch(() => null);
       if (!json?.ok) {
-        setMessage(
-          typeof json?.error === "string"
-            ? json.error
-            : json?.error?.message ?? "FAILED_TO_LOAD_SHIFT_SNAPSHOT",
-        );
+        setMessage(extractApiErrorMessage(json, 'FAILED_TO_LOAD_SHIFT_SNAPSHOT'));
         return;
       }
       setSelectedSnapshot((json.snapshot as RawShiftSnapshot) ?? null);
@@ -396,6 +379,7 @@ export default function ShiftPage() {
       ) : null}
 
       {shift ? (
+        <>
         <section className="rounded-3xl border border-emerald-200/70 bg-emerald-50 p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div className="text-right">
@@ -463,6 +447,9 @@ export default function ShiftPage() {
             الإغلاق يرفض وجود جلسات أو حسابات غير محسومة، ثم يأخذ سناب شوت للتقارير قبل قفل الوردية.
           </div>
         </section>
+
+        {canManageShift ? <RecoveryPanel onResync={load} /> : null}
+        </>
       ) : canManageShift ? (
         <section className="rounded-3xl border border-amber-200/70 bg-white p-4 shadow-sm">
           <div className="text-right font-bold text-amber-950">فتح وردية جديدة</div>

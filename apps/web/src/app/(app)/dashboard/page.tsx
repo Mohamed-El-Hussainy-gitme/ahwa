@@ -8,6 +8,9 @@ import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { opsClient } from '@/lib/ops/client';
 import type { DashboardWorkspace } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
+import { useOpsChrome } from '@/lib/ops/chrome';
+import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
+import { OperationalHealthPanel } from '@/ui/ops/OperationalHealthPanel';
 
 type StatCard = {
   label: string;
@@ -23,6 +26,7 @@ export default function DashboardPage() {
   const { can, shift, effectiveRole } = useAuthz();
   const loader = useCallback(() => opsClient.dashboardWorkspace(), []);
   const { data, error } = useOpsWorkspace<DashboardWorkspace>(loader, { enabled: Boolean(shift) });
+  const { summary, sync, lastLoadedAt } = useOpsChrome();
 
   if (!can.viewDashboard) {
     const fallback = effectiveRole === 'barista' ? '/kitchen' : effectiveRole === 'shisha' ? '/shisha' : '/orders';
@@ -59,6 +63,15 @@ export default function DashboardPage() {
           {error}
         </div>
       ) : null}
+
+      <OperationalHealthPanel
+        summary={summary}
+        syncState={sync.state}
+        lastLoadedAt={lastLoadedAt}
+        className="mb-3"
+      />
+
+      <QueueHealthStrip health={summary?.queueHealth ?? data?.queueHealth ?? null} className="mb-3" />
 
       <div className="grid grid-cols-2 gap-3">
         {cards.map((card) => (

@@ -141,6 +141,16 @@ export default function CustomersPage() {
       ) : null}
 
       <div className="space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <div className="font-semibold text-slate-900">تصدير دفتر الآجل</div>
+              <div className="mt-1 text-xs text-slate-500">افتح نسخة قابلة للطباعة واحفظها PDF.</div>
+            </div>
+            <Link href="/customers/print" target="_blank" className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-slate-700">تصدير PDF</Link>
+          </div>
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="text-xs text-slate-500">الرصيد المفتوح</div>

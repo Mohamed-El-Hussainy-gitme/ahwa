@@ -8,6 +8,8 @@ import { opsClient } from '@/lib/ops/client';
 import type { StationWorkspace } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { useOpsChrome } from '@/lib/ops/chrome';
+import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
 
 export default function KitchenPage() {
   const { can, shift } = useAuthz();
@@ -17,6 +19,7 @@ export default function KitchenPage() {
   const { data, error, reload } = useOpsWorkspace<StationWorkspace>(loader, {
     enabled: Boolean(shift),
   });
+  const { summary } = useOpsChrome();
   const readyCommand = useOpsCommand(
     async (orderItemId: string, quantity: number) => {
       await opsClient.markReady(orderItemId, quantity);
@@ -45,6 +48,7 @@ export default function KitchenPage() {
           {localError ?? error}
         </div>
       ) : null}
+      <QueueHealthStrip health={summary?.queueHealth ?? null} className="mb-3" />
       <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
         انتظار الباريستا الآن: <span className="font-semibold">{totalWaiting}</span>
       </div>

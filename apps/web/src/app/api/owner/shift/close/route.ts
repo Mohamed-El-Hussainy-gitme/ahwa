@@ -1,6 +1,13 @@
 import { z } from 'zod';
 import { publishOpsEvent } from '@/lib/ops/events';
-import { requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
+import {
+  beginIdempotentMutation,
+  type BegunIdempotentMutation,
+  completeIdempotentMutation,
+  releaseIdempotentMutation,
+  requireOpsActorContext,
+  requireOwnerRole,
+} from '@/app/api/ops/_helpers';
 import { closeShift } from '@/lib/ops/owner-admin';
 import { apiFail } from '@/app/api/_shared';
 import { NextResponse } from 'next/server';
@@ -26,6 +33,8 @@ export async function POST(request: Request) {
     return apiFail(400, 'INVALID_INPUT', 'INVALID_INPUT');
   }
 
+  let mutation: BegunIdempotentMutation | null = null;
+
   try {
     const ctx = requireOwnerRole(await requireOpsActorContext());
 
@@ -33,6 +42,15 @@ export async function POST(request: Request) {
     if (!shiftId) {
       return apiFail(400, 'SHIFT_ID_REQUIRED', 'SHIFT_ID_REQUIRED');
     }
+
+    const started = await beginIdempotentMutation(request, ctx, 'owner.shift.close', {
+      shiftId,
+      notes: parsed.data.notes ?? null,
+    });
+    if (started.replayResponse) {
+      return started.replayResponse;
+    }
+    mutation = started.mutation;
 
     const result = await closeShift({
       cafeId: ctx.cafeId,
@@ -48,8 +66,15 @@ export async function POST(request: Request) {
       entityId: shiftId,
     });
 
-    return NextResponse.json({ ok: true, shift: result });
+    const responseBody = { ok: true, shift: result };
+    await completeIdempotentMutation(ctx, mutation, responseBody);
+    return NextResponse.json(responseBody);
   } catch (error) {
+    try {
+      const ctx = requireOwnerRole(await requireOpsActorContext());
+      await releaseIdempotentMutation(ctx, mutation);
+    } catch {}
+
     const message = getErrorMessage(error);
     const code = /open service sessions exist/i.test(message)
       ? 'SHIFT_HAS_OPEN_SESSIONS'

@@ -38,7 +38,25 @@ export type StationWorkspace = { shift: OpsShift | null; stationCode: StationCod
 export type BillableItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; unitPrice: number; qtyBillable: number; qtyDelivered: number; qtyPaid: number; qtyDeferred: number; qtyWaived: number };
 export type BillingSession = { sessionId: string; sessionLabel: string; items: BillableItem[]; totalBillableAmount: number; totalBillableQty: number };
 export type BillingWorkspace = { shift: OpsShift | null; sessions: BillingSession[]; deferredNames: string[] };
-export type DashboardWorkspace = { shift: OpsShift | null; openSessions: number; waitingBarista: number; waitingShisha: number; readyForDelivery: number; billableQty: number; deferredOutstanding: number };
+export type OpsQueueHealth = {
+  oldestPendingMinutes: number | null;
+  oldestReadyMinutes: number | null;
+  stalledSessionsCount: number;
+  stalledThresholdMinutes: number;
+};
+
+export type StaffEmploymentStatus = 'active' | 'inactive' | 'left';
+
+export type DashboardWorkspace = {
+  shift: OpsShift | null;
+  openSessions: number;
+  waitingBarista: number;
+  waitingShisha: number;
+  readyForDelivery: number;
+  billableQty: number;
+  deferredOutstanding: number;
+  queueHealth: OpsQueueHealth;
+};
 
 export type OpsNavSummary = {
   shift: OpsShift | null;
@@ -49,11 +67,34 @@ export type OpsNavSummary = {
   billableQty: number;
   deferredOutstanding: number;
   deferredCustomerCount: number;
+  queueHealth: OpsQueueHealth;
 };
 
 export type MenuWorkspace = {
   sections: OpsSection[];
   products: OpsProduct[];
+};
+
+
+export type OwnerOnboardingGuideStep = {
+  key: 'menu' | 'staff' | 'shift' | 'roles';
+  shortLabel: string;
+  title: string;
+  description: string;
+  done: boolean;
+};
+
+export type OwnerOnboardingGuide = {
+  intro: string;
+  sectionsCount: number;
+  productsCount: number;
+  staffCount: number;
+  hasOpenShift: boolean;
+  roleAssignmentsCount: number;
+  totalCount: number;
+  completedCount: number;
+  readyToRun: boolean;
+  steps: OwnerOnboardingGuideStep[];
 };
 
 export type DeferredCustomerStatus = 'active' | 'late' | 'settled';

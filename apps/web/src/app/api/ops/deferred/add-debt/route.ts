@@ -1,7 +1,20 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireDeferredAccess, requireOpsActorContext, requireOpenOpsShift } from '@/app/api/ops/_helpers';
+import {
+  beginIdempotentMutation,
+  type BegunIdempotentMutation,
+  completeIdempotentMutation,
+  jsonError,
+  ok,
+  publishOpsMutation,
+  releaseIdempotentMutation,
+  requireDeferredAccess,
+  requireOpsActorContext,
+  requireOpenOpsShift,
+} from '@/app/api/ops/_helpers';
 
 export async function POST(req: Request) {
+  let mutation: BegunIdempotentMutation | null = null;
+
   try {
     const { debtorName, amount, notes } = (await req.json()) as {
       debtorName?: string;
@@ -10,10 +23,23 @@ export async function POST(req: Request) {
     };
     const name = String(debtorName ?? '').trim();
     const numericAmount = Number(amount ?? 0);
+    const normalizedNotes = notes ? String(notes) : null;
     if (!name || numericAmount <= 0) throw new Error('INVALID_INPUT');
 
     const ctx = requireDeferredAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId);
+
+    const started = await beginIdempotentMutation(req, ctx, 'ops.deferred.add-debt', {
+      shiftId: shift.id,
+      debtorName: name,
+      amount: numericAmount,
+      notes: normalizedNotes,
+    });
+    if (started.replayResponse) {
+      return started.replayResponse;
+    }
+    mutation = started.mutation;
+
     const admin = adminOps();
     const payload: Record<string, unknown> = {
       cafe_id: ctx.cafeId,
@@ -21,7 +47,7 @@ export async function POST(req: Request) {
       debtor_name: name,
       entry_kind: 'debt',
       amount: numericAmount,
-      notes: notes ? String(notes) : null,
+      notes: normalizedNotes,
     };
     if (ctx.actorOwnerId) payload.by_owner_id = ctx.actorOwnerId;
     else payload.by_staff_id = ctx.actorStaffId;
@@ -34,8 +60,16 @@ export async function POST(req: Request) {
       data: { debtorName: name, amount: numericAmount },
     });
 
-    return ok({ ok: true });
+    const responseBody = { ok: true };
+    await completeIdempotentMutation(ctx, mutation, responseBody);
+    return ok(responseBody);
   } catch (e) {
+    if (mutation) {
+      try {
+        const ctx = await requireOpsActorContext();
+        await releaseIdempotentMutation(ctx, mutation);
+      } catch {}
+    }
     return jsonError(e, 400);
   }
 }

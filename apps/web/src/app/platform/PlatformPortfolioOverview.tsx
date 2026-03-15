@@ -350,7 +350,7 @@ export default function PlatformPortfolioOverview({
     <section className="space-y-6 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h2 className="text-lg font-bold text-slate-900">Overview</h2>
+          <h2 className="text-lg font-bold text-slate-900">النظرة العامة</h2>
           <p className="mt-1 text-sm text-slate-500">
             ملخص إداري يحافظ على الخصوصية: حالة الاشتراكات، نشاط القهاوي، وآخر استخدام فقط.
           </p>

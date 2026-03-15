@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
@@ -33,6 +34,7 @@ function moveInList<T extends { id: string }>(items: T[], itemId: string, delta:
 export default function MenuPage() {
   const { can } = useAuthz();
   const [selectedSectionId, setSelectedSectionId] = useState('');
+  const [showArchived, setShowArchived] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [localNotice, setLocalNotice] = useState<string | null>(null);
   const [editingSectionId, setEditingSectionId] = useState('');
@@ -55,16 +57,18 @@ export default function MenuPage() {
   const loader = useCallback(() => opsClient.menuWorkspace(), []);
   const { data, error, reload } = useOpsWorkspace<MenuWorkspace>(loader, { enabled: can.manageMenu });
 
-  const activeSections = useMemo(
-    () => (data?.sections ?? []).filter((section) => section.isActive !== false),
-    [data?.sections],
+  const activeSections = useMemo(() => (data?.sections ?? []).filter((section) => section.isActive !== false), [data?.sections]);
+
+  const visibleSections = useMemo(
+    () => (showArchived ? (data?.sections ?? []) : activeSections),
+    [activeSections, data?.sections, showArchived],
   );
 
   const effectiveSelectedSectionId = useMemo(() => {
     const sectionIds = new Set((data?.sections ?? []).map((section) => section.id));
     if (selectedSectionId && sectionIds.has(selectedSectionId)) return selectedSectionId;
-    return activeSections[0]?.id ?? data?.sections[0]?.id ?? '';
-  }, [activeSections, data?.sections, selectedSectionId]);
+    return visibleSections[0]?.id ?? data?.sections?.[0]?.id ?? '';
+  }, [data?.sections, selectedSectionId, visibleSections]);
 
   const effectiveProductFormSectionId = productForm.sectionId || activeSections[0]?.id || '';
 
@@ -75,8 +79,12 @@ export default function MenuPage() {
 
   const filteredProducts = useMemo(() => {
     if (!effectiveSelectedSectionId) return data?.products ?? [];
-    return (data?.products ?? []).filter((product) => product.sectionId === effectiveSelectedSectionId);
-  }, [data?.products, effectiveSelectedSectionId]);
+    return (data?.products ?? []).filter((product) => {
+      if (product.sectionId !== effectiveSelectedSectionId) return false;
+      if (!showArchived && product.isActive === false) return false;
+      return true;
+    });
+  }, [data?.products, effectiveSelectedSectionId, showArchived]);
 
   const completeAction = useCallback(
     async (notice?: string) => {
@@ -270,6 +278,16 @@ export default function MenuPage() {
 
   return (
     <MobileShell title="المنيو" backHref="/owner">
+      <section className="mb-3 rounded-2xl border bg-white p-3 shadow-sm">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <div className="font-semibold">تصدير المنيو</div>
+            <div className="mt-1 text-xs text-neutral-500">افتح نسخة قابلة للطباعة واحفظها PDF أو اطبعها مباشرة.</div>
+          </div>
+          <Link href="/menu/print" target="_blank" className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-neutral-700">تصدير PDF</Link>
+        </div>
+      </section>
+
       {effectiveError ? (
         <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {effectiveError}
@@ -362,8 +380,16 @@ export default function MenuPage() {
         </section>
 
         <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <div className="text-xs text-slate-500">القائمة اليومية تُظهر الأقسام والأصناف النشطة فقط. عند الحاجة يمكنك إظهار المؤرشفات مؤقتًا للمراجعة.</div>
+            <label className="flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+              <input type="checkbox" checked={showArchived} onChange={(event) => setShowArchived(event.target.checked)} />
+              إظهار المؤرشف/المعطل
+            </label>
+          </div>
+
           <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
-            {(data?.sections ?? []).map((section) => (
+            {visibleSections.map((section) => (
               <button
                 key={section.id}
                 onClick={() => setSelectedSectionId(section.id)}
@@ -379,7 +405,7 @@ export default function MenuPage() {
           </div>
 
           <div className="space-y-2">
-            {(data?.sections ?? []).map((section, sectionIndex) => (
+            {visibleSections.map((section, sectionIndex) => (
               <div key={section.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex items-center justify-between gap-3">
                   <div className="text-right">
@@ -391,7 +417,7 @@ export default function MenuPage() {
                   </div>
                   <div className="flex flex-wrap justify-end gap-2 text-xs">
                     <button onClick={() => void moveSection(section.id, -1)} disabled={busy || sectionIndex === 0} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 disabled:opacity-50">↑</button>
-                    <button onClick={() => void moveSection(section.id, 1)} disabled={busy || sectionIndex === (data?.sections?.length ?? 1) - 1} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 disabled:opacity-50">↓</button>
+                    <button onClick={() => void moveSection(section.id, 1)} disabled={busy || sectionIndex === visibleSections.length - 1} className="rounded-2xl border border-slate-200 bg-white px-3 py-2 disabled:opacity-50">↓</button>
                     <button onClick={() => beginSectionEdit(section)} disabled={busy} className="rounded-2xl border border-slate-200 bg-white px-3 py-2">تعديل</button>
                     <button onClick={() => void toggleSection.run(section.id, !section.isActive)} disabled={busy} className={['rounded-2xl px-3 py-2 font-semibold', section.isActive ? 'border border-amber-300 bg-white text-amber-700' : 'bg-emerald-600 text-white'].join(' ')}>{section.isActive ? 'تعطيل' : 'تفعيل'}</button>
                     <button onClick={() => void confirmSectionDelete(section)} disabled={busy} className="rounded-2xl border border-red-200 bg-white px-3 py-2 text-red-700">حذف/أرشفة</button>
@@ -462,7 +488,9 @@ export default function MenuPage() {
             ))}
 
             {!filteredProducts.length ? (
-              <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">لا توجد أصناف في هذا القسم بعد.</div>
+              <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
+                {showArchived ? 'لا توجد أصناف في هذا القسم حتى مع إظهار المؤرشفات.' : 'لا توجد أصناف نشطة في هذا القسم بعد.'}
+              </div>
             ) : null}
           </div>
         </section>

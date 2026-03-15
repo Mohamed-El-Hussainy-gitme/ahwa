@@ -1,47 +1,70 @@
 import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpsActorContext, requireStationAccess, type OpsActorContext } from '@/app/api/ops/_helpers';
+import {
+  beginIdempotentMutation,
+  type BegunIdempotentMutation,
+  completeIdempotentMutation,
+  jsonError,
+  ok,
+  publishOpsMutation,
+  releaseIdempotentMutation,
+  requireOpsActorContext,
+  requireStationAccess,
+} from '@/app/api/ops/_helpers';
 
 type MarkReadyRpcResult = {
   ok?: boolean;
 };
 
-async function mark(
-  orderItemId: string,
-  quantity: number,
-  rpcName: 'ops_mark_partial_ready' | 'ops_mark_ready',
-  eventType: 'station.partial_ready' | 'station.ready',
-  ctx: OpsActorContext,
-) {
-  if (!orderItemId || !Number.isInteger(quantity) || quantity <= 0) {
-    throw new Error('INVALID_INPUT');
-  }
-
-  const item = await loadOrderItemMutationContext(ctx.cafeId, orderItemId);
-  const stationCode = item.stationCode === 'shisha' ? 'shisha' : 'barista';
-  requireStationAccess(ctx, stationCode);
-
-  await callOpsRpc<MarkReadyRpcResult>(rpcName, {
-    p_cafe_id: ctx.cafeId,
-    p_order_item_id: orderItemId,
-    p_quantity: quantity,
-    ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-  });
-
-  publishOpsMutation(ctx, {
-    type: eventType,
-    entityId: item.id,
-    shiftId: item.shiftId,
-    data: { quantity, stationCode: item.stationCode ?? '' },
-  });
-}
-
 export async function POST(req: Request) {
+  let mutation: BegunIdempotentMutation | null = null;
+
   try {
     const { orderItemId, quantity } = (await req.json()) as { orderItemId?: string; quantity?: number };
+    const normalizedOrderItemId = String(orderItemId ?? '').trim();
+    const normalizedQuantity = Number(quantity ?? 0);
+    if (!normalizedOrderItemId || !Number.isInteger(normalizedQuantity) || normalizedQuantity <= 0) {
+      throw new Error('INVALID_INPUT');
+    }
+
     const ctx = await requireOpsActorContext();
-    await mark(String(orderItemId ?? '').trim(), Number(quantity ?? 0), 'ops_mark_partial_ready', 'station.partial_ready', ctx);
-    return ok({ ok: true });
+    const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId);
+    const stationCode = item.stationCode === 'shisha' ? 'shisha' : 'barista';
+    requireStationAccess(ctx, stationCode);
+
+    const started = await beginIdempotentMutation(req, ctx, 'ops.fulfillment.partial-ready', {
+      orderItemId: normalizedOrderItemId,
+      quantity: normalizedQuantity,
+      stationCode,
+    });
+    if (started.replayResponse) {
+      return started.replayResponse;
+    }
+    mutation = started.mutation;
+
+    await callOpsRpc<MarkReadyRpcResult>('ops_mark_partial_ready', {
+      p_cafe_id: ctx.cafeId,
+      p_order_item_id: normalizedOrderItemId,
+      p_quantity: normalizedQuantity,
+      ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
+    });
+
+    publishOpsMutation(ctx, {
+      type: 'station.partial_ready',
+      entityId: item.id,
+      shiftId: item.shiftId,
+      data: { quantity: normalizedQuantity, stationCode: item.stationCode ?? '' },
+    });
+
+    const responseBody = { ok: true };
+    await completeIdempotentMutation(ctx, mutation, responseBody);
+    return ok(responseBody);
   } catch (e) {
+    if (mutation) {
+      try {
+        const ctx = await requireOpsActorContext();
+        await releaseIdempotentMutation(ctx, mutation);
+      } catch {}
+    }
     return jsonError(e, 400);
   }
 }

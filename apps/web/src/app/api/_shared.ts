@@ -1,3 +1,4 @@
+import { ensureCatalogMessage } from '@/lib/messages/catalog';
 import { NextResponse } from 'next/server';
 
 export class ApiRouteError extends Error {
@@ -13,12 +14,13 @@ export class ApiRouteError extends Error {
 }
 
 export function apiFail(status: number, code: string, message = code) {
+  const resolvedMessage = ensureCatalogMessage(code, message);
   return NextResponse.json(
     {
       ok: false,
       error: {
         code,
-        message,
+        message: resolvedMessage,
       },
     },
     { status },

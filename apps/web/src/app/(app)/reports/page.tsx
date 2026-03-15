@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
@@ -450,9 +451,18 @@ export default function ReportsPage() {
             <div className="font-semibold">التقارير</div>
             <div className="mt-1 text-xs text-neutral-500">مرجع التقرير: {data?.referenceDate ?? '--'}</div>
           </div>
-          <button onClick={() => void reload()} disabled={loading} className="rounded-xl border bg-white px-3 py-2 text-xs disabled:opacity-60">
-            {loading ? '...' : 'تحديث'}
-          </button>
+          <div className="flex items-center gap-2">
+            <Link
+              href={tab === 'deferred' ? '/customers/print' : `/reports/print?tab=${tab}`}
+              target="_blank"
+              className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-neutral-700"
+            >
+              تصدير PDF
+            </Link>
+            <button onClick={() => void reload()} disabled={loading} className="rounded-xl border bg-white px-3 py-2 text-xs disabled:opacity-60">
+              {loading ? '...' : 'تحديث'}
+            </button>
+          </div>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-6">
           {[

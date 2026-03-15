@@ -1,5 +1,16 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireDeferredAccess, requireOpsActorContext, requireOpenOpsShift } from '@/app/api/ops/_helpers';
+import {
+  beginIdempotentMutation,
+  type BegunIdempotentMutation,
+  completeIdempotentMutation,
+  jsonError,
+  ok,
+  publishOpsMutation,
+  releaseIdempotentMutation,
+  requireDeferredAccess,
+  requireOpsActorContext,
+  requireOpenOpsShift,
+} from '@/app/api/ops/_helpers';
 
 type RepaymentRpcResult = {
   ok?: boolean;
@@ -8,6 +19,8 @@ type RepaymentRpcResult = {
 };
 
 export async function POST(req: Request) {
+  let mutation: BegunIdempotentMutation | null = null;
+
   try {
     const { debtorName, amount, notes } = (await req.json()) as {
       debtorName?: string;
@@ -21,6 +34,18 @@ export async function POST(req: Request) {
 
     const ctx = requireDeferredAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId);
+
+    const started = await beginIdempotentMutation(req, ctx, 'ops.deferred.repay', {
+      shiftId: shift.id,
+      debtorName: name,
+      amount: numericAmount,
+      notes: repaymentNotes,
+    });
+    if (started.replayResponse) {
+      return started.replayResponse;
+    }
+    mutation = started.mutation;
+
     const rpc = await callOpsRpc<RepaymentRpcResult>('ops_record_repayment', {
       p_cafe_id: ctx.cafeId,
       p_shift_id: shift.id,
@@ -42,8 +67,16 @@ export async function POST(req: Request) {
       data: { debtorName: name, amount: Number(rpc.repayment_amount ?? numericAmount), notes: repaymentNotes },
     });
 
-    return ok({ ok: true });
+    const responseBody = { ok: true };
+    await completeIdempotentMutation(ctx, mutation, responseBody);
+    return ok(responseBody);
   } catch (e) {
+    if (mutation) {
+      try {
+        const ctx = await requireOpsActorContext();
+        await releaseIdempotentMutation(ctx, mutation);
+      } catch {}
+    }
     return jsonError(e, 400);
   }
 }

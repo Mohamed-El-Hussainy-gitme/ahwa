@@ -468,9 +468,9 @@ function MetricCard({
 }
 
 const views: Array<{ key: ViewKey; label: string }> = [
-  { key: 'overview', label: 'Overview' },
-  { key: 'cafes', label: 'Cafes' },
-  { key: 'money', label: 'Money Follow' },
+  { key: 'overview', label: 'النظرة العامة' },
+  { key: 'cafes', label: 'القهاوي' },
+  { key: 'money', label: 'المتابعة المالية' },
 ];
 
 export default function PlatformDashboardClient({ session }: { session: PlatformAdminSession }) {
@@ -483,7 +483,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
-  const [cafeStatusFilter, setCafeStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [cafeStatusFilter, setCafeStatusFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'free' | 'expired' | 'none'>('all');
   const [createCafe, setCreateCafe] = useState({
     cafeSlug: '',
@@ -660,7 +660,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                     <h2 className="text-lg font-bold text-slate-900">تنبيهات الاشتراك القريبة</h2>
                     <p className="mt-1 text-sm text-slate-500">القهاوي التي تحتاج متابعة سريعة قبل الانتهاء.</p>
                   </div>
-                  <button type="button" onClick={() => setView('money')} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">اذهب إلى Money Follow</button>
+                  <button type="button" onClick={() => setView('money')} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">اذهب إلى المتابعة المالية</button>
                 </div>
                 <div className="mt-4 space-y-3">
                   {expiringSoon.map((cafe) => (
@@ -751,7 +751,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
               <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
                 <div>
                   <h2 className="text-lg font-bold">المقاهي</h2>
-                  <p className="mt-1 text-sm text-slate-500">جدول إداري سريع يدعم الفهرسة والبحث والمتابعة على مستوى الاشتراك والحالة.</p>
+                  <p className="mt-1 text-sm text-slate-500">جدول إداري سريع يدعم الفهرسة والبحث والمتابعة على مستوى الاشتراك والحالة. العرض الافتراضي يركز على القهاوي المفعلة حتى تبقى الشاشة اليومية أنظف.</p>
                 </div>
                 <div className="grid gap-3 md:grid-cols-3 xl:min-w-[720px]">
                   <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="ابحث باسم القهوة أو الـ slug" value={search} onChange={(e) => setSearch(e.target.value)} />

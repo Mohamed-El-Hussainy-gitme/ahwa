@@ -13,6 +13,8 @@ import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
+import { useOpsChrome } from '@/lib/ops/chrome';
+import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
 
 export default function ShishaPage() {
   const { can, shift, effectiveRole } = useAuthz();
@@ -34,6 +36,7 @@ export default function ShishaPage() {
   const { data: orderData, error: orderError, reload: reloadOrders } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
   });
+  const { summary } = useOpsChrome();
 
   const queue = stationData?.queue ?? [];
   const sessions = orderData?.sessions ?? [];
@@ -182,6 +185,7 @@ export default function ShishaPage() {
       ) : null}
 
       <div className="space-y-3">
+        <QueueHealthStrip health={summary?.queueHealth ?? null} />
         <div className="rounded-2xl border border-slate-200 p-3">
           <div className="mb-2 flex items-center justify-between gap-2">
             <div className="text-sm font-semibold text-slate-700">جلسات الشيشة</div>

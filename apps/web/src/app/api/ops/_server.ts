@@ -7,6 +7,7 @@ import type {
   ComplaintsWorkspace,
   DashboardWorkspace,
   OpsNavSummary,
+  OpsQueueHealth,
   DeferredCustomerLedgerWorkspace,
   DeferredCustomerSummary,
   DeferredLedgerEntry,
@@ -332,6 +333,21 @@ function startOfUtcDay(value: Date): number {
   return Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate());
 }
 
+const STALLED_SESSION_THRESHOLD_MINUTES = 15;
+
+function minutesSince(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return null;
+  return Math.max(Math.floor((Date.now() - parsed.getTime()) / 60_000), 0);
+}
+
+function maxIso(left: string | null | undefined, right: string | null | undefined): string | null {
+  if (!left) return right ?? null;
+  if (!right) return left;
+  return left >= right ? left : right;
+}
+
 function computeDeferredDerivedState(balance: number, lastDebtAt: string | null): DeferredDerivedState {
   if (balance <= 0) {
     return { status: 'settled', agingBucket: 'settled', ageDays: null };
@@ -655,6 +671,94 @@ export async function buildDashboardWorkspace(cafeId: string): Promise<Dashboard
     const kind = String((row as any).entry_kind ?? '');
     deferredOutstanding += kind === 'debt' ? amount : kind === 'repayment' ? -amount : 0;
   }
+
+  let queueHealth: OpsQueueHealth = {
+    oldestPendingMinutes: null,
+    oldestReadyMinutes: null,
+    stalledSessionsCount: 0,
+    stalledThresholdMinutes: STALLED_SESSION_THRESHOLD_MINUTES,
+  };
+
+  if (waiter.shift) {
+    const openSessionIds = waiter.sessions.map((session) => session.id);
+    const readyItemIds = new Set(waiter.readyItems.map((item) => item.orderItemId));
+    const oldestPendingSource = [...stationBarista.queue, ...stationShisha.queue]
+      .map((item) => item.createdAt)
+      .filter(Boolean)
+      .sort()[0] ?? null;
+
+    const [ordersResult, paymentsResult, eventsResult] = await Promise.all([
+      admin
+        .from('orders')
+        .select('service_session_id, created_at, submitted_at')
+        .eq('cafe_id', cafeId)
+        .eq('shift_id', waiter.shift.id),
+      admin
+        .from('payments')
+        .select('service_session_id, created_at')
+        .eq('cafe_id', cafeId)
+        .eq('shift_id', waiter.shift.id),
+      admin
+        .from('fulfillment_events')
+        .select('service_session_id, order_item_id, event_code, created_at')
+        .eq('cafe_id', cafeId)
+        .eq('shift_id', waiter.shift.id),
+    ]);
+
+    if (ordersResult.error) throw ordersResult.error;
+    if (paymentsResult.error) throw paymentsResult.error;
+    if (eventsResult.error) throw eventsResult.error;
+
+    const sessionActivity = new Map<string, string>();
+    for (const session of waiter.sessions) {
+      sessionActivity.set(session.id, session.openedAt);
+    }
+
+    for (const row of ordersResult.data ?? []) {
+      const sessionId = String((row as any).service_session_id ?? '');
+      if (!sessionId || !openSessionIds.includes(sessionId)) continue;
+      const latest = maxIso(String((row as any).created_at ?? ''), (row as any).submitted_at ? String((row as any).submitted_at) : null);
+      sessionActivity.set(sessionId, maxIso(sessionActivity.get(sessionId), latest) ?? sessionActivity.get(sessionId) ?? '');
+    }
+
+    for (const row of paymentsResult.data ?? []) {
+      const sessionId = String((row as any).service_session_id ?? '');
+      if (!sessionId || !openSessionIds.includes(sessionId)) continue;
+      const createdAt = String((row as any).created_at ?? '');
+      sessionActivity.set(sessionId, maxIso(sessionActivity.get(sessionId), createdAt) ?? sessionActivity.get(sessionId) ?? '');
+    }
+
+    const readyEventByItem = new Map<string, string>();
+    for (const row of eventsResult.data ?? []) {
+      const sessionId = String((row as any).service_session_id ?? '');
+      const createdAt = String((row as any).created_at ?? '');
+      if (sessionId && openSessionIds.includes(sessionId)) {
+        sessionActivity.set(sessionId, maxIso(sessionActivity.get(sessionId), createdAt) ?? sessionActivity.get(sessionId) ?? '');
+      }
+
+      const orderItemId = String((row as any).order_item_id ?? '');
+      const eventCode = String((row as any).event_code ?? '');
+      if (orderItemId && readyItemIds.has(orderItemId) && (eventCode === 'ready' || eventCode === 'partial_ready')) {
+        readyEventByItem.set(orderItemId, maxIso(readyEventByItem.get(orderItemId), createdAt) ?? createdAt);
+      }
+    }
+
+    const oldestReadySource = waiter.readyItems
+      .map((item) => readyEventByItem.get(item.orderItemId) ?? null)
+      .filter(Boolean)
+      .sort()[0] ?? null;
+
+    queueHealth = {
+      oldestPendingMinutes: minutesSince(oldestPendingSource),
+      oldestReadyMinutes: minutesSince(oldestReadySource),
+      stalledSessionsCount: waiter.sessions.reduce((count, session) => {
+        const age = minutesSince(sessionActivity.get(session.id));
+        return count + (age != null && age >= STALLED_SESSION_THRESHOLD_MINUTES ? 1 : 0);
+      }, 0),
+      stalledThresholdMinutes: STALLED_SESSION_THRESHOLD_MINUTES,
+    };
+  }
+
   return {
     shift: waiter.shift,
     openSessions: waiter.sessions.length,
@@ -663,6 +767,7 @@ export async function buildDashboardWorkspace(cafeId: string): Promise<Dashboard
     readyForDelivery: waiter.readyItems.reduce((sum, item) => sum + item.qtyReadyForDelivery, 0),
     billableQty: billing.sessions.reduce((sum, session) => sum + session.totalBillableQty, 0),
     deferredOutstanding,
+    queueHealth,
   };
 }
 

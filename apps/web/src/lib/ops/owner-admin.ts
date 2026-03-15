@@ -19,7 +19,7 @@ export function currentCairoDate(): string {
 export async function listStaffMembers(cafeId: string, includeInactive = false) {
   let query = ops()
     .from('staff_members')
-    .select('id, full_name, employee_code, is_active, created_at')
+    .select('id, full_name, employee_code, is_active, employment_status, created_at')
     .eq('cafe_id', cafeId)
     .order('created_at', { ascending: false });
 
@@ -35,6 +35,7 @@ export async function listStaffMembers(cafeId: string, includeInactive = false) 
     fullName: item.full_name ? String(item.full_name) : null,
     employeeCode: item.employee_code ? String(item.employee_code) : null,
     isActive: !!item.is_active,
+    employmentStatus: item.employment_status ? String(item.employment_status) as 'active' | 'inactive' | 'left' : (!!item.is_active ? 'active' : 'inactive'),
     createdAt: String(item.created_at),
   }));
 }
@@ -62,6 +63,15 @@ export async function setStaffMemberActive(cafeId: string, staffMemberId: string
     p_cafe_id: cafeId,
     p_staff_member_id: staffMemberId,
     p_is_active: isActive,
+  });
+  if (rpc.error) throw rpc.error;
+}
+
+export async function setStaffMemberStatus(cafeId: string, staffMemberId: string, employmentStatus: 'active' | 'inactive' | 'left') {
+  const rpc = await supabaseAdmin().rpc('ops_set_staff_member_status', {
+    p_cafe_id: cafeId,
+    p_staff_member_id: staffMemberId,
+    p_employment_status: employmentStatus,
   });
   if (rpc.error) throw rpc.error;
 }

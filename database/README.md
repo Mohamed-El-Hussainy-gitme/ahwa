@@ -74,3 +74,5 @@ Super admin overview/detail become administrative-only and no longer expose deta
 ### 0022
 Final security/access lock.
 Disables platform support grants in the canonical access path and keeps tenant data access scoped to `app.current_cafe_id()` only.
+
+- `0024_staff_employment_status_lifecycle.sql` — adds staff lifecycle states (`active`, `inactive`, `left`) and hardens assignment/login against inactive staff.
