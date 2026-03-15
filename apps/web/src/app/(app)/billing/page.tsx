@@ -18,7 +18,7 @@ export default function BillingPage() {
   const [localError, setLocalError] = useState<string | null>(null);
 
   const loader = useCallback(() => opsClient.billingWorkspace(), []);
-  const { data, error, reload } = useOpsWorkspace<BillingWorkspace>(loader, { enabled: Boolean(shift) });
+  const { data, error } = useOpsWorkspace<BillingWorkspace>(loader, { enabled: Boolean(shift) });
 
   const effectiveSessionId = sessionId || data?.sessions[0]?.sessionId || '';
   const current = useMemo(
@@ -48,9 +48,7 @@ export default function BillingPage() {
       const currentSessionId = effectiveSessionId;
       await opsClient.settle(allocations());
       setSelectedQty({});
-      await reload();
       await finalizeSessionIfPossible(currentSessionId);
-      await reload();
     },
     { onError: setLocalError },
   );
@@ -61,9 +59,7 @@ export default function BillingPage() {
       await opsClient.defer(debtorName, allocations());
       setSelectedQty({});
       setDebtorName('');
-      await reload();
       await finalizeSessionIfPossible(currentSessionId);
-      await reload();
     },
     { onError: setLocalError },
   );

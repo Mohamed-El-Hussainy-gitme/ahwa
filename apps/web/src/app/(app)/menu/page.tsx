@@ -55,7 +55,7 @@ export default function MenuPage() {
   });
 
   const loader = useCallback(() => opsClient.menuWorkspace(), []);
-  const { data, error, reload } = useOpsWorkspace<MenuWorkspace>(loader, { enabled: can.manageMenu });
+  const { data, error } = useOpsWorkspace<MenuWorkspace>(loader, { enabled: can.manageMenu });
 
   const activeSections = useMemo(() => (data?.sections ?? []).filter((section) => section.isActive !== false), [data?.sections]);
 
@@ -88,11 +88,10 @@ export default function MenuPage() {
 
   const completeAction = useCallback(
     async (notice?: string) => {
-      await reload();
       setLocalError(null);
       if (notice) setLocalNotice(notice);
     },
-    [reload],
+    [],
   );
 
   const createSection = useOpsCommand(

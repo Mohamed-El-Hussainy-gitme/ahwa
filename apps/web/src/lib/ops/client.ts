@@ -14,9 +14,16 @@ import type {
 } from './types';
 
 import { apiGet, apiPost } from '@/lib/http/client';
+import { invalidateOpsWorkspaces } from './invalidation';
 
 const post = apiPost;
 const get = apiGet;
+
+async function mutate<T>(request: Promise<T>): Promise<T> {
+  const result = await request;
+  invalidateOpsWorkspaces();
+  return result;
+}
 
 export const opsClient = {
   waiterWorkspace: () => post<WaiterWorkspace>('/api/ops/workspaces/waiter'),
@@ -36,27 +43,27 @@ export const opsClient = {
   ownerOnboardingGuide: () => get<OwnerOnboardingGuide>('/api/owner/onboarding/guide'),
 
   openOrResumeSession: (label?: string) =>
-    post<{ sessionId: string; label: string }>('/api/ops/sessions/open-or-resume', { label }),
+    mutate(post<{ sessionId: string; label: string }>('/api/ops/sessions/open-or-resume', { label })),
 
   createOrderWithItems: (input: {
     serviceSessionId: string;
     items: Array<{ productId: string; quantity: number }>;
-  }) => post<{ ok: true }>('/api/ops/orders/create-with-items', input),
+  }) => mutate(post<{ ok: true }>('/api/ops/orders/create-with-items', input)),
 
   markPartialReady: (orderItemId: string, quantity: number) =>
-    post<{ ok: true }>('/api/ops/fulfillment/partial-ready', { orderItemId, quantity }, {
+    mutate(post<{ ok: true }>('/api/ops/fulfillment/partial-ready', { orderItemId, quantity }, {
       idempotency: { scope: 'ops.fulfillment.partial-ready' },
-    }),
+    })),
 
   markReady: (orderItemId: string, quantity: number) =>
-    post<{ ok: true }>('/api/ops/fulfillment/ready', { orderItemId, quantity }, {
+    mutate(post<{ ok: true }>('/api/ops/fulfillment/ready', { orderItemId, quantity }, {
       idempotency: { scope: 'ops.fulfillment.ready' },
-    }),
+    })),
 
   requestRemake: (orderItemId: string, quantity: number) =>
-    post<{ ok: true }>('/api/ops/fulfillment/remake', { orderItemId, quantity }, {
+    mutate(post<{ ok: true }>('/api/ops/fulfillment/remake', { orderItemId, quantity }, {
       idempotency: { scope: 'ops.fulfillment.remake' },
-    }),
+    })),
 
   createComplaint: (input: {
     mode?: 'general' | 'item';
@@ -66,71 +73,71 @@ export const opsClient = {
     quantity?: number;
     notes?: string;
     action?: 'none' | 'remake' | 'cancel_undelivered' | 'waive_delivered';
-  }) => post<{ ok: true; complaintId?: string; itemIssueId?: string }>('/api/ops/complaints/create', input),
+  }) => mutate(post<{ ok: true; complaintId?: string; itemIssueId?: string }>('/api/ops/complaints/create', input)),
 
   resolveComplaint: (input: {
     complaintId: string;
     resolutionKind: 'resolved' | 'dismissed';
     notes?: string;
-  }) => post<{ ok: true }>('/api/ops/complaints/resolve', input),
+  }) => mutate(post<{ ok: true }>('/api/ops/complaints/resolve', input)),
 
   deliver: (orderItemId: string, quantity: number) =>
-    post<{ ok: true }>('/api/ops/delivery/deliver', { orderItemId, quantity }, {
+    mutate(post<{ ok: true }>('/api/ops/delivery/deliver', { orderItemId, quantity }, {
       idempotency: { scope: 'ops.delivery.deliver' },
-    }),
+    })),
 
   settle: (allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    post<{ ok: true }>('/api/ops/billing/settle', { allocations }, {
+    mutate(post<{ ok: true }>('/api/ops/billing/settle', { allocations }, {
       idempotency: { scope: 'ops.billing.settle' },
-    }),
+    })),
 
   defer: (debtorName: string, allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    post<{ ok: true }>('/api/ops/billing/defer', { debtorName, allocations }, {
+    mutate(post<{ ok: true }>('/api/ops/billing/defer', { debtorName, allocations }, {
       idempotency: { scope: 'ops.billing.defer' },
-    }),
+    })),
 
   repay: (debtorName: string, amount: number, notes?: string) =>
-    post<{ ok: true }>('/api/ops/deferred/repay', { debtorName, amount, notes }, {
+    mutate(post<{ ok: true }>('/api/ops/deferred/repay', { debtorName, amount, notes }, {
       idempotency: { scope: 'ops.deferred.repay' },
-    }),
+    })),
 
   addDeferredDebt: (debtorName: string, amount: number, notes?: string) =>
-    post<{ ok: true }>('/api/ops/deferred/add-debt', { debtorName, amount, notes }, {
+    mutate(post<{ ok: true }>('/api/ops/deferred/add-debt', { debtorName, amount, notes }, {
       idempotency: { scope: 'ops.deferred.add-debt' },
-    }),
+    })),
 
   closeSession: (serviceSessionId: string) =>
-    post<{ ok: true }>('/api/ops/sessions/close', { serviceSessionId }),
+    mutate(post<{ ok: true }>('/api/ops/sessions/close', { serviceSessionId })),
 
   createMenuSection: (input: {
     title: string;
     stationCode: StationCode;
-  }) => post<{ sectionId: string }>('/api/ops/menu/sections/create', input),
+  }) => mutate(post<{ sectionId: string }>('/api/ops/menu/sections/create', input)),
 
   toggleMenuSection: (sectionId: string, isActive: boolean) =>
-    post<{ ok: true }>('/api/ops/menu/sections/toggle', { sectionId, isActive }),
+    mutate(post<{ ok: true }>('/api/ops/menu/sections/toggle', { sectionId, isActive })),
 
   updateMenuSection: (input: {
     sectionId: string;
     title: string;
     stationCode: StationCode;
-  }) => post<{ ok: true }>('/api/ops/menu/sections/update', input),
+  }) => mutate(post<{ ok: true }>('/api/ops/menu/sections/update', input)),
 
   reorderMenuSections: (sectionIds: string[]) =>
-    post<{ ok: true }>('/api/ops/menu/sections/reorder', { sectionIds }),
+    mutate(post<{ ok: true }>('/api/ops/menu/sections/reorder', { sectionIds })),
 
   deleteMenuSection: (sectionId: string) =>
-    post<{ ok: true; mode: 'deleted' | 'archived' }>('/api/ops/menu/sections/delete', { sectionId }),
+    mutate(post<{ ok: true; mode: 'deleted' | 'archived' }>('/api/ops/menu/sections/delete', { sectionId })),
 
   createMenuProduct: (input: {
     sectionId: string;
     productName: string;
     stationCode: StationCode;
     unitPrice: number;
-  }) => post<{ productId: string }>('/api/ops/menu/products/create', input),
+  }) => mutate(post<{ productId: string }>('/api/ops/menu/products/create', input)),
 
   toggleMenuProduct: (productId: string, isActive: boolean) =>
-    post<{ ok: true }>('/api/ops/menu/products/toggle', { productId, isActive }),
+    mutate(post<{ ok: true }>('/api/ops/menu/products/toggle', { productId, isActive })),
 
   updateMenuProduct: (input: {
     productId: string;
@@ -138,11 +145,11 @@ export const opsClient = {
     productName: string;
     stationCode: StationCode;
     unitPrice: number;
-  }) => post<{ ok: true }>('/api/ops/menu/products/update', input),
+  }) => mutate(post<{ ok: true }>('/api/ops/menu/products/update', input)),
 
   reorderMenuProducts: (sectionId: string, productIds: string[]) =>
-    post<{ ok: true }>('/api/ops/menu/products/reorder', { sectionId, productIds }),
+    mutate(post<{ ok: true }>('/api/ops/menu/products/reorder', { sectionId, productIds })),
 
   deleteMenuProduct: (productId: string) =>
-    post<{ ok: true; mode: 'deleted' | 'archived' }>('/api/ops/menu/products/delete', { productId }),
+    mutate(post<{ ok: true; mode: 'deleted' | 'archived' }>('/api/ops/menu/products/delete', { productId })),
 };

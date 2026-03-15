@@ -67,7 +67,7 @@ export default function CustomerLedgerPage() {
   const [localError, setLocalError] = useState<string | null>(null);
 
   const loader = useCallback(() => opsClient.deferredCustomerLedger(debtorName), [debtorName]);
-  const { data, error, reload } = useOpsWorkspace<DeferredCustomerLedgerWorkspace>(loader, {
+  const { data, error } = useOpsWorkspace<DeferredCustomerLedgerWorkspace>(loader, {
     enabled: Boolean(debtorName),
   });
 
@@ -89,7 +89,6 @@ export default function CustomerLedgerPage() {
       }
       setAmount('');
       setNotes('');
-      await reload();
     },
     { onError: setLocalError },
   );

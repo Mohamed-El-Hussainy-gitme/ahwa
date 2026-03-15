@@ -16,7 +16,7 @@ export default function KitchenPage() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
   const loader = useCallback(() => opsClient.stationWorkspace('barista'), []);
-  const { data, error, reload } = useOpsWorkspace<StationWorkspace>(loader, {
+  const { data, error } = useOpsWorkspace<StationWorkspace>(loader, {
     enabled: Boolean(shift),
   });
   const { summary } = useOpsChrome();
@@ -24,7 +24,6 @@ export default function KitchenPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.markReady(orderItemId, quantity);
       setSelectedQty((state) => ({ ...state, [orderItemId]: 0 }));
-      await reload();
     },
     { onError: setLocalError },
   );

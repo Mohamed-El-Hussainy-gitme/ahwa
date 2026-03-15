@@ -55,6 +55,7 @@ const expected = new Map([
   ['apps/web/src/app/api/ops/workspaces/deferred-customer-ledger/route.ts', ['requireOpsActorContext', 'requireDeferredAccess']],
   ['apps/web/src/app/api/ops/workspaces/deferred-customers/route.ts', ['requireOpsActorContext', 'requireDeferredAccess']],
   ['apps/web/src/app/api/ops/workspaces/menu/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
+  ['apps/web/src/app/api/ops/workspaces/nav-summary/route.ts', ['requireOpsActorContext']],
   ['apps/web/src/app/api/ops/workspaces/reports/route.ts', ['requireOpsActorContext', 'requireReportsAccess']],
   ['apps/web/src/app/api/ops/workspaces/station/route.ts', ['requireOpsActorContext', 'requireStationAccess']],
   ['apps/web/src/app/api/ops/workspaces/waiter/route.ts', ['requireOpsActorContext', 'requireWaiterWorkspaceAccess']],
@@ -62,11 +63,16 @@ const expected = new Map([
   ['apps/web/src/app/api/owner/shift/close-snapshot/route.ts', ['requireOpsActorContext', 'requireOwnerOrSupervisor']],
   ['apps/web/src/app/api/owner/shift/history/route.ts', ['requireOpsActorContext', 'requireOwnerOrSupervisor']],
   ['apps/web/src/app/api/owner/shift/open/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
+  ['apps/web/src/app/api/owner/onboarding/guide/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
+  ['apps/web/src/app/api/owner/recovery/close-session/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
+  ['apps/web/src/app/api/owner/recovery/release-stale-locks/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
+  ['apps/web/src/app/api/owner/recovery/state/route.ts', ['requireOpsActorContext', 'requireOwnerOrSupervisor']],
   ['apps/web/src/app/api/owner/shift/state/route.ts', ['requireOpsActorContext', 'requireOwnerOrSupervisor']],
   ['apps/web/src/app/api/owner/staff/create/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
   ['apps/web/src/app/api/owner/staff/list/route.ts', ['requireOpsActorContext', 'requireOwnerOrSupervisor']],
   ['apps/web/src/app/api/owner/staff/set-active/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
   ['apps/web/src/app/api/owner/staff/set-pin/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
+  ['apps/web/src/app/api/owner/staff/set-status/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
 ]);
 
 const actualRoutes = new Set([

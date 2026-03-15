@@ -60,7 +60,7 @@ export default function CustomersPage() {
   const [localError, setLocalError] = useState<string | null>(null);
 
   const loader = useCallback(() => opsClient.deferredCustomersWorkspace(), []);
-  const { data, error, reload } = useOpsWorkspace<{ items: DeferredCustomerSummary[] }>(loader, {
+  const { data, error } = useOpsWorkspace<{ items: DeferredCustomerSummary[] }>(loader, {
     enabled: can.owner || can.billing,
   });
 
@@ -111,7 +111,6 @@ export default function CustomersPage() {
       setDebtorName('');
       setAmount('');
       setNotes('');
-      await reload();
     },
     { onError: setLocalError },
   );

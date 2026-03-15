@@ -1,60 +1,170 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OpsRealtimeEvent } from './types';
 import { subscribeOpsRealtime } from './realtime';
+import { subscribeOpsInvalidation } from './invalidation';
 
 type WorkspaceOptions = {
   enabled?: boolean;
   shouldReloadOnEvent?: (event: OpsRealtimeEvent) => boolean;
+  staleTimeMs?: number;
+  realtimeDebounceMs?: number;
 };
 
+type ReloadMode = 'manual' | 'background';
+
+const DEFAULT_STALE_TIME_MS = 15_000;
+const DEFAULT_REALTIME_DEBOUNCE_MS = 120;
+
+function isStale(lastLoadedAt: number | null, staleTimeMs: number, hasError: boolean) {
+  if (hasError || lastLoadedAt === null) {
+    return true;
+  }
+  return Date.now() - lastLoadedAt >= staleTimeMs;
+}
+
 export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceOptions = {}) {
-  const { enabled = true, shouldReloadOnEvent } = options;
+  const {
+    enabled = true,
+    shouldReloadOnEvent,
+    staleTimeMs = DEFAULT_STALE_TIME_MS,
+    realtimeDebounceMs = DEFAULT_REALTIME_DEBOUNCE_MS,
+  } = options;
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  const reload = useCallback(async () => {
-    if (!enabled) {
-      return null;
-    }
-
-    setLoading(true);
-    try {
-      const next = await loader();
-      setData(next);
-      setError(null);
-      return next;
-    } catch (loadError) {
-      const message = loadError instanceof Error ? loadError.message : 'REQUEST_FAILED';
-      setError(message);
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, [enabled, loader]);
+  const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
+  const inFlightRef = useRef<Promise<T | null> | null>(null);
+  const queuedRef = useRef(false);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLoadedAtRef = useRef<number | null>(null);
+  const errorRef = useRef<string | null>(null);
 
   useEffect(() => {
-    void reload();
-  }, [reload]);
+    lastLoadedAtRef.current = lastLoadedAt;
+  }, [lastLoadedAt]);
+
+  useEffect(() => {
+    errorRef.current = error;
+  }, [error]);
+
+  const clearReloadTimer = useCallback(() => {
+    if (reloadTimerRef.current) {
+      clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = null;
+    }
+  }, []);
+
+  const runReload = useCallback(
+    async (mode: ReloadMode) => {
+      if (!enabled) {
+        setData(null);
+        setError(null);
+        setLoading(false);
+        setLastLoadedAt(null);
+        return null;
+      }
+
+      if (inFlightRef.current) {
+        queuedRef.current = true;
+        return inFlightRef.current;
+      }
+
+      if (mode === 'manual') {
+        setLoading(true);
+      }
+
+      const request = (async () => {
+        try {
+          const next = await loader();
+          const loadedAt = Date.now();
+          setData(next);
+          setError(null);
+          setLastLoadedAt(loadedAt);
+          return next;
+        } catch (loadError) {
+          const message = loadError instanceof Error ? loadError.message : 'REQUEST_FAILED';
+          setError(message);
+          return null;
+        } finally {
+          inFlightRef.current = null;
+          if (mode === 'manual') {
+            setLoading(false);
+          }
+          if (queuedRef.current) {
+            queuedRef.current = false;
+            void runReload('background');
+          }
+        }
+      })();
+
+      inFlightRef.current = request;
+      return request;
+    },
+    [enabled, loader],
+  );
+
+  const reload = useCallback(async () => runReload('manual'), [runReload]);
+
+  const scheduleBackgroundReload = useCallback(() => {
+    clearReloadTimer();
+    reloadTimerRef.current = setTimeout(() => {
+      reloadTimerRef.current = null;
+      void runReload('background');
+    }, realtimeDebounceMs);
+  }, [clearReloadTimer, realtimeDebounceMs, runReload]);
+
+  useEffect(() => {
+    void runReload('manual');
+  }, [runReload]);
 
   useEffect(() => {
     if (!enabled) {
+      clearReloadTimer();
       return;
     }
 
-    return subscribeOpsRealtime((event) => {
+    const shouldRevalidate = () => isStale(lastLoadedAtRef.current, staleTimeMs, Boolean(errorRef.current));
+
+    const unsubscribeRealtime = subscribeOpsRealtime((event) => {
       if (shouldReloadOnEvent && !shouldReloadOnEvent(event)) {
         return;
       }
-      void reload();
+      scheduleBackgroundReload();
     });
-  }, [enabled, reload, shouldReloadOnEvent]);
+
+    const unsubscribeInvalidation = subscribeOpsInvalidation(() => {
+      scheduleBackgroundReload();
+    });
+
+    const onFocus = () => {
+      if (shouldRevalidate()) {
+        scheduleBackgroundReload();
+      }
+    };
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible' && shouldRevalidate()) {
+        scheduleBackgroundReload();
+      }
+    };
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      unsubscribeRealtime();
+      unsubscribeInvalidation();
+      clearReloadTimer();
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [clearReloadTimer, enabled, realtimeDebounceMs, scheduleBackgroundReload, shouldReloadOnEvent, staleTimeMs]);
 
   return useMemo(
-    () => ({ data, setData, loading, error, reload }),
-    [data, loading, error, reload],
+    () => ({ data, setData, loading, error, reload, lastLoadedAt }),
+    [data, loading, error, reload, lastLoadedAt],
   );
 }
 

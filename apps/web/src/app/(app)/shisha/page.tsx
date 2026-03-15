@@ -30,10 +30,10 @@ export default function ShishaPage() {
 
   const stationLoader = useCallback(() => opsClient.stationWorkspace('shisha'), []);
   const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data: stationData, error: stationError, reload: reloadStation } = useOpsWorkspace<StationWorkspace>(stationLoader, {
+  const { data: stationData, error: stationError } = useOpsWorkspace<StationWorkspace>(stationLoader, {
     enabled: Boolean(shift),
   });
-  const { data: orderData, error: orderError, reload: reloadOrders } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
+  const { data: orderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
   });
   const { summary } = useOpsChrome();
@@ -58,7 +58,6 @@ export default function ShishaPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.markReady(orderItemId, quantity);
       setQueueSelection((state) => ({ ...state, [orderItemId]: 1 }));
-      await Promise.all([reloadStation(), reloadOrders()]);
     },
     { onError: setLocalError },
   );
@@ -67,7 +66,6 @@ export default function ShishaPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.deliver(orderItemId, quantity);
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
-      await Promise.all([reloadStation(), reloadOrders()]);
     },
     { onError: setLocalError },
   );
@@ -83,7 +81,6 @@ export default function ShishaPage() {
         action: 'remake',
       });
       setRemakeSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
-      await Promise.all([reloadStation(), reloadOrders()]);
     },
     { onError: setLocalError },
   );
@@ -110,7 +107,6 @@ export default function ShishaPage() {
 
       setDraft({});
       setLabel('');
-      await Promise.all([reloadStation(), reloadOrders()]);
     },
     { onError: setLocalError },
   );
@@ -248,7 +244,6 @@ export default function ShishaPage() {
                   notes,
                   action: 'none',
                 });
-                await Promise.all([reloadStation(), reloadOrders()]);
               }}
             />
           ) : null}

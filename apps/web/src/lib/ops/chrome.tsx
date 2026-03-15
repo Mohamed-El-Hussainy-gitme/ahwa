@@ -3,6 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthz } from '@/lib/authz';
 import { subscribeOpsRealtime, useOpsRealtimeStatus } from '@/lib/ops/realtime';
+import { subscribeOpsInvalidation } from '@/lib/ops/invalidation';
 import type { OpsNavSummary } from '@/lib/ops/types';
 
 export type OpsChromeState = {
@@ -14,6 +15,8 @@ export type OpsChromeState = {
 };
 
 const OpsChromeContext = createContext<OpsChromeState | null>(null);
+const SUMMARY_STALE_TIME_MS = 15_000;
+const SUMMARY_DEBOUNCE_MS = 150;
 
 async function loadSummary(): Promise<OpsNavSummary> {
   const res = await fetch('/api/ops/workspaces/nav-summary', {
@@ -36,52 +39,105 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  const queuedRef = useRef(false);
+  const lastLoadedAtRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    lastLoadedAtRef.current = lastLoadedAt;
+  }, [lastLoadedAt]);
 
   const enabled = Boolean(user);
 
-  const reload = useCallback(async () => {
+  const clearReloadTimer = useCallback(() => {
+    if (reloadTimerRef.current) {
+      clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = null;
+    }
+  }, []);
+
+  const runReload = useCallback(async (mode: 'manual' | 'background') => {
     if (!enabled) {
       setSummary(null);
       setLastLoadedAt(null);
+      setLoading(false);
       return;
     }
 
-    setLoading(true);
-    try {
-      const next = await loadSummary();
-      setSummary(next);
-      setLastLoadedAt(Date.now());
-    } catch {
-      setSummary((current) => current);
-    } finally {
-      setLoading(false);
+    if (inFlightRef.current) {
+      queuedRef.current = true;
+      return inFlightRef.current;
     }
+
+    if (mode === 'manual') {
+      setLoading(true);
+    }
+
+    const request = (async () => {
+      try {
+        const next = await loadSummary();
+        setSummary(next);
+        setLastLoadedAt(Date.now());
+      } catch {
+        setSummary((current) => current);
+      } finally {
+        inFlightRef.current = null;
+        if (mode === 'manual') {
+          setLoading(false);
+        }
+        if (queuedRef.current) {
+          queuedRef.current = false;
+          void runReload('background');
+        }
+      }
+    })();
+
+    inFlightRef.current = request;
+    return request;
   }, [enabled]);
 
+  const reload = useCallback(async () => {
+    await runReload('manual');
+  }, [runReload]);
+
+  const scheduleReload = useCallback(() => {
+    clearReloadTimer();
+    reloadTimerRef.current = setTimeout(() => {
+      reloadTimerRef.current = null;
+      void runReload('background');
+    }, SUMMARY_DEBOUNCE_MS);
+  }, [clearReloadTimer, runReload]);
+
   useEffect(() => {
-    void reload();
-  }, [reload, shift?.id]);
+    void runReload('manual');
+  }, [runReload, shift?.id]);
 
   useEffect(() => {
     if (!enabled) return;
 
-    const scheduleReload = () => {
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current);
+    const shouldRevalidate = () => {
+      if (lastLoadedAtRef.current === null) {
+        return true;
       }
-      reloadTimerRef.current = setTimeout(() => {
-        void reload();
-      }, 250);
+      return Date.now() - lastLoadedAtRef.current >= SUMMARY_STALE_TIME_MS;
     };
 
-    const unsubscribe = subscribeOpsRealtime(() => {
+    const unsubscribeRealtime = subscribeOpsRealtime(() => {
       scheduleReload();
     });
 
-    const onFocus = () => void reload();
+    const unsubscribeInvalidation = subscribeOpsInvalidation(() => {
+      scheduleReload();
+    });
+
+    const onFocus = () => {
+      if (shouldRevalidate()) {
+        scheduleReload();
+      }
+    };
     const onVisible = () => {
-      if (document.visibilityState === 'visible') {
-        void reload();
+      if (document.visibilityState === 'visible' && shouldRevalidate()) {
+        scheduleReload();
       }
     };
 
@@ -89,15 +145,13 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
     document.addEventListener('visibilitychange', onVisible);
 
     return () => {
-      unsubscribe();
-      if (reloadTimerRef.current) {
-        clearTimeout(reloadTimerRef.current);
-        reloadTimerRef.current = null;
-      }
+      unsubscribeRealtime();
+      unsubscribeInvalidation();
+      clearReloadTimer();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [enabled, reload]);
+  }, [clearReloadTimer, enabled, scheduleReload]);
 
   const value = useMemo<OpsChromeState>(
     () => ({ summary, loading, lastLoadedAt, reload, sync }),

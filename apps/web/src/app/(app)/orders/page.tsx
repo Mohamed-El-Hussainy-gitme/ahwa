@@ -27,7 +27,7 @@ export default function OrdersPage() {
   const [remakeSelection, setRemakeSelection] = useState<Record<string, number>>({});
 
   const loader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data, error: workspaceError, reload } = useOpsWorkspace<WaiterWorkspace>(loader, {
+  const { data, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
     enabled: Boolean(shift),
   });
   const { summary } = useOpsChrome();
@@ -73,7 +73,6 @@ export default function OrdersPage() {
 
       setDraft({});
       setLabel('');
-      await reload();
     },
     { onError: setCommandError },
   );
@@ -82,7 +81,6 @@ export default function OrdersPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.deliver(orderItemId, quantity);
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
-      await reload();
     },
     { onError: setCommandError },
   );
@@ -98,7 +96,6 @@ export default function OrdersPage() {
         action: 'remake',
       });
       setRemakeSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
-      await reload();
     },
     { onError: setCommandError },
   );
@@ -226,7 +223,6 @@ export default function OrdersPage() {
                   notes,
                   action: 'none',
                 });
-                await reload();
               }}
             />
           ) : null}

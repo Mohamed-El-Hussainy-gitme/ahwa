@@ -71,7 +71,7 @@ export default function ComplaintsPage() {
   const [generalNotes, setGeneralNotes] = useState('');
 
   const loader = useCallback(() => opsClient.complaintsWorkspace(), []);
-  const { data, error, reload } = useOpsWorkspace<ComplaintsWorkspace>(loader, {
+  const { data, error } = useOpsWorkspace<ComplaintsWorkspace>(loader, {
     enabled: Boolean(shift),
   });
 
@@ -92,7 +92,6 @@ export default function ComplaintsPage() {
         action: 'none',
       });
       setGeneralNotes('');
-      await reload();
     },
     { onError: setLocalError },
   );
@@ -118,7 +117,6 @@ export default function ComplaintsPage() {
       });
       setSelectedQty((state) => ({ ...state, [item.orderItemId]: 1 }));
       setNotesByItem((state) => ({ ...state, [item.orderItemId]: '' }));
-      await reload();
     },
     { onError: setLocalError },
   );
@@ -129,7 +127,6 @@ export default function ComplaintsPage() {
         complaintId: complaint.id,
         resolutionKind,
       });
-      await reload();
     },
     { onError: setLocalError },
   );

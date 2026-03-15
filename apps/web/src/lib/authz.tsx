@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/lib/session";
 import { subscribeOpsRealtime } from '@/lib/ops/realtime';
 import {
@@ -22,6 +22,9 @@ export type AuthzState = {
 
 const AuthzCtx = createContext<AuthzState | null>(null);
 
+const SHIFT_STALE_TIME_MS = 15_000;
+const SHIFT_REALTIME_DEBOUNCE_MS = 120;
+
 type ShiftApi = {
   ok: boolean;
   shift: null | {
@@ -39,65 +42,122 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
   const session = useSession();
   const [shift, setShift] = useState<RuntimeShift | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
+  const inFlightRef = useRef<Promise<void> | null>(null);
+  const queuedRef = useRef(false);
+  const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastLoadedAtRef = useRef<number | null>(null);
 
-  async function reload() {
+  useEffect(() => {
+    lastLoadedAtRef.current = lastLoadedAt;
+  }, [lastLoadedAt]);
+
+  const clearReloadTimer = useCallback(() => {
+    if (reloadTimerRef.current) {
+      clearTimeout(reloadTimerRef.current);
+      reloadTimerRef.current = null;
+    }
+  }, []);
+
+  const runReload = useCallback(async () => {
     if (!session.user) {
       setShift(null);
+      setLastLoadedAt(null);
+      setLoading(false);
       return;
     }
 
-    try {
-      const res = await fetch("/api/authz/state", { cache: "no-store" });
-      const json = (await res.json().catch(() => null)) as ShiftApi | null;
-      if (!json?.ok || !json.shift) {
-        setShift(null);
-        return;
-      }
-
-      setShift({
-        id: json.shift.id,
-        kind: json.shift.kind,
-        startedAt: Number(json.shift.startedAt),
-        endedAt: json.shift.endedAt ? Number(json.shift.endedAt) : undefined,
-        isOpen: !!json.shift.isOpen,
-        supervisorUserId: String(json.shift.supervisorUserId ?? ""),
-        assignments: (json.assignments ?? []).map((item) => ({ userId: item.userId, role: item.role })),
-      });
-    } catch {
-      setShift(null);
+    if (inFlightRef.current) {
+      queuedRef.current = true;
+      return inFlightRef.current;
     }
-  }
+
+    const request = (async () => {
+      try {
+        const res = await fetch("/api/authz/state", { cache: "no-store" });
+        const json = (await res.json().catch(() => null)) as ShiftApi | null;
+        if (!json?.ok || !json.shift) {
+          setShift(null);
+          setLastLoadedAt(Date.now());
+          return;
+        }
+
+        setShift({
+          id: json.shift.id,
+          kind: json.shift.kind,
+          startedAt: Number(json.shift.startedAt),
+          endedAt: json.shift.endedAt ? Number(json.shift.endedAt) : undefined,
+          isOpen: !!json.shift.isOpen,
+          supervisorUserId: String(json.shift.supervisorUserId ?? ""),
+          assignments: (json.assignments ?? []).map((item) => ({ userId: item.userId, role: item.role })),
+        });
+        setLastLoadedAt(Date.now());
+      } catch {
+        setShift(null);
+      } finally {
+        setLoading(false);
+        inFlightRef.current = null;
+        if (queuedRef.current) {
+          queuedRef.current = false;
+          void runReload();
+        }
+      }
+    })();
+
+    inFlightRef.current = request;
+    return request;
+  }, [session.user]);
 
   useEffect(() => {
-    (async () => {
-      await reload();
-      setLoading(false);
-    })();
-  }, [session.user?.id, session.user?.cafeId]);
+    setLoading(true);
+    void runReload();
+  }, [runReload, session.user?.id, session.user?.cafeId]);
 
   useEffect(() => {
     if (!session.user) return;
 
-    const onFocus = () => void reload();
-    const onVis = () => {
-      if (document.visibilityState === "visible") void reload();
+    const scheduleReload = () => {
+      clearReloadTimer();
+      reloadTimerRef.current = setTimeout(() => {
+        reloadTimerRef.current = null;
+        void runReload();
+      }, SHIFT_REALTIME_DEBOUNCE_MS);
+    };
+
+    const shouldRevalidate = () => {
+      if (lastLoadedAtRef.current === null) {
+        return true;
+      }
+      return Date.now() - lastLoadedAtRef.current >= SHIFT_STALE_TIME_MS;
     };
 
     const unsubscribe = subscribeOpsRealtime((event) => {
       if (event.type.startsWith('shift.') || event.type.startsWith('runtime.')) {
-        void reload();
+        scheduleReload();
       }
     });
+
+    const onFocus = () => {
+      if (shouldRevalidate()) {
+        scheduleReload();
+      }
+    };
+    const onVis = () => {
+      if (document.visibilityState === "visible" && shouldRevalidate()) {
+        scheduleReload();
+      }
+    };
 
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
 
     return () => {
       unsubscribe();
+      clearReloadTimer();
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [session.user?.id, session.user?.cafeId]);
+  }, [clearReloadTimer, runReload, session.user]);
 
   const user = useMemo<RuntimeViewer | null>(() => {
     if (!session.user) return null;
@@ -116,9 +176,13 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
 
   const can = useMemo(() => resolvePermissions({ user, effectiveRole }), [user, effectiveRole]);
 
+  const reload = useCallback(async () => {
+    await runReload();
+  }, [runReload]);
+
   const value = useMemo<AuthzState>(
     () => ({ user, shift, effectiveRole, can, reload }),
-    [user, shift, effectiveRole, can]
+    [user, shift, effectiveRole, can, reload]
   );
 
   if (loading) {
