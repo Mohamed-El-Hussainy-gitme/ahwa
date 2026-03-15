@@ -11,7 +11,6 @@ export default async function PlatformCafesPage() {
     <PlatformChrome
       session={session}
       title="سجل القهاوي"
-      description="صفحة مستقلة للبحث في القهاوي، إدارة تفعيلها، ومتابعة الحالات القريبة بدل ازدحام كل شيء داخل شاشة واحدة."
     >
       <PlatformCafesPageClient />
     </PlatformChrome>

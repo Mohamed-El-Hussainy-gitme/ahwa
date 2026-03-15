@@ -11,7 +11,6 @@ export default async function PlatformSettingsPage() {
     <PlatformChrome
       session={session}
       title="إعدادات المنصة"
-      description="قراءة سعة قاعدة البيانات وتحديث الحد الأعلى من صفحة مستقلة بدل دفنها داخل شاشة أخرى."
     >
       <PlatformSettingsPageClient />
     </PlatformChrome>

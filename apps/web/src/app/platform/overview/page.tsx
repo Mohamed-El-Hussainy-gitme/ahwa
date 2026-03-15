@@ -10,8 +10,7 @@ export default async function PlatformOverviewPage() {
   return (
     <PlatformChrome
       session={session}
-      title="نظرة عامة على المحفظة"
-      description="ملخص موحد لحالة القهاوي، النشاط الحالي، الاشتراكات، وسرعة الوصول إلى الحالات التي تحتاج متابعة فورية."
+      title="نظرة عامة"
     >
       <PlatformOverviewPageClient />
     </PlatformChrome>

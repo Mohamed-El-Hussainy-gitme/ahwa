@@ -408,14 +408,14 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
           </section>
 
           {data.activity.open_shift ? (
-            <SectionFrame title="الوردية المفتوحة" description="ملخص سريع عن حالة التشغيل الحالية لهذه القهوة.">
+            <SectionFrame title="الوردية المفتوحة">
               <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
                 وردية مفتوحة الآن: <strong>{data.activity.open_shift.shift_kind}</strong> • تاريخ التشغيل <strong>{data.activity.open_shift.business_date}</strong> • بدأت {formatDateTime(data.activity.open_shift.opened_at)}
               </div>
             </SectionFrame>
           ) : null}
 
-          <SectionFrame title="إشارات المتابعة" description="تنبيهات إدارية سريعة بدون الدخول في تفاصيل تشغيلية حساسة.">
+          <SectionFrame title="إشارات المتابعة">
             <div className="flex flex-wrap gap-2">
               {data.attention.reasons.length ? data.attention.reasons.map((reason) => (
                 <span key={reason} className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-700">{reasonLabel(reason)}</span>
@@ -423,7 +423,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
             </div>
           </SectionFrame>
 
-          <SectionFrame title="آخر رسائل الدعم الفني" description="ملخص مختصر قبل الدخول إلى تبويب الدعم الفني." actions={<button type="button" onClick={() => setActiveTab('support')} className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">فتح تبويب الدعم</button>}>
+          <SectionFrame title="آخر رسائل الدعم الفني" actions={<button type="button" onClick={() => setActiveTab('support')} className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">فتح تبويب الدعم</button>}>
             <div className="space-y-3">
               {supportPreview.map((item) => (
                 <div key={item.id} className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
@@ -444,7 +444,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
 
       {activeTab === 'owners' ? (
         <div className="grid gap-6 xl:grid-cols-[1.2fr_1.8fr]">
-          <SectionFrame title="الحسابات الحالية" description="اختر حسابًا واحدًا لإدارته من اللوحة الجانبية بدون أزرار مكررة داخل كل بطاقة.">
+          <SectionFrame title="الحسابات الحالية">
             <div className="space-y-3">
               {cafe.owners.map((owner) => {
                 const isSelected = owner.id === selectedOwnerId;
@@ -477,7 +477,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
           </SectionFrame>
 
           <div className="space-y-6">
-            <SectionFrame title="إضافة مالك أو شريك" description="استخدم هذا النموذج فقط عند إنشاء حساب جديد للقهوة الحالية.">
+            <SectionFrame title="إضافة مالك أو شريك">
               <div className="grid gap-3 md:grid-cols-2">
                 <select className="rounded-2xl border border-slate-200 px-4 py-3" value={createOwner.ownerLabel} onChange={(e) => setCreateOwner((v) => ({ ...v, ownerLabel: e.target.value === 'owner' ? 'owner' : 'partner' }))}>
                   <option value="partner">شريك</option>
@@ -492,7 +492,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
               </div>
             </SectionFrame>
 
-            <SectionFrame title="إدارة الحساب المحدد" description={selectedOwner ? `الحساب المحدد الآن: ${selectedOwner.full_name}` : 'اختر حسابًا من القائمة أولًا.'} actions={selectedOwner ? <button type="button" disabled={busy || loading} onClick={() => void runAction('/api/platform/owners/toggle', { cafeId, ownerUserId: selectedOwner.id, isActive: !selectedOwner.is_active }, selectedOwner.is_active ? 'تم إيقاف الحساب.' : 'تم تفعيل الحساب.')} className={`rounded-2xl px-4 py-2 text-sm font-medium text-white ${selectedOwner.is_active ? 'bg-rose-600' : 'bg-emerald-600'} disabled:opacity-60`}>{selectedOwner.is_active ? 'إيقاف الحساب' : 'تفعيل الحساب'}</button> : null}>
+            <SectionFrame title="إدارة الحساب المحدد" actions={selectedOwner ? <button type="button" disabled={busy || loading} onClick={() => void runAction('/api/platform/owners/toggle', { cafeId, ownerUserId: selectedOwner.id, isActive: !selectedOwner.is_active }, selectedOwner.is_active ? 'تم إيقاف الحساب.' : 'تم تفعيل الحساب.')} className={`rounded-2xl px-4 py-2 text-sm font-medium text-white ${selectedOwner.is_active ? 'bg-rose-600' : 'bg-emerald-600'} disabled:opacity-60`}>{selectedOwner.is_active ? 'إيقاف الحساب' : 'تفعيل الحساب'}</button> : null}>
               {selectedOwner ? (
                 <div className="space-y-6">
                   <div className="grid gap-3 md:grid-cols-2">
@@ -521,7 +521,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
 
       {activeTab === 'subscription' ? (
         <div className="grid gap-6 xl:grid-cols-[1.3fr_1fr]">
-          <SectionFrame title="إدارة الاشتراك" description="بطاقة واحدة للتعديل والتجديد بدل تكرار الأزرار عبر الصفحة." actions={<div className="flex flex-wrap gap-2"><button type="button" onClick={() => applySubscriptionPreset(30, 'trial', true)} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">30 يوم مجاني</button><button type="button" onClick={() => applySubscriptionPreset(365, 'active')} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">سنة مدفوعة</button><button type="button" onClick={() => applySubscriptionPreset(30, 'active')} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">شهر مدفوع</button></div>}>
+          <SectionFrame title="إدارة الاشتراك" actions={<div className="flex flex-wrap gap-2"><button type="button" onClick={() => applySubscriptionPreset(30, 'trial', true)} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">30 يوم مجاني</button><button type="button" onClick={() => applySubscriptionPreset(365, 'active')} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">سنة مدفوعة</button><button type="button" onClick={() => applySubscriptionPreset(30, 'active')} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">شهر مدفوع</button></div>}>
             <div className="grid gap-3 md:grid-cols-2">
               <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3" value={subscriptionForm.startsAt} onChange={(e) => setSubscriptionForm((v) => ({ ...v, startsAt: e.target.value }))} />
               <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3" value={subscriptionForm.endsAt} onChange={(e) => setSubscriptionForm((v) => ({ ...v, endsAt: e.target.value }))} />
@@ -545,7 +545,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
           </SectionFrame>
 
           <div className="space-y-6">
-            <SectionFrame title="الحالة الحالية" description="ملخص سريع لحالة الاشتراك الفعلية الآن.">
+            <SectionFrame title="الحالة الحالية">
               {currentSubscription ? (
                 <div className="space-y-3 text-sm text-slate-700">
                   <div className="flex flex-wrap items-center gap-2">
@@ -560,7 +560,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
               ) : <div className="text-sm text-slate-500">لا يوجد اشتراك حالي.</div>}
             </SectionFrame>
 
-            <SectionFrame title="سجل الاشتراكات" description="التسلسل الزمني الكامل للاشتراكات بدون تكرار ملخصات غير لازمة.">
+            <SectionFrame title="سجل الاشتراكات">
               <div className="space-y-3">
                 {data.subscription.history.map((subscription) => (
                   <div key={subscription.id} className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
@@ -583,7 +583,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
       ) : null}
 
       {activeTab === 'support' ? (
-        <SectionFrame title="سجل الدعم الفني" description="جميع الرسائل المرتبطة بهذه القهوة في مكان واحد نظيف وواضح." actions={<Link href="/platform" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">فتح صندوق الدعم</Link>}>
+        <SectionFrame title="سجل الدعم الفني" actions={<Link href="/platform" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">فتح صندوق الدعم</Link>}>
           <div className="space-y-3">
             {supportItems.map((item) => (
               <div key={item.id} className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">

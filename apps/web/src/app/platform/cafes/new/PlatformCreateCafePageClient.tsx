@@ -122,7 +122,7 @@ export default function PlatformCreateCafePageClient() {
   }
 
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_340px]">
+    <div className="space-y-6">
       <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap gap-2">
           <button
@@ -176,18 +176,6 @@ export default function PlatformCreateCafePageClient() {
           </button>
         </div>
       </section>
-
-      <aside className="space-y-6">
-        <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-semibold text-indigo-600">Create Flow</div>
-          <h2 className="mt-1 text-lg font-bold text-slate-900">لماذا هذه الصفحة منفصلة؟</h2>
-          <ul className="mt-4 space-y-3 text-sm text-slate-600">
-            <li>تفصل الإنشاء عن سجل القهاوي حتى لا تبقى الشاشة مزدحمة بالجدول والنماذج معًا.</li>
-            <li>تجعل الإدخال أوضح أثناء تجهيز بيانات العميل الجديد والاشتراك الأول.</li>
-            <li>تسمح بإضافة اختصارات لاحقًا مثل قوالب اشتراك جاهزة أو flows بيع مختلفة.</li>
-          </ul>
-        </section>
-      </aside>
     </div>
   );
 }

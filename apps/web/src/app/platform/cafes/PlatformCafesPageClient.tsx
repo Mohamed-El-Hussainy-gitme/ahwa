@@ -231,7 +231,6 @@ export default function PlatformCafesPageClient() {
             <div>
               <div className="text-sm font-semibold text-indigo-600">Cafes Registry</div>
               <h2 className="mt-1 text-xl font-bold text-slate-900">سجل القهاوي</h2>
-              <p className="mt-2 text-sm text-slate-500">صفحة مستقلة لسجل القهاوي بدل تكديسها مع الإنشاء والتحصيل والدعم في نفس الشاشة.</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/platform/cafes/new" className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">

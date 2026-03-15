@@ -520,16 +520,16 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
     <div className="space-y-6">
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard title="رسائل الدعم" value={String(data?.summary.total ?? 0)} helper="كل الرسائل المتاحة في الصندوق" />
-        <MetricCard title="جديدة" value={String(data?.summary.new_count ?? 0)} helper="تحتاج فتح ومتابعة" tone="sky" />
-        <MetricCard title="قيد المتابعة" value={String(data?.summary.in_progress_count ?? 0)} helper="تم الرد أو البدء في العمل" tone="warn" />
-        <MetricCard title="أولوية عالية" value={String(data?.summary.high_priority_count ?? 0)} helper="مشاكل تحتاج تدخلًا أسرع" tone="warn" />
+        <MetricCard title="رسائل الدعم" value={String(data?.summary.total ?? 0)} />
+        <MetricCard title="جديدة" value={String(data?.summary.new_count ?? 0)} tone="sky" />
+        <MetricCard title="قيد المتابعة" value={String(data?.summary.in_progress_count ?? 0)} tone="warn" />
+        <MetricCard title="أولوية عالية" value={String(data?.summary.high_priority_count ?? 0)} tone="warn" />
       </section>
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-900">صندوق الدعم الفني</h2>
-            <p className="mt-1 text-sm text-slate-500">رسائل صفحة الدخول وطلبات الدعم المرسلة من داخل النظام.</p>
+            
           </div>
           <div className="flex flex-wrap gap-2">
             {(['all', 'new', 'in_progress', 'closed'] as const).map((item) => (
@@ -620,10 +620,10 @@ export function MoneyFollowSection({ refreshKey }: { refreshKey: number }) {
       {data ? (
         <>
           <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <MetricCard title="إجمالي المقبوض" value={`${amountLabel(data.summary.collected_total)} ج.م`} helper="سجل الاشتراكات المدفوعة فقط" />
-            <MetricCard title="المنتهي أو المتأخر" value={String(data.summary.overdue_count)} helper="قهاوي تحتاج تحصيلًا الآن" tone="warn" />
-            <MetricCard title="يقترب موعدها" value={String(data.summary.due_soon_count)} helper="خلال 7 أيام" tone="sky" />
-            <MetricCard title="اشتراكات مجانية" value={String(data.summary.complimentary_entries)} helper="تجريبي أو مجاني" />
+            <MetricCard title="إجمالي المقبوض" value={`${amountLabel(data.summary.collected_total)} ج.م`} />
+            <MetricCard title="المنتهي أو المتأخر" value={String(data.summary.overdue_count)} tone="warn" />
+            <MetricCard title="يقترب موعدها" value={String(data.summary.due_soon_count)} tone="sky" />
+            <MetricCard title="اشتراكات مجانية" value={String(data.summary.complimentary_entries)} />
           </section>
 
           <section className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
@@ -631,7 +631,7 @@ export function MoneyFollowSection({ refreshKey }: { refreshKey: number }) {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-lg font-bold text-slate-900">قائمة المتابعة</h2>
-                  <p className="mt-1 text-sm text-slate-500">المنتهي، المعلق، أو الذي يقترب موعده.</p>
+                  
                 </div>
                 <button type="button" onClick={() => void load()} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">تحديث</button>
               </div>
@@ -717,7 +717,7 @@ function MetricCard({
 }: {
   title: string;
   value: string;
-  helper: string;
+  helper?: string;
   tone?: 'default' | 'warn' | 'sky';
 }) {
   const toneClass = tone === 'warn'
@@ -729,17 +729,17 @@ function MetricCard({
     <div className={`rounded-3xl border p-5 shadow-sm ${toneClass}`}>
       <div className="text-sm text-slate-500">{title}</div>
       <div className="mt-2 text-2xl font-bold text-slate-900">{value}</div>
-      <div className="mt-2 text-xs text-slate-500">{helper}</div>
+      {helper ? <div className="mt-2 text-xs text-slate-500">{helper}</div> : null}
     </div>
   );
 }
 
 
-const views: Array<{ key: ViewKey; label: string; helper: string }> = [
-  { key: 'overview', label: 'النظرة العامة', helper: 'ملخص القرار اليومي' },
-  { key: 'cafes', label: 'القهاوي', helper: 'الجدول الإداري الأسرع' },
-  { key: 'money', label: 'المتابعة المالية', helper: 'المقبوض وما يحتاج تحصيلًا' },
-  { key: 'support', label: 'الدعم الفني', helper: 'الرسائل والمتابعة' },
+const views: Array<{ key: ViewKey; label: string }> = [
+  { key: 'overview', label: 'النظرة العامة' },
+  { key: 'cafes', label: 'القهاوي' },
+  { key: 'money', label: 'المتابعة المالية' },
+  { key: 'support', label: 'الدعم الفني' },
 ];
 
 function SidebarNavButton({
@@ -751,7 +751,7 @@ function SidebarNavButton({
 }: {
   active: boolean;
   label: string;
-  helper: string;
+  helper?: string;
   badge?: string | null;
   onClick: () => void;
 }) {
@@ -769,7 +769,7 @@ function SidebarNavButton({
       <div className="flex items-center justify-between gap-3">
         <div>
           <div className="text-sm font-semibold">{label}</div>
-          <div className={active ? 'mt-1 text-xs text-indigo-100' : 'mt-1 text-xs text-slate-500'}>{helper}</div>
+          {helper ? <div className={active ? 'mt-1 text-xs text-indigo-100' : 'mt-1 text-xs text-slate-500'}>{helper}</div> : null}
         </div>
         {badge ? (
           <span className={active ? 'rounded-full bg-white/20 px-2 py-1 text-xs font-semibold text-white' : 'rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600'}>
@@ -968,7 +968,6 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                   key={item.key}
                   active={view === item.key}
                   label={item.label}
-                  helper={item.helper}
                   badge={item.key === 'support' && supportNewCount > 0 ? String(supportNewCount) : null}
                   onClick={() => setView(item.key)}
                 />

@@ -16,7 +16,6 @@ export default async function PlatformCafeDetailPage({
     <PlatformChrome
       session={session}
       title="تفاصيل القهوة"
-      description="ملف إداري مرتب للقهوة: الملخص، الملاك، الاشتراك، وسجل الدعم الفني داخل صفحة مستقلة من نفس shell الجديد."
     >
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">

@@ -9,7 +9,6 @@ import { PlatformLogoutButton } from './PlatformLogoutButton';
 type NavItem = {
   href: string;
   label: string;
-  helper: string;
 };
 
 type NavGroup = {
@@ -21,22 +20,22 @@ const NAV_GROUPS: NavGroup[] = [
   {
     title: 'الرئيسية',
     items: [
-      { href: '/platform/overview', label: 'نظرة عامة', helper: 'ملخص التشغيل والاهتمام السريع' },
-      { href: '/platform/cafes', label: 'سجل القهاوي', helper: 'بحث، متابعة، وتفاصيل كل قهوة' },
-      { href: '/platform/cafes/new', label: 'إنشاء قهوة', helper: 'إضافة قهوة واشتراكها الأول' },
+      { href: '/platform/overview', label: 'نظرة عامة' },
+      { href: '/platform/cafes', label: 'سجل القهاوي' },
+      { href: '/platform/cafes/new', label: 'إنشاء قهوة' },
     ],
   },
   {
     title: 'المتابعة',
     items: [
-      { href: '/platform/money', label: 'التحصيل والاشتراكات', helper: 'المسدّد والمنتهي وما يستحق المتابعة' },
-      { href: '/platform/support', label: 'الدعم الفني', helper: 'رسائل العملاء والمتابعة الداخلية' },
+      { href: '/platform/money', label: 'التحصيل والاشتراكات' },
+      { href: '/platform/support', label: 'الدعم الفني' },
     ],
   },
   {
     title: 'الإعدادات',
     items: [
-      { href: '/platform/settings', label: 'سعة قاعدة البيانات', helper: 'قراءة السعة وتحديث الحد الأعلى' },
+      { href: '/platform/settings', label: 'سعة قاعدة البيانات' },
     ],
   },
 ];
@@ -57,6 +56,7 @@ export function PlatformChrome({
   children: ReactNode;
 }) {
   const pathname = usePathname();
+  void description;
 
   return (
     <main className="min-h-dvh bg-slate-100 text-slate-900" dir="rtl">
@@ -87,7 +87,6 @@ export function PlatformChrome({
                         }`}
                       >
                         <div className="text-sm font-semibold">{item.label}</div>
-                        <div className={`mt-1 text-xs ${active ? 'text-slate-200' : 'text-slate-500'}`}>{item.helper}</div>
                       </Link>
                     );
                   })}
@@ -96,21 +95,13 @@ export function PlatformChrome({
             ))}
 
             <div className="rounded-[28px] border border-slate-200 bg-white p-4">
-              <div className="text-sm font-semibold text-slate-900">تنقل أسرع</div>
-              <div className="mt-2 text-xs leading-6 text-slate-500">
-                تم تقسيم المنصة إلى صفحات مستقلة حتى لا تبقى شاشة واحدة مزدحمة بالقهاوي والإنشاء والتحصيل والدعم في نفس المكان.
-              </div>
-              <div className="mt-4">
-                <PlatformLogoutButton />
-              </div>
+              <PlatformLogoutButton />
             </div>
           </aside>
 
           <section className="space-y-6">
             <div className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="text-sm font-semibold text-indigo-600">Control Panel</div>
-              <h1 className="mt-1 text-2xl font-bold text-slate-900">{title}</h1>
-              {description ? <p className="mt-2 text-sm text-slate-500">{description}</p> : null}
+              <h1 className="text-2xl font-bold text-slate-900">{title}</h1>
             </div>
             {children}
           </section>
