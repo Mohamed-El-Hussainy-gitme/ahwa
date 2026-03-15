@@ -25,6 +25,12 @@ type DetailTab = 'overview' | 'products' | 'staff' | 'issues';
 function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
 }
+
+function salesHint(totals: ReportTotals) {
+  return totals.salesReconciliationGap > 0
+    ? `تمت مواءمة البيع مع التحصيل (+${formatMoney(totals.salesReconciliationGap)} ج)`
+    : `الكاش + الآجل ${formatMoney(totals.recognizedSales)} ج`;
+}
 function shiftKindLabel(kind: string) {
   return kind === 'morning' ? 'صباحي' : kind === 'evening' ? 'مسائي' : kind;
 }
@@ -118,7 +124,7 @@ function TotalsHero({
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
-        <MetricCard label="صافي المبيعات" value={`${formatMoney(totals.netSales)} ج`} tone="success" />
+        <MetricCard label="إجمالي البيع" value={`${formatMoney(totals.netSales)} ج`} tone="success" hint={salesHint(totals)} />
         <MetricCard label="الكاش" value={`${formatMoney(totals.cashSales)} ج`} />
         <MetricCard label="الآجل المرحل" value={`${formatMoney(totals.deferredSales)} ج`} />
         <MetricCard label="سداد الآجل" value={`${formatMoney(totals.repaymentTotal)} ج`} />
@@ -497,7 +503,7 @@ export default function ReportsPage() {
             subtitle={currentShift ? `${shiftKindLabel(currentShift.kind)} • ${currentShift.businessDate ?? ''}` : 'لا توجد وردية مفتوحة الآن'}
             totals={currentShift ?? {
               shiftCount: 0, submittedQty: 0, readyQty: 0, deliveredQty: 0, replacementDeliveredQty: 0, paidQty: 0, deferredQty: 0,
-              remadeQty: 0, cancelledQty: 0, waivedQty: 0, netSales: 0, cashSales: 0, deferredSales: 0, repaymentTotal: 0,
+              remadeQty: 0, cancelledQty: 0, waivedQty: 0, netSales: 0, itemNetSales: 0, recognizedSales: 0, salesReconciliationGap: 0, cashSales: 0, deferredSales: 0, repaymentTotal: 0,
               complaintTotal: 0, complaintOpen: 0, complaintResolved: 0, complaintDismissed: 0, complaintRemake: 0, complaintCancel: 0,
               complaintWaive: 0, itemIssueTotal: 0, itemIssueNote: 0, itemIssueRemake: 0, itemIssueCancel: 0, itemIssueWaive: 0,
               openSessions: 0, closedSessions: 0, totalSessions: 0,
@@ -506,7 +512,7 @@ export default function ReportsPage() {
           />
           <InsightStrip topProduct={currentTopProduct} topStaff={currentTopStaff} totals={currentShift ?? {
             shiftCount: 0, submittedQty: 0, readyQty: 0, deliveredQty: 0, replacementDeliveredQty: 0, paidQty: 0, deferredQty: 0,
-            remadeQty: 0, cancelledQty: 0, waivedQty: 0, netSales: 0, cashSales: 0, deferredSales: 0, repaymentTotal: 0,
+            remadeQty: 0, cancelledQty: 0, waivedQty: 0, netSales: 0, itemNetSales: 0, recognizedSales: 0, salesReconciliationGap: 0, cashSales: 0, deferredSales: 0, repaymentTotal: 0,
             complaintTotal: 0, complaintOpen: 0, complaintResolved: 0, complaintDismissed: 0, complaintRemake: 0, complaintCancel: 0,
             complaintWaive: 0, itemIssueTotal: 0, itemIssueNote: 0, itemIssueRemake: 0, itemIssueCancel: 0, itemIssueWaive: 0,
             openSessions: 0, closedSessions: 0, totalSessions: 0,

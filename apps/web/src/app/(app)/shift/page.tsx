@@ -67,6 +67,10 @@ type RawShiftSnapshot = {
     deferred_total?: string | number | null;
     delivered_qty?: string | number | null;
     remade_qty?: string | number | null;
+    item_net_sales?: string | number | null;
+    net_sales?: string | number | null;
+    recognized_sales?: string | number | null;
+    sales_reconciliation_gap?: string | number | null;
   };
   staff?: Array<{
     actor_label?: string | null;
@@ -180,6 +184,13 @@ function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapsho
           }))
         : [];
 
+  const itemNetSales = toNumber(
+    snapshot.summary?.netSales ??
+      snapshot.totals?.item_net_sales ??
+      snapshot.totals?.net_sales,
+  );
+  const reconciledNetSales = Math.max(itemNetSales, cashSales + deferredSales);
+
   return {
     shift: {
       id: snapshot.shift?.shift_id ?? "",
@@ -191,7 +202,7 @@ function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapsho
       snapshotPhase: snapshot.shift?.snapshotPhase ?? "ops",
     },
     summary: {
-      netSales: toNumber(snapshot.summary?.netSales) || cashSales + deferredSales,
+      netSales: reconciledNetSales,
       cashSales,
       deferredSales,
       deliveredItemCount: toNumber(
@@ -219,7 +230,11 @@ export default function ShiftPage() {
   const [snapshotBusyFor, setSnapshotBusyFor] = useState<string | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<RawShiftSnapshot | null>(null);
 
-  const activeStaff = useMemo(() => staff.filter((item) => item.isActive && (item.employmentStatus ?? 'active') === 'active'), [staff]);
+  const activeStaff = useMemo(
+    () => staff.filter((item) => item.isActive && (item.employmentStatus ?? 'active') === 'active'),
+    [staff],
+  );
+
   const selectedSupervisorId = useMemo(
     () => Object.entries(assignments).find(([, role]) => role === "supervisor")?.[0] ?? "",
     [assignments],
@@ -229,6 +244,7 @@ export default function ShiftPage() {
     () => normalizeSnapshot(selectedSnapshot),
     [selectedSnapshot],
   );
+
   const canViewShift = can.viewShift;
   const canManageShift = can.owner;
 
@@ -380,75 +396,75 @@ export default function ShiftPage() {
 
       {shift ? (
         <>
-        <section className="rounded-3xl border border-emerald-200/70 bg-emerald-50 p-4 shadow-sm">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-right">
-              <div className="text-sm font-bold text-emerald-950">وردية مفتوحة</div>
-              <div className="mt-1 text-xs text-emerald-900/70">
-                {kindLabel(shift.kind)} • {shift.businessDate ?? '-'}
+          <section className="rounded-3xl border border-emerald-200/70 bg-emerald-50 p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-3">
+              <div className="text-right">
+                <div className="text-sm font-bold text-emerald-950">وردية مفتوحة</div>
+                <div className="mt-1 text-xs text-emerald-900/70">
+                  {kindLabel(shift.kind)} • {shift.businessDate ?? '-'}
+                </div>
+                <div className="mt-1 text-xs text-emerald-900/70">
+                  بدأت: {formatDateTime(shift.startedAt)}
+                </div>
               </div>
-              <div className="mt-1 text-xs text-emerald-900/70">
-                بدأت: {formatDateTime(shift.startedAt)}
+              <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-900">
+                {shift.status === 'closing' ? 'قيد الإغلاق' : 'مفتوحة'}
               </div>
             </div>
-            <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-900">
-              {shift.status === 'closing' ? 'قيد الإغلاق' : 'مفتوحة'}
-            </div>
-          </div>
 
-          <div className="mt-4 rounded-2xl border border-emerald-200/70 bg-white p-3">
-            <div className="text-right text-sm font-semibold text-emerald-950">
-              تعيينات الوردية الحالية
-            </div>
-            <div className="mt-3 space-y-2">
-              {activeStaff
-                .filter((item) => !!assignments[item.id])
-                .map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-2"
-                  >
-                    <div className="rounded-xl bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-900">
-                      {roleLabel(assignments[item.id] as ShiftRole)}
+            <div className="mt-4 rounded-2xl border border-emerald-200/70 bg-white p-3">
+              <div className="text-right text-sm font-semibold text-emerald-950">
+                تعيينات الوردية الحالية
+              </div>
+              <div className="mt-3 space-y-2">
+                {activeStaff
+                  .filter((item) => !!assignments[item.id])
+                  .map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex items-center justify-between gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-2"
+                    >
+                      <div className="rounded-xl bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-900">
+                        {roleLabel(assignments[item.id] as ShiftRole)}
+                      </div>
+                      <div className="text-right text-sm font-semibold text-emerald-950">
+                        {item.fullName ?? item.employeeCode ?? item.id}
+                      </div>
                     </div>
-                    <div className="text-right text-sm font-semibold text-emerald-950">
-                      {item.fullName ?? item.employeeCode ?? item.id}
-                    </div>
-                  </div>
-                ))}
-            </div>
-          </div>
-
-          {canManageShift ? (
-            <>
-              <div className="mt-4">
-                <label className="block text-right text-xs font-semibold text-emerald-900/70">
-                  ملاحظات الإغلاق
-                </label>
-                <textarea
-                  className="mt-1 min-h-24 w-full rounded-2xl border border-emerald-200/70 bg-white p-3 text-right"
-                  value={closeNotes}
-                  onChange={(event) => setCloseNotes(event.target.value)}
-                  placeholder="ملاحظات اختيارية تحفظ مع سناب شوت الإغلاق"
-                />
+                  ))}
               </div>
+            </div>
 
-              <button
-                disabled={busy}
-                onClick={closeShift}
-                className="mt-4 w-full rounded-2xl bg-red-600 py-3 text-sm font-semibold text-white disabled:opacity-50"
-              >
-                {busy ? '...' : 'تقفيل الوردية'}
-              </button>
-            </>
-          ) : null}
+            {canManageShift ? (
+              <>
+                <div className="mt-4">
+                  <label className="block text-right text-xs font-semibold text-emerald-900/70">
+                    ملاحظات الإغلاق
+                  </label>
+                  <textarea
+                    className="mt-1 min-h-24 w-full rounded-2xl border border-emerald-200/70 bg-white p-3 text-right"
+                    value={closeNotes}
+                    onChange={(event) => setCloseNotes(event.target.value)}
+                    placeholder="ملاحظات اختيارية تحفظ مع سناب شوت الإغلاق"
+                  />
+                </div>
 
-          <div className="mt-3 text-right text-xs text-emerald-900/70">
-            الإغلاق يرفض وجود جلسات أو حسابات غير محسومة، ثم يأخذ سناب شوت للتقارير قبل قفل الوردية.
-          </div>
-        </section>
+                <button
+                  disabled={busy}
+                  onClick={closeShift}
+                  className="mt-4 w-full rounded-2xl bg-red-600 py-3 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  {busy ? '...' : 'تقفيل الوردية'}
+                </button>
+              </>
+            ) : null}
 
-        {canManageShift ? <RecoveryPanel onResync={load} /> : null}
+            <div className="mt-3 text-right text-xs text-emerald-900/70">
+              الإغلاق يرفض وجود جلسات أو حسابات غير محسومة، ثم يأخذ سناب شوت للتقارير قبل قفل الوردية.
+            </div>
+          </section>
+
+          {canManageShift ? <RecoveryPanel onResync={load} /> : null}
         </>
       ) : canManageShift ? (
         <section className="rounded-3xl border border-amber-200/70 bg-white p-4 shadow-sm">
@@ -553,6 +569,7 @@ export default function ShiftPage() {
           <div className="text-right text-sm text-slate-600">لا توجد وردية مفتوحة حاليًا.</div>
         </section>
       )}
+
       {snapshotView ? (
         <section className="mt-4 rounded-3xl border border-sky-200 bg-sky-50/60 p-4 shadow-sm">
           <div className="flex items-center justify-between gap-3">

@@ -167,6 +167,9 @@ function emptyTotals(): ReportTotals {
     cancelledQty: 0,
     waivedQty: 0,
     netSales: 0,
+    itemNetSales: 0,
+    recognizedSales: 0,
+    salesReconciliationGap: 0,
     cashSales: 0,
     deferredSales: 0,
     repaymentTotal: 0,
@@ -213,6 +216,9 @@ function addTotals(target: ReportTotals, source: ReportTotals) {
   target.cancelledQty += source.cancelledQty;
   target.waivedQty += source.waivedQty;
   target.netSales += source.netSales;
+  target.itemNetSales += source.itemNetSales;
+  target.recognizedSales += source.recognizedSales;
+  target.salesReconciliationGap += source.salesReconciliationGap;
   target.cashSales += source.cashSales;
   target.deferredSales += source.deferredSales;
   target.repaymentTotal += source.repaymentTotal;
@@ -231,6 +237,22 @@ function addTotals(target: ReportTotals, source: ReportTotals) {
   target.openSessions += source.openSessions;
   target.closedSessions += source.closedSessions;
   target.totalSessions += source.totalSessions;
+}
+
+
+function roundMoney(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
+function applySalesReconciliation<T extends ReportTotals>(totals: T): T {
+  const itemNetSales = roundMoney(totals.itemNetSales || totals.netSales || 0);
+  const recognizedSales = roundMoney(totals.recognizedSales || totals.cashSales + totals.deferredSales);
+  const positiveGap = roundMoney(Math.max(recognizedSales - itemNetSales, 0));
+  totals.itemNetSales = itemNetSales;
+  totals.recognizedSales = recognizedSales;
+  totals.salesReconciliationGap = positiveGap;
+  totals.netSales = roundMoney(positiveGap > 0 ? recognizedSales : itemNetSales);
+  return totals;
 }
 
 function createProductRow(productId: string, productName: string, stationCode: StationCode): ProductReportRow {
@@ -442,7 +464,7 @@ function parseSnapshotShiftRow(snapshot: any, fallback: ShiftRow): ReportShiftRo
   const shift = snapshot?.shift ?? {};
   const totals = snapshot?.totals ?? {};
   const sessions = snapshot?.sessions ?? {};
-  return {
+  return applySalesReconciliation({
     shiftId: toStringValue(shift.shift_id, fallback.id),
     kind: toStringValue(shift.shift_kind, fallback.shift_kind),
     status: toStringValue(shift.status, fallback.status),
@@ -460,6 +482,9 @@ function parseSnapshotShiftRow(snapshot: any, fallback: ShiftRow): ReportShiftRo
     cancelledQty: toNumber(totals.cancelled_qty),
     waivedQty: toNumber(totals.waived_qty),
     netSales: toNumber(totals.net_sales),
+    itemNetSales: toNumber(totals.item_net_sales ?? totals.net_sales),
+    recognizedSales: toNumber(totals.recognized_sales ?? (toNumber(totals.cash_total) + toNumber(totals.deferred_total))),
+    salesReconciliationGap: toNumber(totals.sales_gap),
     cashSales: toNumber(totals.cash_total),
     deferredSales: toNumber(totals.deferred_total),
     repaymentTotal: toNumber(totals.repayment_total),
@@ -478,7 +503,7 @@ function parseSnapshotShiftRow(snapshot: any, fallback: ShiftRow): ReportShiftRo
     openSessions: toNumber(sessions.open_sessions),
     closedSessions: toNumber(sessions.closed_sessions),
     totalSessions: toNumber(sessions.total_sessions),
-  };
+  });
 }
 
 function parseSnapshotProducts(snapshot: any): Map<string, ProductReportRow> {
@@ -765,6 +790,7 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     shift.remadeQty += qtyRemade;
     shift.cancelledQty += qtyCancelled;
     shift.waivedQty += qtyWaived;
+    shift.itemNetSales += netSales;
     shift.netSales += netSales;
 
     const productRef = Array.isArray(row.menu_products) ? row.menu_products[0] : row.menu_products;
@@ -889,6 +915,11 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     if (eventCode === 'waived') staff.waivedQty += quantity;
     shiftStaff.set(actorLabel, staff);
     staffByShift.set(shiftId, shiftStaff);
+  }
+
+  for (const shift of shiftMap.values()) {
+    shift.recognizedSales = roundMoney(shift.cashSales + shift.deferredSales);
+    applySalesReconciliation(shift);
   }
 
   for (const [shiftId, rows] of complaintsByShift.entries()) {

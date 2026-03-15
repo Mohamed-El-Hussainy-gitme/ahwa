@@ -14,6 +14,12 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
 }
 
+function salesHint(totals: ReportTotals) {
+  return totals.salesReconciliationGap > 0
+    ? `تمت مواءمة البيع مع التحصيل (+${formatMoney(totals.salesReconciliationGap)} ج).`
+    : null;
+}
+
 function shiftKindLabel(kind: string) {
   return kind === 'morning' ? 'صباحي' : kind === 'evening' ? 'مسائي' : kind;
 }
@@ -85,7 +91,7 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-        <Card label="صافي المبيعات" value={`${formatMoney(period.totals.netSales)} ج`} />
+        <Card label="إجمالي البيع" value={`${formatMoney(period.totals.netSales)} ج`} />
         <Card label="الكاش" value={`${formatMoney(period.totals.cashSales)} ج`} />
         <Card label="الآجل" value={`${formatMoney(period.totals.deferredSales)} ج`} />
         <Card label="عدد الجلسات" value={String(period.totals.totalSessions)} />
@@ -99,6 +105,7 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
         <div className="mb-2 text-sm font-bold">تفصيل {title}</div>
         <div className="rounded-2xl border p-3 text-sm text-neutral-700">
           من {period.startDate} إلى {period.endDate}
+          {salesHint(period.totals) ? <div className="mt-2 text-xs text-amber-700">{salesHint(period.totals)}</div> : null}
         </div>
       </section>
 

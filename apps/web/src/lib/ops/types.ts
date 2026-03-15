@@ -158,6 +158,9 @@ export type ReportTotals = {
   cancelledQty: number;
   waivedQty: number;
   netSales: number;
+  itemNetSales: number;
+  recognizedSales: number;
+  salesReconciliationGap: number;
   cashSales: number;
   deferredSales: number;
   repaymentTotal: number;
