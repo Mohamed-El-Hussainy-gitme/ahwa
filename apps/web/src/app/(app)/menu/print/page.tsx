@@ -29,7 +29,7 @@ export default function MenuPrintPage() {
   }
 
   return (
-    <PrintPageFrame title="المنيو" subtitle={data ? `عدد الأقسام ${sections.length} • عدد الأصناف ${products.filter((product) => product.isActive !== false).length}` : 'جاري التحميل...'}>
+    <PrintPageFrame title="المنيو" exportFilename="المنيو" subtitle={data ? `عدد الأقسام ${sections.length} • عدد الأصناف ${products.filter((product) => product.isActive !== false).length}` : 'جاري التحميل...'}>
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
       {!data && !error ? <div className="rounded-2xl border border-dashed p-4 text-sm text-neutral-500">جاري تجهيز المنيو للطباعة...</div> : null}
       {data ? (

@@ -209,6 +209,7 @@ export default function ReportsPrintPage() {
   return (
     <PrintPageFrame
       title={tab === 'deferred' ? 'تصدير دفتر الآجل' : `تقرير ${periodLabel(tab)}`}
+      exportFilename={tab === 'deferred' ? 'دفتر-الآجل' : `تقرير-${periodLabel(tab)}`}
       subtitle={data ? `مرجع البيانات: ${data.referenceDate}` : 'جاري التحميل...'}
     >
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}

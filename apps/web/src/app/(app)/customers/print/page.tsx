@@ -33,7 +33,7 @@ export default function CustomersPrintPage() {
   const totalDebt = items.reduce((sum, item) => sum + Math.max(item.balance, 0), 0);
 
   return (
-    <PrintPageFrame title="دفتر الآجل" subtitle={data ? `إجمالي الرصيد المفتوح ${formatMoney(totalDebt)} ج` : 'جاري التحميل...'}>
+    <PrintPageFrame title="دفتر الآجل" exportFilename="دفتر-الآجل" subtitle={data ? `إجمالي الرصيد المفتوح ${formatMoney(totalDebt)} ج` : 'جاري التحميل...'}>
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
       {!data && !error ? <div className="rounded-2xl border border-dashed p-4 text-sm text-neutral-500">جاري تجهيز النسخة القابلة للطباعة...</div> : null}
       {data ? (

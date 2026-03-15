@@ -152,6 +152,13 @@ export default function LoginLandingClient() {
         >
           دخول المعلم (أونر)
         </button>
+
+        <a
+          href={`/support?source=login${slug ? `&slug=${encodeURIComponent(slug)}` : ''}`}
+          className="mt-2 block w-full rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-center font-semibold text-sky-800"
+        >
+          تحتاج مساعدة؟
+        </a>
       </div>
     </div>
   );

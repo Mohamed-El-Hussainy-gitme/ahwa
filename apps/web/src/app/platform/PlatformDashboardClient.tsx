@@ -11,7 +11,7 @@ import {
 import PlatformPortfolioOverview from './PlatformPortfolioOverview';
 
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'suspended';
-type ViewKey = 'overview' | 'cafes' | 'money';
+type ViewKey = 'overview' | 'cafes' | 'money' | 'support';
 
 type CafeSubscriptionRow = {
   id: string;
@@ -101,6 +101,50 @@ type MoneyFollowResponseData = {
 type CafeListResponse = { ok: true; items: CafeRow[] };
 type CreateCafeResponse = { ok: true; data?: { cafe_id?: string } };
 type MoneyFollowApiResponse = { ok: true; data: MoneyFollowResponseData | null };
+
+type SupportMessageStatus = 'new' | 'in_progress' | 'closed';
+type SupportMessagePriority = 'low' | 'normal' | 'high';
+
+type SupportReplyRow = {
+  id: string;
+  support_message_id: string;
+  author_super_admin_user_id: string;
+  reply_note: string;
+  created_at: string;
+};
+
+type SupportMessageRow = {
+  id: string;
+  cafe_id: string | null;
+  cafe_slug_snapshot: string | null;
+  cafe_display_name_snapshot: string | null;
+  sender_name: string;
+  sender_phone: string;
+  actor_kind: string | null;
+  source: 'login' | 'in_app';
+  page_path: string | null;
+  issue_type: string;
+  message: string;
+  status: SupportMessageStatus;
+  priority: SupportMessagePriority;
+  created_at: string;
+  updated_at: string;
+  closed_at: string | null;
+  replies: SupportReplyRow[];
+};
+
+type SupportInboxData = {
+  summary: {
+    total: number;
+    new_count: number;
+    in_progress_count: number;
+    closed_count: number;
+    high_priority_count: number;
+  };
+  items: SupportMessageRow[];
+};
+
+type SupportInboxResponse = { ok: true; data: SupportInboxData | null };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -217,6 +261,60 @@ function isMoneyFollowEntryRow(value: unknown): value is MoneyFollowEntryRow {
   );
 }
 
+
+function isSupportReplyRow(value: unknown): value is SupportReplyRow {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    typeof value.support_message_id === 'string' &&
+    typeof value.author_super_admin_user_id === 'string' &&
+    typeof value.reply_note === 'string' &&
+    typeof value.created_at === 'string'
+  );
+}
+
+function isSupportMessageRow(value: unknown): value is SupportMessageRow {
+  return (
+    isRecord(value) &&
+    typeof value.id === 'string' &&
+    (typeof value.cafe_id === 'string' || value.cafe_id === null) &&
+    (typeof value.cafe_slug_snapshot === 'string' || value.cafe_slug_snapshot === null) &&
+    (typeof value.cafe_display_name_snapshot === 'string' || value.cafe_display_name_snapshot === null) &&
+    typeof value.sender_name === 'string' &&
+    typeof value.sender_phone === 'string' &&
+    (typeof value.actor_kind === 'string' || value.actor_kind === null) &&
+    (value.source === 'login' || value.source === 'in_app') &&
+    (typeof value.page_path === 'string' || value.page_path === null) &&
+    typeof value.issue_type === 'string' &&
+    typeof value.message === 'string' &&
+    (value.status === 'new' || value.status === 'in_progress' || value.status === 'closed') &&
+    (value.priority === 'low' || value.priority === 'normal' || value.priority === 'high') &&
+    typeof value.created_at === 'string' &&
+    typeof value.updated_at === 'string' &&
+    (typeof value.closed_at === 'string' || value.closed_at === null) &&
+    Array.isArray(value.replies) &&
+    value.replies.every(isSupportReplyRow)
+  );
+}
+
+function isSupportInboxResponse(value: unknown): value is SupportInboxResponse {
+  return (
+    isRecord(value) &&
+    value.ok === true &&
+    (value.data === null || (
+      isRecord(value.data) &&
+      isRecord(value.data.summary) &&
+      typeof value.data.summary.total === 'number' &&
+      typeof value.data.summary.new_count === 'number' &&
+      typeof value.data.summary.in_progress_count === 'number' &&
+      typeof value.data.summary.closed_count === 'number' &&
+      typeof value.data.summary.high_priority_count === 'number' &&
+      Array.isArray(value.data.items) &&
+      value.data.items.every(isSupportMessageRow)
+    ))
+  );
+}
+
 function isMoneyFollowResponse(value: unknown): value is MoneyFollowApiResponse {
   return (
     isRecord(value) &&
@@ -320,6 +418,175 @@ function applyPreset(days: number, complimentary: boolean, status: SubscriptionS
     amountPaid: complimentary ? '0' : '',
     isComplimentary: complimentary,
   };
+}
+
+
+function supportStatusLabel(status: SupportMessageStatus) {
+  switch (status) {
+    case 'new': return 'جديد';
+    case 'in_progress': return 'قيد المتابعة';
+    default: return 'مغلق';
+  }
+}
+
+function supportStatusClass(status: SupportMessageStatus) {
+  switch (status) {
+    case 'new': return 'border-sky-200 bg-sky-50 text-sky-700';
+    case 'in_progress': return 'border-amber-200 bg-amber-50 text-amber-700';
+    default: return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  }
+}
+
+function priorityClass(priority: SupportMessagePriority) {
+  switch (priority) {
+    case 'high': return 'border-rose-200 bg-rose-50 text-rose-700';
+    case 'low': return 'border-slate-200 bg-slate-50 text-slate-700';
+    default: return 'border-violet-200 bg-violet-50 text-violet-700';
+  }
+}
+
+function priorityLabel(priority: SupportMessagePriority) {
+  switch (priority) {
+    case 'high': return 'عالية';
+    case 'low': return 'منخفضة';
+    default: return 'عادية';
+  }
+}
+
+function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: number; selectedCafeId: string }) {
+  const [data, setData] = useState<SupportInboxData | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<'all' | SupportMessageStatus>('all');
+  const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const params = new URLSearchParams();
+      params.set('status', statusFilter);
+      if (selectedCafeId) params.set('cafeId', selectedCafeId);
+      const res = await fetch(`/api/platform/support/messages?${params.toString()}`, { cache: 'no-store' });
+      const json: unknown = await res.json().catch(() => ({}));
+      if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'LOAD_SUPPORT_FAILED');
+      setData(isSupportInboxResponse(json) ? json.data : null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'LOAD_SUPPORT_FAILED');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCafeId, statusFilter]);
+
+  useEffect(() => { void load(); }, [load, refreshKey]);
+
+  async function updateStatus(messageId: string, status: SupportMessageStatus) {
+    setBusyId(messageId);
+    try {
+      const res = await fetch('/api/platform/support/messages/update-status', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messageId, status }),
+      });
+      const json: unknown = await res.json().catch(() => ({}));
+      if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'UPDATE_SUPPORT_STATUS_FAILED');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'UPDATE_SUPPORT_STATUS_FAILED');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function sendReply(messageId: string) {
+    const replyNote = (replyDrafts[messageId] ?? '').trim();
+    if (!replyNote) return;
+    setBusyId(messageId);
+    try {
+      const res = await fetch('/api/platform/support/messages/reply', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ messageId, replyNote, setStatus: 'in_progress' }),
+      });
+      const json: unknown = await res.json().catch(() => ({}));
+      if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'SEND_SUPPORT_REPLY_FAILED');
+      setReplyDrafts((value) => ({ ...value, [messageId]: '' }));
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'SEND_SUPPORT_REPLY_FAILED');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        <MetricCard title="رسائل الدعم" value={String(data?.summary.total ?? 0)} helper="كل الرسائل المتاحة في الصندوق" />
+        <MetricCard title="جديدة" value={String(data?.summary.new_count ?? 0)} helper="تحتاج فتح ومتابعة" tone="sky" />
+        <MetricCard title="قيد المتابعة" value={String(data?.summary.in_progress_count ?? 0)} helper="تم الرد أو البدء في العمل" tone="warn" />
+        <MetricCard title="أولوية عالية" value={String(data?.summary.high_priority_count ?? 0)} helper="مشاكل تحتاج تدخلًا أسرع" tone="warn" />
+      </section>
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-900">صندوق الدعم الفني</h2>
+            <p className="mt-1 text-sm text-slate-500">رسائل صفحة الدخول وطلبات الدعم المرسلة من داخل النظام.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(['all', 'new', 'in_progress', 'closed'] as const).map((item) => (
+              <button key={item} type="button" onClick={() => setStatusFilter(item)} className={`rounded-2xl px-4 py-2 text-sm font-medium ${statusFilter === item ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-slate-50 text-slate-700'}`}>
+                {item === 'all' ? 'الكل' : supportStatusLabel(item)}
+              </button>
+            ))}
+            <button type="button" onClick={() => void load()} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">تحديث</button>
+          </div>
+        </div>
+        <div className="mt-4 space-y-4">
+          {!data && loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">جارٍ تحميل رسائل الدعم...</div> : null}
+          {data?.items.map((item) => (
+            <div key={item.id} className="rounded-2xl border border-slate-200 p-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="font-semibold text-slate-900">{item.cafe_display_name_snapshot || item.cafe_slug_snapshot || 'بدون قهوة محددة'}</div>
+                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${supportStatusClass(item.status)}`}>{supportStatusLabel(item.status)}</span>
+                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${priorityClass(item.priority)}`}>{priorityLabel(item.priority)}</span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
+                    <span>{item.sender_name}</span>
+                    <span>{item.sender_phone}</span>
+                    <span>{item.issue_type}</span>
+                    <span>{formatDateTime(item.created_at)}</span>
+                    {item.page_path ? <span>{item.page_path}</span> : null}
+                  </div>
+                  <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">{item.message}</div>
+                  {item.replies.length ? (
+                    <div className="mt-3 space-y-2">
+                      {item.replies.map((reply) => (
+                        <div key={reply.id} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                          <div className="text-xs text-slate-500">رد داخلي — {formatDateTime(reply.created_at)}</div>
+                          <div className="mt-1">{reply.reply_note}</div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+                <div className="w-full max-w-sm space-y-2 lg:w-80">
+                  <div className="grid grid-cols-3 gap-2">
+                    <button disabled={busyId === item.id} type="button" onClick={() => void updateStatus(item.id, 'new')} className="rounded-2xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700">جديد</button>
+                    <button disabled={busyId === item.id} type="button" onClick={() => void updateStatus(item.id, 'in_progress')} className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">متابعة</button>
+                    <button disabled={busyId === item.id} type="button" onClick={() => void updateStatus(item.id, 'closed')} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">إغلاق</button>
+                  </div>
+                  <textarea className="min-h-24 w-full rounded-2xl border border-slate-200 px-3 py-3 text-sm" placeholder="أضف ردًا أو ملاحظة متابعة داخلية" value={replyDrafts[item.id] ?? ''} onChange={(e) => setReplyDrafts((value) => ({ ...value, [item.id]: e.target.value }))} />
+                  <button disabled={busyId === item.id} type="button" onClick={() => void sendReply(item.id)} className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{busyId === item.id ? 'جارٍ الحفظ...' : 'حفظ رد المتابعة'}</button>
+                </div>
+              </div>
+            </div>
+          ))}
+          {data && data.items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">لا توجد رسائل دعم مطابقة للفلترة الحالية.</div> : null}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 function MoneyFollowSection({ refreshKey }: { refreshKey: number }) {
@@ -467,11 +734,62 @@ function MetricCard({
   );
 }
 
-const views: Array<{ key: ViewKey; label: string }> = [
-  { key: 'overview', label: 'النظرة العامة' },
-  { key: 'cafes', label: 'القهاوي' },
-  { key: 'money', label: 'المتابعة المالية' },
+
+const views: Array<{ key: ViewKey; label: string; helper: string }> = [
+  { key: 'overview', label: 'النظرة العامة', helper: 'ملخص القرار اليومي' },
+  { key: 'cafes', label: 'القهاوي', helper: 'الجدول الإداري الأسرع' },
+  { key: 'money', label: 'المتابعة المالية', helper: 'المقبوض وما يحتاج تحصيلًا' },
+  { key: 'support', label: 'الدعم الفني', helper: 'الرسائل والمتابعة' },
 ];
+
+function SidebarNavButton({
+  active,
+  label,
+  helper,
+  badge,
+  onClick,
+}: {
+  active: boolean;
+  label: string;
+  helper: string;
+  badge?: string | null;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={[
+        'w-full rounded-2xl border px-4 py-3 text-right transition',
+        active
+          ? 'border-indigo-500 bg-indigo-600 text-white shadow-sm'
+          : 'border-slate-200 bg-white text-slate-800 hover:border-slate-300 hover:bg-slate-50',
+      ].join(' ')}
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold">{label}</div>
+          <div className={active ? 'mt-1 text-xs text-indigo-100' : 'mt-1 text-xs text-slate-500'}>{helper}</div>
+        </div>
+        {badge ? (
+          <span className={active ? 'rounded-full bg-white/20 px-2 py-1 text-xs font-semibold text-white' : 'rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-600'}>
+            {badge}
+          </span>
+        ) : null}
+      </div>
+    </button>
+  );
+}
+
+function HeaderMiniStat({ title, value, helper }: { title: string; value: string; helper: string }) {
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+      <div className="text-xs text-slate-500">{title}</div>
+      <div className="mt-1 text-lg font-bold text-slate-900">{value}</div>
+      <div className="mt-1 text-[11px] text-slate-500">{helper}</div>
+    </div>
+  );
+}
 
 export default function PlatformDashboardClient({ session }: { session: PlatformAdminSession }) {
   const router = useRouter();
@@ -480,6 +798,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
   const [cafes, setCafes] = useState<CafeRow[]>([]);
   const [selectedCafeId, setSelectedCafeId] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
+  const [supportNewCount, setSupportNewCount] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [search, setSearch] = useState('');
@@ -520,6 +839,18 @@ export default function PlatformDashboardClient({ session }: { session: Platform
     });
   }, [loadCafes]);
 
+  useEffect(() => {
+    let active = true;
+    fetch('/api/platform/support/messages?status=new&limit=20', { cache: 'no-store' })
+      .then(async (res) => {
+        const json: unknown = await res.json().catch(() => ({}));
+        if (!res.ok || !isPlatformApiOk(json)) return;
+        if (active && isSupportInboxResponse(json) && json.data) setSupportNewCount(json.data.summary.new_count);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [refreshKey]);
+
   const selectedCafe = useMemo(() => cafes.find((item) => item.id === selectedCafeId) ?? null, [cafes, selectedCafeId]);
 
   const filteredCafes = useMemo(() => {
@@ -546,6 +877,8 @@ export default function PlatformDashboardClient({ session }: { session: Platform
     .slice(0, 8), [cafes]);
 
   const expiredCafes = useMemo(() => cafes.filter((cafe) => cafe.current_subscription?.effective_status === 'expired').slice(0, 8), [cafes]);
+  const complimentaryCafes = useMemo(() => cafes.filter((cafe) => cafe.current_subscription?.is_complimentary).length, [cafes]);
+  const paidCurrentCount = useMemo(() => cafes.filter((cafe) => cafe.current_subscription?.effective_status === 'active' && !cafe.current_subscription?.is_complimentary).length, [cafes]);
 
   async function submitCreateCafe() {
     setBusy(true);
@@ -618,248 +951,289 @@ export default function PlatformDashboardClient({ session }: { session: Platform
   }
 
   return (
-    <main className="min-h-dvh bg-slate-100 p-6 text-slate-900" dir="rtl">
-      <div className="mx-auto max-w-7xl space-y-6">
-        <div className="flex flex-col gap-4 rounded-3xl border border-slate-200 bg-white p-5 shadow-sm md:flex-row md:items-center md:justify-between">
-          <div>
-            <h1 className="text-2xl font-bold">لوحة السوبر أدمن</h1>
-            <p className="mt-1 text-sm text-slate-600">{session.displayName} — {session.email}</p>
-            <p className="mt-1 text-xs text-slate-500">سطح تحكم إداري سريع للمقاهي، الاشتراكات، والمتابعة المالية الخاصة بك.</p>
-          </div>
-          <button onClick={logout} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium">
-            خروج
-          </button>
-        </div>
-
-        {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
-
-        <div className="flex flex-wrap gap-2 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-          {views.map((item) => (
-            <button
-              key={item.key}
-              type="button"
-              onClick={() => setView(item.key)}
-              className={`rounded-2xl px-4 py-2 text-sm font-medium transition ${view === item.key ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-slate-50 text-slate-700'}`}
-            >
-              {item.label}
-            </button>
-          ))}
-        </div>
-
-        {view === 'overview' ? (
-          <div className="space-y-6">
-            <PlatformPortfolioOverview
-              selectedCafeId={selectedCafeId}
-              onSelectCafe={setSelectedCafeId}
-              refreshRevision={refreshKey}
-            />
-            <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-900">تنبيهات الاشتراك القريبة</h2>
-                    <p className="mt-1 text-sm text-slate-500">القهاوي التي تحتاج متابعة سريعة قبل الانتهاء.</p>
-                  </div>
-                  <button type="button" onClick={() => setView('money')} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">اذهب إلى المتابعة المالية</button>
-                </div>
-                <div className="mt-4 space-y-3">
-                  {expiringSoon.map((cafe) => (
-                    <div key={cafe.id} className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="font-medium text-slate-900">{cafe.display_name}</div>
-                          <div className="text-xs text-slate-500">{cafe.slug}</div>
-                        </div>
-                        <Link href={`/platform/cafes/${cafe.id}`} className="rounded-2xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700">فتح القهوة</Link>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-600">
-                        <span>{paymentStateText(cafe.current_subscription)}</span>
-                        <span>ينتهي: {formatDateTime(cafe.current_subscription?.ends_at)}</span>
-                        <span>{countdownLabel(cafe.current_subscription?.countdown_seconds)}</span>
-                      </div>
-                    </div>
-                  ))}
-                  {expiringSoon.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد اشتراكات تقترب من الانتهاء خلال 7 أيام.</div> : null}
-                </div>
-              </section>
-
-              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="text-lg font-bold text-slate-900">منتهي أو متأخر</h2>
-                <div className="mt-4 space-y-3">
-                  {expiredCafes.map((cafe) => (
-                    <div key={cafe.id} className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <div className="font-medium">{cafe.display_name}</div>
-                          <div className="text-xs opacity-80">{cafe.slug}</div>
-                        </div>
-                        <Link href={`/platform/cafes/${cafe.id}`} className="rounded-2xl border border-amber-300 bg-white px-3 py-2 text-xs font-medium text-amber-800">تفاصيل القهوة</Link>
-                      </div>
-                      <div className="mt-2 text-xs">انتهى في {formatDateTime(cafe.current_subscription?.ends_at)}</div>
-                    </div>
-                  ))}
-                  {expiredCafes.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد قهاوي منتهية الاشتراك الآن.</div> : null}
-                </div>
-              </section>
+    <main className="min-h-dvh bg-slate-100 text-slate-900" dir="rtl">
+      <div className="mx-auto max-w-[1600px] p-4 lg:p-6">
+        <div className="grid gap-6 xl:grid-cols-[280px_minmax(0,1fr)]">
+          <aside className="xl:sticky xl:top-4 h-fit space-y-4 rounded-[32px] border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="rounded-[28px] bg-gradient-to-br from-indigo-600 via-indigo-500 to-sky-500 p-5 text-white">
+              <div className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-100">ahwa control</div>
+              <div className="mt-3 text-2xl font-bold">لوحة السوبر أدمن</div>
+              <div className="mt-2 text-sm text-indigo-50">{session.displayName}</div>
+              <div className="mt-1 text-xs text-indigo-100">{session.email}</div>
             </div>
-          </div>
-        ) : null}
 
-        {view === 'cafes' ? (
-          <div className="space-y-6">
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-                <div className="lg:max-w-2xl">
-                  <h2 className="text-lg font-bold text-slate-900">إنشاء قهوة جديدة</h2>
-                  <p className="mt-1 text-sm text-slate-500">إنشاء القهوة يتضمن المالك الأساسي والاشتراك الأول مباشرة من نفس الخطوة.</p>
-                </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" onClick={() => setCreateCafe((value) => ({ ...value, ...applyPreset(30, true, 'trial') }))} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">شهر مجاني</button>
-                  <button type="button" onClick={() => setCreateCafe((value) => ({ ...value, ...applyPreset(30, false, 'active') }))} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">شهر مدفوع</button>
-                  <button type="button" onClick={() => setCreateCafe((value) => ({ ...value, ...applyPreset(90, false, 'active') }))} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">3 أشهر</button>
-                  <button type="button" onClick={() => setCreateCafe((value) => ({ ...value, ...applyPreset(365, false, 'active') }))} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">سنة</button>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="slug" value={createCafe.cafeSlug} onChange={(e) => setCreateCafe((v) => ({ ...v, cafeSlug: e.target.value }))} />
-                <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="اسم القهوة" value={createCafe.cafeDisplayName} onChange={(e) => setCreateCafe((v) => ({ ...v, cafeDisplayName: e.target.value }))} />
-                <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="اسم المالك" value={createCafe.ownerFullName} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerFullName: e.target.value }))} />
-                <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="رقم المالك" value={createCafe.ownerPhone} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerPhone: e.target.value }))} />
-                <input className="rounded-2xl border border-slate-200 px-4 py-3 md:col-span-2 xl:col-span-1" type="password" placeholder="باسورد المالك" value={createCafe.ownerPassword} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerPassword: e.target.value }))} />
-                <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3" value={createCafe.startsAt} onChange={(e) => setCreateCafe((v) => ({ ...v, startsAt: e.target.value }))} />
-                <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3" value={createCafe.endsAt} onChange={(e) => setCreateCafe((v) => ({ ...v, endsAt: e.target.value }))} />
-                <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="أيام السماح" value={createCafe.graceDays} onChange={(e) => setCreateCafe((v) => ({ ...v, graceDays: e.target.value }))} />
-                <select className="rounded-2xl border border-slate-200 px-4 py-3" value={createCafe.status} onChange={(e) => setCreateCafe((v) => ({ ...v, status: e.target.value as SubscriptionStatus }))}>
-                  <option value="trial">تجريبي</option>
-                  <option value="active">نشط</option>
-                  <option value="suspended">معلق</option>
-                  <option value="expired">منتهي</option>
-                </select>
-                <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="القيمة المدفوعة" value={createCafe.amountPaid} onChange={(e) => setCreateCafe((v) => ({ ...v, amountPaid: e.target.value }))} />
-                <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
-                  <input type="checkbox" checked={createCafe.isComplimentary} onChange={(e) => setCreateCafe((v) => ({ ...v, isComplimentary: e.target.checked, amountPaid: e.target.checked ? '0' : v.amountPaid }))} />
-                  مجاني / شهر استثنائي
-                </label>
-                <textarea className="min-h-24 rounded-2xl border border-slate-200 px-4 py-3 md:col-span-2 xl:col-span-4" placeholder="ملاحظة الاشتراك أو التحصيل" value={createCafe.notes} onChange={(e) => setCreateCafe((v) => ({ ...v, notes: e.target.value }))} />
-              </div>
-              <button disabled={busy} onClick={submitCreateCafe} className="mt-4 rounded-2xl bg-slate-900 px-4 py-3 text-white disabled:opacity-60">
-                إنشاء القهوة والاشتراك الأول
-              </button>
-            </section>
+            <div className="space-y-2">
+              {views.map((item) => (
+                <SidebarNavButton
+                  key={item.key}
+                  active={view === item.key}
+                  label={item.label}
+                  helper={item.helper}
+                  badge={item.key === 'support' && supportNewCount > 0 ? String(supportNewCount) : null}
+                  onClick={() => setView(item.key)}
+                />
+              ))}
+            </div>
 
-            <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
-                <div>
-                  <h2 className="text-lg font-bold">المقاهي</h2>
-                  <p className="mt-1 text-sm text-slate-500">جدول إداري سريع يدعم الفهرسة والبحث والمتابعة على مستوى الاشتراك والحالة. العرض الافتراضي يركز على القهاوي المفعلة حتى تبقى الشاشة اليومية أنظف.</p>
+            <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-4">
+              <div className="text-sm font-semibold text-slate-900">لقطات سريعة</div>
+              <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
+                <div className="rounded-2xl bg-white p-3">
+                  <div className="text-xs text-slate-500">قهاوي مفعلة</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{cafes.filter((item) => item.is_active).length}</div>
                 </div>
-                <div className="grid gap-3 md:grid-cols-3 xl:min-w-[720px]">
-                  <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="ابحث باسم القهوة أو الـ slug" value={search} onChange={(e) => setSearch(e.target.value)} />
-                  <select className="rounded-2xl border border-slate-200 px-4 py-3" value={cafeStatusFilter} onChange={(e) => setCafeStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}>
-                    <option value="all">كل الحالات</option>
-                    <option value="active">المفعلة فقط</option>
-                    <option value="inactive">المعطلة فقط</option>
-                  </select>
-                  <select className="rounded-2xl border border-slate-200 px-4 py-3" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as 'all' | 'paid' | 'free' | 'expired' | 'none')}>
-                    <option value="all">كل الاشتراكات</option>
-                    <option value="paid">مدفوع</option>
-                    <option value="free">مجاني / تجريبي</option>
-                    <option value="expired">منتهي</option>
-                    <option value="none">بدون اشتراك</option>
-                  </select>
+                <div className="rounded-2xl bg-white p-3">
+                  <div className="text-xs text-slate-500">مدفوع</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{paidCurrentCount}</div>
+                </div>
+                <div className="rounded-2xl bg-white p-3">
+                  <div className="text-xs text-slate-500">مجاني</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{complimentaryCafes}</div>
+                </div>
+                <div className="rounded-2xl bg-white p-3">
+                  <div className="text-xs text-slate-500">منتهي</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{expiredCafes.length}</div>
                 </div>
               </div>
-              <div className="mt-4 overflow-x-auto">
-                <table className="min-w-full text-sm">
-                  <thead className="bg-slate-50 text-slate-500">
-                    <tr>
-                      <th className="px-3 py-2 text-right font-medium">القهوة</th>
-                      <th className="px-3 py-2 text-right font-medium">الحالة</th>
-                      <th className="px-3 py-2 text-right font-medium">الاشتراك</th>
-                      <th className="px-3 py-2 text-right font-medium">القيمة</th>
-                      <th className="px-3 py-2 text-right font-medium">آخر نشاط</th>
-                      <th className="px-3 py-2 text-right font-medium">إجراءات</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredCafes.map((cafe) => {
-                      const subscription = cafe.current_subscription ?? null;
-                      return (
-                        <tr key={cafe.id} className={`border-t border-slate-100 align-top ${selectedCafeId === cafe.id ? 'bg-slate-50' : ''}`}>
-                          <td className="px-3 py-3">
-                            <button type="button" onClick={() => setSelectedCafeId(cafe.id)} className="text-right">
-                              <div className="font-medium text-slate-900">{cafe.display_name}</div>
-                              <div className="text-xs text-slate-500">{cafe.slug}</div>
-                            </button>
-                            <div className="mt-2 flex flex-wrap gap-2 text-xs text-slate-500">
-                              <span>{cafe.owner_count ?? 0} مالك/شريك</span>
-                              <span>{cafe.active_owner_count ?? 0} نشط</span>
-                            </div>
-                          </td>
-                          <td className="px-3 py-3">
-                            <div className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${cafeStatusBadgeClass(cafe.is_active)}`}>{cafe.is_active ? 'مفعلة' : 'معطلة'}</div>
-                            <div className="mt-2 text-xs text-slate-500">{paymentStateText(subscription)}</div>
-                          </td>
-                          <td className="px-3 py-3 text-slate-700">
-                            {subscription ? (
-                              <>
-                                <div className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${subscriptionBadgeClass(subscription.effective_status)}`}>{subscription.effective_status}</div>
-                                <div className="mt-2">حتى {formatDateTime(subscription.ends_at)}</div>
-                                <div className="mt-1 text-xs text-slate-500">{countdownLabel(subscription.countdown_seconds)}</div>
-                              </>
-                            ) : <span className="text-slate-500">بدون اشتراك</span>}
-                          </td>
-                          <td className="px-3 py-3 text-slate-700">
-                            {subscription ? (
-                              <>
-                                <div>{subscription.is_complimentary ? 'مجاني' : `${amountLabel(subscription.amount_paid)} ج.م`}</div>
-                                {subscription.notes ? <div className="mt-1 text-xs text-slate-500">{subscription.notes}</div> : null}
-                              </>
-                            ) : '—'}
-                          </td>
-                          <td className="px-3 py-3 text-slate-700">{formatDateTime(cafe.last_activity_at ?? cafe.created_at)}</td>
-                          <td className="px-3 py-3">
-                            <div className="flex flex-wrap gap-2">
-                              <Link href={`/platform/cafes/${cafe.id}`} className="rounded-2xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700">التفاصيل</Link>
-                              <button type="button" disabled={busy} onClick={() => void submitToggleCafe(cafe.id, !cafe.is_active)} className={`rounded-2xl px-3 py-2 text-xs font-medium text-white ${cafe.is_active ? 'bg-rose-600' : 'bg-emerald-600'} disabled:opacity-60`}>
-                                {cafe.is_active ? 'تعطيل' : 'تفعيل'}
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {filteredCafes.length === 0 ? (
-                      <tr>
-                        <td colSpan={6} className="px-3 py-8 text-center text-slate-500">لا توجد قهاوي مطابقة للفلترة الحالية.</td>
-                      </tr>
-                    ) : null}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+            </div>
 
             {selectedCafe ? (
-              <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <h2 className="text-lg font-bold text-slate-900">القهوة المحددة</h2>
-                    <div className="mt-2 text-base font-semibold">{selectedCafe.display_name}</div>
-                    <div className="mt-1 text-sm text-slate-500">{selectedCafe.slug}</div>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-600">
-                      {(selectedCafe.owners ?? []).slice(0, 4).map((owner) => (
-                        <span key={owner.id} className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1">{owner.full_name} — {ownerLabelText(owner.owner_label)}</span>
-                      ))}
+              <div className="rounded-[28px] border border-slate-200 bg-white p-4">
+                <div className="text-sm font-semibold text-slate-900">القهوة المحددة</div>
+                <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="font-semibold text-slate-900">{selectedCafe.display_name}</div>
+                  <div className="mt-1 text-xs text-slate-500">{selectedCafe.slug}</div>
+                  <div className="mt-3 space-y-1 text-xs text-slate-600">
+                    <div>المالك الرئيسي: {selectedCafe.owners?.[0]?.full_name ?? '—'}</div>
+                    <div>آخر نشاط: {formatDateTime(selectedCafe.last_activity_at ?? selectedCafe.created_at)}</div>
+                    <div>{selectedCafe.current_subscription ? countdownLabel(selectedCafe.current_subscription.countdown_seconds) : 'بدون اشتراك'}</div>
+                  </div>
+                </div>
+                <div className="mt-3 flex gap-2">
+                  <button type="button" onClick={() => setView('cafes')} className="flex-1 rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">العودة للقهاوي</button>
+                  <Link href={`/platform/cafes/${selectedCafe.id}`} className="flex-1 rounded-2xl bg-slate-900 px-4 py-2 text-center text-sm font-medium text-white">فتح القهوة</Link>
+                </div>
+              </div>
+            ) : null}
+          </aside>
+
+          <section className="space-y-6">
+            <header className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-indigo-600">Control Panel</div>
+                  <h1 className="mt-1 text-2xl font-bold text-slate-900">إدارة القهاوي والاشتراكات والدعم الفني</h1>
+                  <p className="mt-2 text-sm text-slate-500">واجهة أنظف وأسرع للوصول إلى القرار: من سيدفع، من يحتاج متابعة، ومن أرسل رسالة دعم جديدة.</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => void loadCafes(selectedCafeId).then(() => setRefreshKey((value) => value + 1))} className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">تحديث الكل</button>
+                  <button type="button" onClick={() => setView('cafes')} className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">إدارة القهاوي</button>
+                  <button type="button" onClick={logout} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">تسجيل الخروج</button>
+                </div>
+              </div>
+              <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1fr)_auto] xl:items-center">
+                <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                  <span className="text-slate-400">⌕</span>
+                  <input
+                    className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-400"
+                    placeholder="ابحث باسم القهوة أو الـ slug للوصول السريع"
+                    value={search}
+                    onChange={(event) => {
+                      setSearch(event.target.value);
+                      if (view !== 'cafes') setView('cafes');
+                    }}
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <HeaderMiniStat title="قهاوي فعالة" value={String(cafes.filter((item) => item.is_active).length)} helper="المفعلة الآن" />
+                  <HeaderMiniStat title="ينتهي قريبًا" value={String(expiringSoon.length)} helper="خلال 7 أيام" />
+                  <HeaderMiniStat title="رسائل جديدة" value={String(supportNewCount)} helper="تحتاج فتحًا سريعًا" />
+                  <HeaderMiniStat title="قهاوي معطلة" value={String(cafes.filter((item) => !item.is_active).length)} helper="يمكن إعادة تشغيلها" />
+                </div>
+              </div>
+            </header>
+
+            {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
+
+            {view === 'overview' ? (
+              <PlatformPortfolioOverview
+                selectedCafeId={selectedCafeId}
+                onSelectCafe={(id) => {
+                  setSelectedCafeId(id);
+                  setView('cafes');
+                }}
+                refreshRevision={refreshKey}
+                supportNewCount={supportNewCount}
+              />
+            ) : null}
+
+            {view === 'cafes' ? (
+              <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_420px]">
+                <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
+                  <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-indigo-600">Cafes Registry</div>
+                      <h2 className="mt-1 text-xl font-bold text-slate-900">جدول القهاوي</h2>
+                      <p className="mt-2 text-sm text-slate-500">الشاشة الأقوى في لوحة السوبر أدمن: بحث سريع، فلترة واضحة، وإجراءات مباشرة بدون ازدحام.</p>
+                    </div>
+                    <div className="grid gap-3 md:grid-cols-2 xl:min-w-[460px]">
+                      <select className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={cafeStatusFilter} onChange={(e) => setCafeStatusFilter(e.target.value as 'all' | 'active' | 'inactive')}>
+                        <option value="all">كل الحالات</option>
+                        <option value="active">المفعلة فقط</option>
+                        <option value="inactive">المعطلة فقط</option>
+                      </select>
+                      <select className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value as 'all' | 'paid' | 'free' | 'expired' | 'none')}>
+                        <option value="all">كل الاشتراكات</option>
+                        <option value="paid">مدفوع</option>
+                        <option value="free">مجاني / تجريبي</option>
+                        <option value="expired">منتهي</option>
+                        <option value="none">بدون اشتراك</option>
+                      </select>
                     </div>
                   </div>
-                  <Link href={`/platform/cafes/${selectedCafe.id}`} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">فتح صفحة القهوة</Link>
-                </div>
-              </section>
-            ) : null}
-          </div>
-        ) : null}
 
-        {view === 'money' ? <MoneyFollowSection refreshKey={refreshKey} /> : null}
+                  <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                    <MetricCard title="كل القهاوي" value={String(cafes.length)} helper="السجل الإداري الكامل" />
+                    <MetricCard title="نتائج الفلترة" value={String(filteredCafes.length)} helper="بعد البحث والفلاتر الحالية" tone="sky" />
+                    <MetricCard title="ينتهي قريبًا" value={String(expiringSoon.length)} helper="أولوية متابعة قريبة" tone="warn" />
+                    <MetricCard title="منتهي" value={String(expiredCafes.length)} helper="تحتاج تحصيلًا أو قرارًا" tone="warn" />
+                  </div>
+
+                  <div className="mt-5 overflow-x-auto rounded-3xl border border-slate-200">
+                    <table className="min-w-full text-sm">
+                      <thead className="bg-slate-50 text-slate-500">
+                        <tr>
+                          <th className="px-3 py-3 text-right font-medium">القهوة</th>
+                          <th className="px-3 py-3 text-right font-medium">المالك</th>
+                          <th className="px-3 py-3 text-right font-medium">الاشتراك</th>
+                          <th className="px-3 py-3 text-right font-medium">المدفوع</th>
+                          <th className="px-3 py-3 text-right font-medium">آخر نشاط</th>
+                          <th className="px-3 py-3 text-right font-medium">إجراءات</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredCafes.map((cafe) => {
+                          const subscription = cafe.current_subscription ?? null;
+                          const isSelected = selectedCafeId === cafe.id;
+                          const primaryOwner = cafe.owners?.find((owner) => owner.owner_label === 'owner') ?? cafe.owners?.[0] ?? null;
+                          return (
+                            <tr key={cafe.id} className={`border-t border-slate-100 align-top ${isSelected ? 'bg-indigo-50/50' : 'bg-white'}`}>
+                              <td className="px-3 py-4">
+                                <button type="button" onClick={() => setSelectedCafeId(cafe.id)} className="text-right">
+                                  <div className="font-semibold text-slate-900">{cafe.display_name}</div>
+                                  <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
+                                </button>
+                                <div className="mt-2 flex flex-wrap gap-2 text-xs">
+                                  <span className={`rounded-full border px-2 py-1 font-semibold ${cafeStatusBadgeClass(cafe.is_active)}`}>{cafe.is_active ? 'مفعلة' : 'معطلة'}</span>
+                                  {subscription ? <span className={`rounded-full border px-2 py-1 font-semibold ${subscriptionBadgeClass(subscription.effective_status)}`}>{subscription.effective_status}</span> : <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-600">بدون اشتراك</span>}
+                                </div>
+                              </td>
+                              <td className="px-3 py-4 text-slate-700">
+                                <div className="font-medium text-slate-900">{primaryOwner?.full_name ?? '—'}</div>
+                                <div className="mt-1 text-xs text-slate-500">{primaryOwner?.phone ?? 'لا يوجد مالك محدد'}</div>
+                                <div className="mt-2 text-xs text-slate-500">{cafe.active_owner_count ?? 0}/{cafe.owner_count ?? 0} نشط</div>
+                              </td>
+                              <td className="px-3 py-4 text-slate-700">
+                                {subscription ? (
+                                  <>
+                                    <div>حتى {formatDateTime(subscription.ends_at)}</div>
+                                    <div className="mt-1 text-xs text-slate-500">{countdownLabel(subscription.countdown_seconds)}</div>
+                                  </>
+                                ) : '—'}
+                              </td>
+                              <td className="px-3 py-4 text-slate-700">
+                                {subscription ? (
+                                  <>
+                                    <div>{subscription.is_complimentary ? 'مجاني / استثنائي' : `${amountLabel(subscription.amount_paid)} ج.م`}</div>
+                                    {subscription.notes ? <div className="mt-1 text-xs text-slate-500">{subscription.notes}</div> : null}
+                                  </>
+                                ) : '—'}
+                              </td>
+                              <td className="px-3 py-4 text-slate-700">{formatDateTime(cafe.last_activity_at ?? cafe.created_at)}</td>
+                              <td className="px-3 py-4">
+                                <div className="flex flex-wrap gap-2">
+                                  <Link href={`/platform/cafes/${cafe.id}`} className="rounded-2xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700">التفاصيل</Link>
+                                  <button type="button" disabled={busy} onClick={() => void submitToggleCafe(cafe.id, !cafe.is_active)} className={`rounded-2xl px-3 py-2 text-xs font-medium text-white ${cafe.is_active ? 'bg-rose-600' : 'bg-emerald-600'} disabled:opacity-60`}>
+                                    {cafe.is_active ? 'تعطيل' : 'تفعيل'}
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                        {filteredCafes.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-3 py-10 text-center text-slate-500">لا توجد قهاوي مطابقة للبحث أو الفلاتر الحالية.</td>
+                          </tr>
+                        ) : null}
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+
+                <div className="space-y-6">
+                  <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-indigo-600">Quick Create</div>
+                        <h2 className="mt-1 text-xl font-bold text-slate-900">إنشاء قهوة جديدة</h2>
+                      </div>
+                      <button type="button" onClick={() => setCreateCafe((value) => ({ ...value, ...applyPreset(30, true, 'trial'), amountPaid: '0', notes: '' }))} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700">30 يوم مجاني</button>
+                    </div>
+                    <div className="mt-4 grid gap-3">
+                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="slug القهوة" value={createCafe.cafeSlug} onChange={(e) => setCreateCafe((v) => ({ ...v, cafeSlug: e.target.value }))} />
+                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم القهوة" value={createCafe.cafeDisplayName} onChange={(e) => setCreateCafe((v) => ({ ...v, cafeDisplayName: e.target.value }))} />
+                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم المالك" value={createCafe.ownerFullName} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerFullName: e.target.value }))} />
+                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="رقم هاتف المالك" value={createCafe.ownerPhone} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerPhone: e.target.value }))} />
+                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="باسورد المالك" type="password" value={createCafe.ownerPassword} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerPassword: e.target.value }))} />
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={createCafe.startsAt} onChange={(e) => setCreateCafe((v) => ({ ...v, startsAt: e.target.value }))} />
+                        <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={createCafe.endsAt} onChange={(e) => setCreateCafe((v) => ({ ...v, endsAt: e.target.value }))} />
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="أيام السماح" value={createCafe.graceDays} onChange={(e) => setCreateCafe((v) => ({ ...v, graceDays: e.target.value }))} />
+                        <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="القيمة المدفوعة" value={createCafe.amountPaid} onChange={(e) => setCreateCafe((v) => ({ ...v, amountPaid: e.target.value }))} />
+                      </div>
+                      <select className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={createCafe.status} onChange={(e) => setCreateCafe((v) => ({ ...v, status: e.target.value as SubscriptionStatus }))}>
+                        <option value="trial">تجريبي</option>
+                        <option value="active">نشط</option>
+                        <option value="suspended">معلق</option>
+                        <option value="expired">منتهي</option>
+                      </select>
+                      <label className="flex items-center gap-3 rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-700">
+                        <input type="checkbox" checked={createCafe.isComplimentary} onChange={(e) => setCreateCafe((v) => ({ ...v, isComplimentary: e.target.checked, amountPaid: e.target.checked ? '0' : v.amountPaid }))} />
+                        مجاني / استثنائي
+                      </label>
+                      <textarea className="min-h-24 rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="ملاحظة الاشتراك أو التحصيل" value={createCafe.notes} onChange={(e) => setCreateCafe((v) => ({ ...v, notes: e.target.value }))} />
+                      <button disabled={busy} onClick={submitCreateCafe} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+                        إنشاء القهوة والاشتراك الأول
+                      </button>
+                    </div>
+                  </section>
+
+                  <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
+                    <div className="text-sm font-semibold text-indigo-600">Focus Queue</div>
+                    <h3 className="mt-1 text-lg font-bold text-slate-900">متابعة قريبة</h3>
+                    <div className="mt-4 space-y-3">
+                      {expiringSoon.map((cafe) => (
+                        <button key={cafe.id} type="button" onClick={() => setSelectedCafeId(cafe.id)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-right">
+                          <div className="font-semibold text-slate-900">{cafe.display_name}</div>
+                          <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
+                          <div className="mt-2 text-sm text-slate-700">{formatDateTime(cafe.current_subscription?.ends_at)}</div>
+                          <div className="mt-1 text-xs text-slate-500">{countdownLabel(cafe.current_subscription?.countdown_seconds ?? 0)}</div>
+                        </button>
+                      ))}
+                      {expiringSoon.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد استحقاقات قريبة الآن.</div> : null}
+                    </div>
+                  </section>
+                </div>
+              </div>
+            ) : null}
+
+            {view === 'money' ? <MoneyFollowSection refreshKey={refreshKey} /> : null}
+            {view === 'support' ? <SupportSection refreshKey={refreshKey} selectedCafeId={selectedCafeId} /> : null}
+          </section>
+        </div>
       </div>
     </main>
   );

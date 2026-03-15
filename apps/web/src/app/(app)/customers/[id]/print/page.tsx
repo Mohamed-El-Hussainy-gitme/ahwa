@@ -39,7 +39,7 @@ export default function CustomerLedgerPrintPage() {
   }
 
   return (
-    <PrintPageFrame title={data?.debtorName ?? debtorName} subtitle={data ? `الرصيد الحالي ${formatMoney(data.balance)} ج` : 'جاري التحميل...'}>
+    <PrintPageFrame title={data?.debtorName ?? debtorName} exportFilename={`كشف-${debtorName}`} subtitle={data ? `الرصيد الحالي ${formatMoney(data.balance)} ج` : 'جاري التحميل...'}>
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
       {!data && !error ? <div className="rounded-2xl border border-dashed p-4 text-sm text-neutral-500">جاري تجهيز الكشف...</div> : null}
       {data ? (

@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { decodePlatformAdminSession, PLATFORM_ADMIN_COOKIE } from '@/lib/platform-auth/session';
@@ -18,14 +17,9 @@ export default async function PlatformCafeDetailPage({
   return (
     <div className="min-h-screen bg-slate-100 p-6" dir="rtl">
       <div className="mx-auto max-w-7xl">
-        <div className="mb-4 flex items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">تفاصيل القهوة</h1>
-            <p className="mt-1 text-sm text-slate-500">تفاصيل إدارية فقط: الملاك، الاشتراك، آخر نشاط، وحالة القهوة بدون بيانات تشغيل حساسة.</p>
-          </div>
-          <Link href="/platform" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">
-            رجوع إلى لوحة المنصة
-          </Link>
+        <div className="mb-4">
+          <h1 className="text-2xl font-bold text-slate-900">تفاصيل القهوة</h1>
+          <p className="mt-1 text-sm text-slate-500">ملف إداري مرتب للقهوة: الملخص، الملاك، الاشتراك، وسجل الدعم الفني بدون تكرار أو ازدحام.</p>
         </div>
         <PlatformCafeDetailClient cafeId={cafeId} />
       </div>

@@ -45,6 +45,7 @@ export default function DashboardPage() {
     { href: '/complaints', label: 'الشكاوى' },
     ...(can.viewShift ? [{ href: '/shift' as const, label: 'الوردية' }] : []),
     ...(can.owner ? [{ href: '/owner' as const, label: 'إدارة' }] : []),
+    { href: '/support?source=in_app&page=/dashboard' as const, label: 'طلب دعم' },
   ];
 
   const cards: StatCard[] = [

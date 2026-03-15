@@ -93,6 +93,7 @@ export type OwnerOnboardingGuide = {
   roleAssignmentsCount: number;
   totalCount: number;
   completedCount: number;
+  completionPercent: number;
   readyToRun: boolean;
   steps: OwnerOnboardingGuideStep[];
 };

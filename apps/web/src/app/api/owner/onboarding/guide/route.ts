@@ -81,6 +81,7 @@ export async function GET() {
       roleAssignmentsCount: assignmentsCount,
       totalCount: steps.length,
       completedCount: steps.filter((step) => step.done).length,
+      completionPercent: Math.round((steps.filter((step) => step.done).length / steps.length) * 100),
       readyToRun: steps.every((step) => step.done),
       steps,
     });
