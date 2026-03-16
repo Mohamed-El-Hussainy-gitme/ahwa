@@ -41,6 +41,8 @@ Apply migrations in this order:
 29. `0029_runtime_reporting_contract_and_deferred_balances.sql`
 30. `0030_archive_scheduler_and_backfill_reconciliation.sql`
 31. `0031_archive_approval_and_post_archive_checks.sql`
+32. `0032_deferred_finance_non_archival_policy.sql`
+33. `0033_search_path_security_hardening.sql`
 
 ## Migration summary
 
@@ -93,6 +95,9 @@ Archive approval flow and post-archive runtime verification. Real archive execut
 
 ### 0032
 Deferred finance non-archival policy. Codifies that `ops.deferred_ledger_entries` and `ops.deferred_customer_balances` stay live, and extends post-archive verification to assert that deferred finance remains outside `archive.*`.
+
+### 0033
+Search-path security hardening for the remaining linter-reported functions. This migration pins `search_path` for `app.current_cafe_id()`, `app.current_super_admin_user_id()`, `ops.generate_session_label()`, and `public.platform_touch_support_message()` without changing their functional behavior.
 
 ## Current canonical boundaries
 
