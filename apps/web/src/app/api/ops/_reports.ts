@@ -100,6 +100,10 @@ type FulfillmentAggRow = {
   by_owner_id: string | null;
 };
 type SnapshotRow = { shift_id: string; snapshot_json: unknown };
+type DailySnapshotRow = { business_date: string; snapshot_json: unknown };
+type WeeklySummaryRow = { week_start_date: string; summary_json: unknown };
+type MonthlySummaryRow = { month_start_date: string; summary_json: unknown };
+type YearlySummaryRow = { year_start_date: string; summary_json: unknown };
 type ActorMaps = { staffNames: Map<string, string>; ownerNames: Map<string, string> };
 
 type AggregateMaps = {
@@ -932,6 +936,252 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
   return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
 }
 
+
+type SummarySnapshotBundle = {
+  dailyByDate: Map<string, unknown>;
+  weeklyByStart: Map<string, unknown>;
+  monthlyByStart: Map<string, unknown>;
+  yearlyByStart: Map<string, unknown>;
+};
+
+function parseSummaryTotals(summaryLike: any): ReportTotals {
+  const summary = summaryLike?.summary ?? summaryLike ?? {};
+  return applySalesReconciliation({
+    ...emptyTotals(),
+    shiftCount: toNumber(summary?.shift_count),
+    submittedQty: toNumber(summary?.submitted_qty),
+    readyQty: toNumber(summary?.ready_qty),
+    deliveredQty: toNumber(summary?.delivered_qty),
+    replacementDeliveredQty: toNumber(summary?.replacement_delivered_qty),
+    paidQty: toNumber(summary?.paid_qty),
+    deferredQty: toNumber(summary?.deferred_qty),
+    remadeQty: toNumber(summary?.remade_qty),
+    cancelledQty: toNumber(summary?.cancelled_qty),
+    waivedQty: toNumber(summary?.waived_qty),
+    netSales: toNumber(summary?.net_sales),
+    itemNetSales: toNumber(summary?.item_net_sales ?? summary?.net_sales),
+    recognizedSales: toNumber(summary?.recognized_sales ?? (toNumber(summary?.cash_total) + toNumber(summary?.deferred_total))),
+    salesReconciliationGap: toNumber(summary?.sales_gap),
+    cashSales: toNumber(summary?.cash_total),
+    deferredSales: toNumber(summary?.deferred_total),
+    repaymentTotal: toNumber(summary?.repayment_total),
+    complaintTotal: toNumber(summary?.complaint_total),
+    complaintOpen: toNumber(summary?.complaint_open),
+    complaintResolved: toNumber(summary?.complaint_resolved),
+    complaintDismissed: toNumber(summary?.complaint_dismissed),
+    complaintRemake: toNumber(summary?.complaint_remake),
+    complaintCancel: toNumber(summary?.complaint_cancel),
+    complaintWaive: toNumber(summary?.complaint_waive),
+    itemIssueTotal: toNumber(summary?.item_issue_total),
+    itemIssueNote: toNumber(summary?.item_issue_note),
+    itemIssueRemake: toNumber(summary?.item_issue_remake),
+    itemIssueCancel: toNumber(summary?.item_issue_cancel),
+    itemIssueWaive: toNumber(summary?.item_issue_waive),
+    openSessions: toNumber(summary?.open_sessions),
+    closedSessions: toNumber(summary?.closed_sessions),
+    totalSessions: toNumber(summary?.total_sessions),
+  });
+}
+
+function parseSummaryProducts(summaryLike: any): ProductReportRow[] {
+  const rows = Array.isArray(summaryLike?.products) ? summaryLike.products : [];
+  return sortProducts(
+    rows
+      .map((raw: any) => {
+        const productId = toStringValue(raw?.product_id);
+        if (!productId) return null;
+        return {
+          productId,
+          productName: toStringValue(raw?.product_name),
+          stationCode: (toStringValue(raw?.station_code, 'barista') as StationCode),
+          qtySubmitted: toNumber(raw?.qty_submitted),
+          qtyReady: toNumber(raw?.qty_ready),
+          qtyDelivered: toNumber(raw?.qty_delivered),
+          qtyReplacementDelivered: toNumber(raw?.qty_replacement_delivered),
+          qtyPaid: toNumber(raw?.qty_paid),
+          qtyDeferred: toNumber(raw?.qty_deferred),
+          qtyRemade: toNumber(raw?.qty_remade),
+          qtyCancelled: toNumber(raw?.qty_cancelled),
+          qtyWaived: toNumber(raw?.qty_waived),
+          grossSales: toNumber(raw?.gross_sales),
+          netSales: toNumber(raw?.net_sales),
+        } satisfies ProductReportRow;
+      })
+      .filter(Boolean) as ProductReportRow[],
+  );
+}
+
+function parseSummaryStaff(summaryLike: any): StaffPerformanceRow[] {
+  const rows = Array.isArray(summaryLike?.staff) ? summaryLike.staff : [];
+  return sortStaff(
+    rows
+      .map((raw: any) => {
+        const actorLabel = toStringValue(raw?.actor_label);
+        if (!actorLabel) return null;
+        return {
+          actorLabel,
+          submittedQty: toNumber(raw?.submitted_qty),
+          readyQty: toNumber(raw?.ready_qty),
+          deliveredQty: toNumber(raw?.delivered_qty),
+          replacementDeliveredQty: toNumber(raw?.replacement_delivered_qty),
+          remadeQty: toNumber(raw?.remade_qty),
+          cancelledQty: toNumber(raw?.cancelled_qty),
+          waivedQty: toNumber(raw?.waived_qty),
+          paymentTotal: toNumber(raw?.payment_total),
+          cashSales: toNumber(raw?.cash_sales),
+          deferredSales: toNumber(raw?.deferred_sales),
+          repaymentTotal: toNumber(raw?.repayment_total),
+          complaintCount: toNumber(raw?.complaint_count),
+          itemIssueCount: toNumber(raw?.item_issue_count),
+        } satisfies StaffPerformanceRow;
+      })
+      .filter(Boolean) as StaffPerformanceRow[],
+  );
+}
+
+function parseDailySnapshotDayRow(businessDate: string, snapshotLike: any): ReportBusinessDayRow {
+  const totals = parseSummaryTotals(snapshotLike);
+  return {
+    businessDate,
+    ...totals,
+  };
+}
+
+function mergeProductCollections(base: ProductReportRow[], supplement: ProductReportRow[]): ProductReportRow[] {
+  const byId = new Map<string, ProductReportRow>();
+  for (const row of base) {
+    byId.set(row.productId, { ...row });
+  }
+  for (const row of supplement) {
+    const current = byId.get(row.productId) ?? createProductRow(row.productId, row.productName, row.stationCode);
+    mergeProductRows(current, row);
+    byId.set(row.productId, current);
+  }
+  return sortProducts(Array.from(byId.values()));
+}
+
+function mergeStaffCollections(base: StaffPerformanceRow[], supplement: StaffPerformanceRow[]): StaffPerformanceRow[] {
+  const byLabel = new Map<string, StaffPerformanceRow>();
+  for (const row of base) {
+    byLabel.set(row.actorLabel, { ...row });
+  }
+  for (const row of supplement) {
+    const current = byLabel.get(row.actorLabel) ?? createStaffRow(row.actorLabel);
+    mergeStaffRows(current, row);
+    byLabel.set(row.actorLabel, current);
+  }
+  return sortStaff(Array.from(byLabel.values()));
+}
+
+function mergeDayCollections(base: ReportBusinessDayRow[], supplement: ReportBusinessDayRow[]): ReportBusinessDayRow[] {
+  const byDate = new Map<string, ReportBusinessDayRow>();
+  for (const row of base) {
+    byDate.set(row.businessDate, { ...row });
+  }
+  for (const row of supplement) {
+    const current = byDate.get(row.businessDate) ?? createEmptyDayRow(row.businessDate);
+    addTotals(current, row);
+    byDate.set(row.businessDate, current);
+  }
+  return Array.from(byDate.values()).sort((left, right) => right.businessDate.localeCompare(left.businessDate));
+}
+
+async function loadSummarySnapshots(cafeId: string, ranges: {
+  day: { startDate: string; endDate: string };
+  week: { startDate: string; endDate: string };
+  month: { startDate: string; endDate: string };
+  year: { startDate: string; endDate: string };
+}): Promise<SummarySnapshotBundle> {
+  const [{ data: dailyRows, error: dailyError }, { data: weeklyRows, error: weeklyError }, { data: monthlyRows, error: monthlyError }, { data: yearlyRows, error: yearlyError }] = await Promise.all([
+    adminOps()
+      .from('daily_snapshots')
+      .select('business_date, snapshot_json')
+      .eq('cafe_id', cafeId)
+      .gte('business_date', ranges.year.startDate)
+      .lte('business_date', ranges.year.endDate),
+    adminOps()
+      .from('weekly_summaries')
+      .select('week_start_date, summary_json')
+      .eq('cafe_id', cafeId)
+      .eq('week_start_date', ranges.week.startDate)
+      .limit(1),
+    adminOps()
+      .from('monthly_summaries')
+      .select('month_start_date, summary_json')
+      .eq('cafe_id', cafeId)
+      .eq('month_start_date', ranges.month.startDate)
+      .limit(1),
+    adminOps()
+      .from('yearly_summaries')
+      .select('year_start_date, summary_json')
+      .eq('cafe_id', cafeId)
+      .eq('year_start_date', ranges.year.startDate)
+      .limit(1),
+  ]);
+
+  if (dailyError) throw dailyError;
+  if (weeklyError) throw weeklyError;
+  if (monthlyError) throw monthlyError;
+  if (yearlyError) throw yearlyError;
+
+  return {
+    dailyByDate: new Map(((dailyRows ?? []) as DailySnapshotRow[]).map((row) => [String(row.business_date), row.snapshot_json])),
+    weeklyByStart: new Map(((weeklyRows ?? []) as WeeklySummaryRow[]).map((row) => [String(row.week_start_date), row.summary_json])),
+    monthlyByStart: new Map(((monthlyRows ?? []) as MonthlySummaryRow[]).map((row) => [String(row.month_start_date), row.summary_json])),
+    yearlyByStart: new Map(((yearlyRows ?? []) as YearlySummaryRow[]).map((row) => [String(row.year_start_date), row.summary_json])),
+  };
+}
+
+function buildSummaryBackedPeriod(input: {
+  detail: PeriodReport;
+  summaryLike: unknown | null;
+  dailyByDate: Map<string, unknown>;
+  currentShift: ReportShiftRow | null;
+  currentProducts: ProductReportRow[];
+  currentStaff: StaffPerformanceRow[];
+}): PeriodReport {
+  const base = input.detail;
+  if (!input.summaryLike) {
+    return base;
+  }
+
+  const rangeDailyRows = Array.from(input.dailyByDate.entries())
+    .filter(([businessDate]) => businessDate >= base.startDate && businessDate <= base.endDate)
+    .map(([businessDate, snapshot]) => parseDailySnapshotDayRow(businessDate, snapshot));
+
+  let totals = parseSummaryTotals(input.summaryLike);
+  let products = parseSummaryProducts(input.summaryLike);
+  let staff = parseSummaryStaff(input.summaryLike);
+  let days = mergeDayCollections([], rangeDailyRows);
+
+  if (input.currentShift) {
+    const currentBusinessDate = input.currentShift.businessDate;
+
+    if (currentBusinessDate && inDateRange(currentBusinessDate, base.startDate, base.endDate)) {
+      const currentDay: ReportBusinessDayRow[] = [
+        {
+          ...input.currentShift,
+          businessDate: currentBusinessDate,
+        },
+      ];
+      const mergedTotals = { ...totals };
+      addTotals(mergedTotals, input.currentShift);
+      totals = applySalesReconciliation(mergedTotals);
+      products = mergeProductCollections(products, input.currentProducts);
+      staff = mergeStaffCollections(staff, input.currentStaff);
+      days = mergeDayCollections(days, currentDay);
+    }
+  }
+
+  return {
+    ...base,
+    totals,
+    products,
+    staff,
+    days,
+  };
+}
+
 export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWorkspace> {
   const referenceDate = cairoToday();
   const ranges = {
@@ -941,9 +1191,10 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
     year: { key: 'year' as const, label: 'السنة', startDate: startOfYear(referenceDate), endDate: referenceDate },
   };
 
-  const [actorMaps, deferredCustomers, shiftsResponse] = await Promise.all([
+  const [actorMaps, deferredCustomers, summarySnapshots, shiftsResponse] = await Promise.all([
     loadActorMaps(cafeId),
     buildDeferredCustomersWorkspace(cafeId),
+    loadSummarySnapshots(cafeId, ranges),
     adminOps()
       .from('shifts')
       .select('id, shift_kind, status, opened_at, closed_at, business_date')
@@ -1030,6 +1281,13 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
     ? sortComplaintEntries(combinedItemIssuesByShift.get(currentShift.shiftId) ?? []).slice(0, 50)
     : [];
 
+  const detailPeriods = {
+    day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+    week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+    month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+    year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+  };
+
   return {
     referenceDate,
     currentShift,
@@ -1038,10 +1296,38 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
     currentComplaints,
     currentItemIssues,
     periods: {
-      day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
-      week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
-      month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
-      year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+      day: buildSummaryBackedPeriod({
+        detail: detailPeriods.day,
+        summaryLike: summarySnapshots.dailyByDate.get(ranges.day.startDate) ?? null,
+        dailyByDate: summarySnapshots.dailyByDate,
+        currentShift,
+        currentProducts,
+        currentStaff,
+      }),
+      week: buildSummaryBackedPeriod({
+        detail: detailPeriods.week,
+        summaryLike: summarySnapshots.weeklyByStart.get(ranges.week.startDate) ?? null,
+        dailyByDate: summarySnapshots.dailyByDate,
+        currentShift,
+        currentProducts,
+        currentStaff,
+      }),
+      month: buildSummaryBackedPeriod({
+        detail: detailPeriods.month,
+        summaryLike: summarySnapshots.monthlyByStart.get(ranges.month.startDate) ?? null,
+        dailyByDate: summarySnapshots.dailyByDate,
+        currentShift,
+        currentProducts,
+        currentStaff,
+      }),
+      year: buildSummaryBackedPeriod({
+        detail: detailPeriods.year,
+        summaryLike: summarySnapshots.yearlyByStart.get(ranges.year.startDate) ?? null,
+        dailyByDate: summarySnapshots.dailyByDate,
+        currentShift,
+        currentProducts,
+        currentStaff,
+      }),
     },
     deferredCustomers: deferredCustomers as DeferredCustomerSummary[],
   };

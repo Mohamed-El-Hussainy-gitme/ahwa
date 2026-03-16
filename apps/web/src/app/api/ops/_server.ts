@@ -39,13 +39,48 @@ export function normalizeShift(row: any | null): OpsShift | null {
   };
 }
 
-export async function listBillableRows(cafeId: string): Promise<BillableItem[]> {
+async function loadOpenShift(cafeId: string): Promise<OpsShift | null> {
+  const { data, error } = await adminOps()
+    .from('shifts')
+    .select('id, shift_kind, status, opened_at')
+    .eq('cafe_id', cafeId)
+    .eq('status', 'open')
+    .order('opened_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  return normalizeShift(data ?? null);
+}
+
+async function loadOpenSessions(cafeId: string, shiftId: string): Promise<any[]> {
+  const { data, error } = await adminOps()
+    .from('service_sessions')
+    .select('id, session_label, status, opened_at')
+    .eq('cafe_id', cafeId)
+    .eq('shift_id', shiftId)
+    .eq('status', 'open')
+    .order('opened_at', { ascending: false });
+  if (error) throw error;
+  return (data ?? []) as any[];
+}
+
+export async function listBillableRows(cafeId: string, shiftId?: string | null, openSessionIds?: string[]): Promise<BillableItem[]> {
   const admin = adminOps();
-  const { data } = await admin
+  if (!shiftId) return [];
+  if (Array.isArray(openSessionIds) && openSessionIds.length === 0) return [];
+
+  let query = admin
     .from('order_items')
     .select('id, service_session_id, unit_price, qty_delivered, qty_paid, qty_deferred, qty_waived, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
     .eq('cafe_id', cafeId)
+    .eq('shift_id', shiftId)
     .order('created_at', { ascending: true });
+
+  if (Array.isArray(openSessionIds) && openSessionIds.length > 0) {
+    query = query.in('service_session_id', openSessionIds);
+  }
+
+  const { data } = await query;
   return (data ?? [])
     .map((row: any) => {
       const qtyBillable = Math.max(
@@ -116,21 +151,9 @@ export async function buildMenuWorkspace(cafeId: string): Promise<MenuWorkspace>
 
 export async function buildWaiterWorkspace(cafeId: string): Promise<WaiterWorkspace> {
   const admin = adminOps();
-  const [{ data: shift }, { data: sessions }, { data: sections }, { data: products }] = await Promise.all([
-    admin
-      .from('shifts')
-      .select('id, shift_kind, status, opened_at')
-      .eq('cafe_id', cafeId)
-      .eq('status', 'open')
-      .order('opened_at', { ascending: false })
-      .limit(1)
-      .maybeSingle(),
-    admin
-      .from('service_sessions')
-      .select('id, session_label, status, opened_at')
-      .eq('cafe_id', cafeId)
-      .eq('status', 'open')
-      .order('opened_at', { ascending: false }),
+  const normalizedShift = await loadOpenShift(cafeId);
+  const [sessions, sectionsResult, productsResult] = await Promise.all([
+    normalizedShift ? loadOpenSessions(cafeId, normalizedShift.id) : Promise.resolve([] as any[]),
     admin
       .from('menu_sections')
       .select('id, title, station_code, sort_order')
@@ -147,23 +170,29 @@ export async function buildWaiterWorkspace(cafeId: string): Promise<WaiterWorksp
       .order('created_at', { ascending: true }),
   ]);
 
-  const normalizedShift = normalizeShift(shift);
-  const openSessionIds = new Set((sessions ?? []).map((session: any) => String(session.id)));
+  if (sectionsResult.error) throw sectionsResult.error;
+  if (productsResult.error) throw productsResult.error;
+
+  const sections = sectionsResult.data ?? [];
+  const products = productsResult.data ?? [];
+  const openSessionIds = (sessions ?? []).map((session: any) => String(session.id));
+  const openSessionIdsSet = new Set(openSessionIds);
 
   let itemRows: any[] = [];
-  if (normalizedShift) {
+  if (normalizedShift && openSessionIds.length > 0) {
     const { data, error } = await admin
       .from('order_items')
       .select('id, service_session_id, station_code, unit_price, qty_total, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
       .eq('cafe_id', cafeId)
       .eq('shift_id', normalizedShift.id)
+      .in('service_session_id', openSessionIds)
       .order('created_at', { ascending: true });
     if (error) throw error;
     itemRows = (data ?? []) as any[];
   }
 
   const sessionItems: SessionOrderItem[] = itemRows
-    .filter((row) => openSessionIds.has(String(row.service_session_id ?? '')))
+    .filter((row) => openSessionIdsSet.has(String(row.service_session_id ?? '')))
     .map((row: any) => {
       const qtyReady = Number(row.qty_ready ?? 0);
       const qtyTotal = Number(row.qty_total ?? 0);
@@ -256,15 +285,24 @@ export async function buildWaiterWorkspace(cafeId: string): Promise<WaiterWorksp
 
 export async function buildStationWorkspace(cafeId: string, stationCode: StationCode): Promise<StationWorkspace> {
   const admin = adminOps();
-  const [{ data: shift }, { data: rows }] = await Promise.all([
-    admin.from('shifts').select('id, shift_kind, status, opened_at').eq('cafe_id', cafeId).eq('status', 'open').order('opened_at', { ascending: false }).limit(1).maybeSingle(),
-    admin
-      .from('order_items')
-      .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
-      .eq('cafe_id', cafeId)
-      .eq('station_code', stationCode)
-      .order('created_at', { ascending: true }),
-  ]);
+  const normalizedShift = await loadOpenShift(cafeId);
+  let rows: any[] = [];
+  if (normalizedShift) {
+    const openSessions = await loadOpenSessions(cafeId, normalizedShift.id);
+    const openSessionIds = openSessions.map((row: any) => String(row.id));
+    if (openSessionIds.length > 0) {
+      const { data, error } = await admin
+        .from('order_items')
+        .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
+        .eq('cafe_id', cafeId)
+        .eq('shift_id', normalizedShift.id)
+        .eq('station_code', stationCode)
+        .in('service_session_id', openSessionIds)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      rows = (data ?? []) as any[];
+    }
+  }
   const queue: StationQueueItem[] = (rows ?? [])
     .map((row: any) => {
       const qtyWaitingOriginal = Math.max(
@@ -292,15 +330,37 @@ export async function buildStationWorkspace(cafeId: string, stationCode: Station
       };
     })
     .filter((row) => row.qtyWaiting > 0);
-  return { shift: normalizeShift(shift), stationCode, queue };
+  return { shift: normalizedShift, stationCode, queue };
+}
+
+type DeferredCustomerSummaryRow = {
+  debtor_name: string;
+  entry_count: number | string | null;
+  debt_total: number | string | null;
+  repayment_total: number | string | null;
+  balance: number | string | null;
+  last_entry_at: string | null;
+  last_debt_at: string | null;
+  last_repayment_at: string | null;
+  last_entry_kind: string | null;
+};
+
+async function loadDeferredCustomerSummaryRows(cafeId: string): Promise<DeferredCustomerSummaryRow[]> {
+  const admin = adminOps();
+  const { data, error } = await admin.rpc('ops_deferred_customer_summaries', { p_cafe_id: cafeId });
+  if (error) throw error;
+  return (data ?? []) as DeferredCustomerSummaryRow[];
 }
 
 export async function buildBillingWorkspace(cafeId: string): Promise<BillingWorkspace> {
-  const admin = adminOps();
-  const [shift, items, deferredNamesRows] = await Promise.all([
-    admin.from('shifts').select('id, shift_kind, status, opened_at').eq('cafe_id', cafeId).eq('status', 'open').order('opened_at', { ascending: false }).limit(1).maybeSingle(),
-    listBillableRows(cafeId),
-    admin.from('deferred_ledger_entries').select('debtor_name').eq('cafe_id', cafeId),
+  const normalizedShift = await loadOpenShift(cafeId);
+  const openSessionIds = normalizedShift
+    ? (await loadOpenSessions(cafeId, normalizedShift.id)).map((row: any) => String(row.id))
+    : [];
+
+  const [items, deferredSummaries] = await Promise.all([
+    listBillableRows(cafeId, normalizedShift?.id ?? null, openSessionIds),
+    loadDeferredCustomerSummaryRows(cafeId),
   ]);
   const bySession = new Map<string, BillingSession>();
   for (const item of items) {
@@ -317,11 +377,14 @@ export async function buildBillingWorkspace(cafeId: string): Promise<BillingWork
     current.totalBillableAmount += item.qtyBillable * item.unitPrice;
     bySession.set(key, current);
   }
-  const deferredNames = Array.from(
-    new Set((deferredNamesRows.data ?? []).map((r: any) => String(r.debtor_name)).filter(Boolean)),
-  );
-  return { shift: normalizeShift(shift.data ?? null), sessions: Array.from(bySession.values()), deferredNames };
+  const deferredNames = deferredSummaries
+    .map((row) => String(row.debtor_name ?? '').trim())
+    .filter(Boolean)
+    .sort((left, right) => left.localeCompare(right, 'ar'));
+
+  return { shift: normalizedShift, sessions: Array.from(bySession.values()), deferredNames };
 }
+
 
 type DeferredDerivedState = {
   status: DeferredCustomerSummary['status'];
@@ -381,67 +444,34 @@ function computeDeferredDerivedState(balance: number, lastDebtAt: string | null)
 }
 
 export async function buildDeferredCustomersWorkspace(cafeId: string): Promise<DeferredCustomerSummary[]> {
-  const admin = adminOps();
-  const { data, error } = await admin
-    .from('deferred_ledger_entries')
-    .select('id, debtor_name, entry_kind, amount, created_at')
-    .eq('cafe_id', cafeId)
-    .order('created_at', { ascending: false });
+  const rows = await loadDeferredCustomerSummaryRows(cafeId);
 
-  if (error) throw error;
-
-  const byName = new Map<string, DeferredCustomerSummary>();
-  for (const row of data ?? []) {
-    const debtorName = String((row as any).debtor_name ?? '').trim();
-    if (!debtorName) continue;
-    const amount = Number((row as any).amount ?? 0);
-    const entryKind = String((row as any).entry_kind ?? '');
-    const createdAt = String((row as any).created_at ?? '');
-    const current = byName.get(debtorName) ?? {
-      id: encodeURIComponent(debtorName),
-      debtorName,
-      balance: 0,
-      debtTotal: 0,
-      repaymentTotal: 0,
-      lastEntryAt: createdAt || null,
-      lastDebtAt: null,
-      lastRepaymentAt: null,
-      lastEntryKind: null,
-      entryCount: 0,
-      status: 'settled',
-      agingBucket: 'settled',
-      ageDays: null,
-    } satisfies DeferredCustomerSummary;
-
-    current.entryCount += 1;
-    if (!current.lastEntryAt || createdAt > current.lastEntryAt) {
-      current.lastEntryAt = createdAt;
-      current.lastEntryKind = entryKind === 'debt' || entryKind === 'repayment' || entryKind === 'adjustment'
-        ? entryKind
-        : null;
-    }
-
-    if (entryKind === 'debt') {
-      current.debtTotal += amount;
-      current.balance += amount;
-      if (!current.lastDebtAt || createdAt > current.lastDebtAt) {
-        current.lastDebtAt = createdAt;
-      }
-    } else if (entryKind === 'repayment') {
-      current.repaymentTotal += amount;
-      current.balance -= amount;
-      if (!current.lastRepaymentAt || createdAt > current.lastRepaymentAt) {
-        current.lastRepaymentAt = createdAt;
-      }
-    }
-    byName.set(debtorName, current);
-  }
-
-  return Array.from(byName.values())
-    .map((item) => {
-      const derived = computeDeferredDerivedState(item.balance, item.lastDebtAt);
-      return { ...item, ...derived };
+  return rows
+    .map((row) => {
+      const debtorName = String(row.debtor_name ?? '').trim();
+      const balance = Number(row.balance ?? 0);
+      const debtTotal = Number(row.debt_total ?? 0);
+      const repaymentTotal = Number(row.repayment_total ?? 0);
+      const lastDebtAt = row.last_debt_at ? String(row.last_debt_at) : null;
+      const derived = computeDeferredDerivedState(balance, lastDebtAt);
+      return {
+        id: encodeURIComponent(debtorName),
+        debtorName,
+        balance,
+        debtTotal,
+        repaymentTotal,
+        lastEntryAt: row.last_entry_at ? String(row.last_entry_at) : null,
+        lastDebtAt,
+        lastRepaymentAt: row.last_repayment_at ? String(row.last_repayment_at) : null,
+        lastEntryKind:
+          row.last_entry_kind === 'debt' || row.last_entry_kind === 'repayment' || row.last_entry_kind === 'adjustment'
+            ? row.last_entry_kind
+            : null,
+        entryCount: Number(row.entry_count ?? 0),
+        ...derived,
+      } satisfies DeferredCustomerSummary;
     })
+    .filter((item) => item.debtorName)
     .sort(
       (left, right) =>
         right.balance - left.balance ||
@@ -657,19 +687,17 @@ export async function buildComplaintsWorkspace(cafeId: string): Promise<Complain
 }
 
 export async function buildDashboardWorkspace(cafeId: string): Promise<DashboardWorkspace> {
+  const admin = adminOps();
   const [waiter, stationBarista, stationShisha, billing] = await Promise.all([
     buildWaiterWorkspace(cafeId),
     buildStationWorkspace(cafeId, 'barista'),
     buildStationWorkspace(cafeId, 'shisha'),
     buildBillingWorkspace(cafeId),
   ]);
-  const admin = adminOps();
-  const { data: deferredRows } = await admin.from('deferred_ledger_entries').select('entry_kind, amount').eq('cafe_id', cafeId);
+  const deferredSummaries = await loadDeferredCustomerSummaryRows(cafeId);
   let deferredOutstanding = 0;
-  for (const row of deferredRows ?? []) {
-    const amount = Number((row as any).amount ?? 0);
-    const kind = String((row as any).entry_kind ?? '');
-    deferredOutstanding += kind === 'debt' ? amount : kind === 'repayment' ? -amount : 0;
+  for (const row of deferredSummaries) {
+    deferredOutstanding += Number(row.balance ?? 0);
   }
 
   let queueHealth: OpsQueueHealth = {
@@ -681,29 +709,39 @@ export async function buildDashboardWorkspace(cafeId: string): Promise<Dashboard
 
   if (waiter.shift) {
     const openSessionIds = waiter.sessions.map((session) => session.id);
+    const openSessionIdSet = new Set(openSessionIds);
     const readyItemIds = new Set(waiter.readyItems.map((item) => item.orderItemId));
     const oldestPendingSource = [...stationBarista.queue, ...stationShisha.queue]
       .map((item) => item.createdAt)
       .filter(Boolean)
       .sort()[0] ?? null;
 
-    const [ordersResult, paymentsResult, eventsResult] = await Promise.all([
-      admin
-        .from('orders')
-        .select('service_session_id, created_at, submitted_at')
-        .eq('cafe_id', cafeId)
-        .eq('shift_id', waiter.shift.id),
-      admin
-        .from('payments')
-        .select('service_session_id, created_at')
-        .eq('cafe_id', cafeId)
-        .eq('shift_id', waiter.shift.id),
-      admin
-        .from('fulfillment_events')
-        .select('service_session_id, order_item_id, event_code, created_at')
-        .eq('cafe_id', cafeId)
-        .eq('shift_id', waiter.shift.id),
-    ]);
+    const [ordersResult, paymentsResult, eventsResult] = openSessionIds.length
+      ? await Promise.all([
+          admin
+            .from('orders')
+            .select('service_session_id, created_at, submitted_at')
+            .eq('cafe_id', cafeId)
+            .eq('shift_id', waiter.shift.id)
+            .in('service_session_id', openSessionIds),
+          admin
+            .from('payments')
+            .select('service_session_id, created_at')
+            .eq('cafe_id', cafeId)
+            .eq('shift_id', waiter.shift.id)
+            .in('service_session_id', openSessionIds),
+          admin
+            .from('fulfillment_events')
+            .select('service_session_id, order_item_id, event_code, created_at')
+            .eq('cafe_id', cafeId)
+            .eq('shift_id', waiter.shift.id)
+            .in('service_session_id', openSessionIds),
+        ])
+      : [
+          { data: [], error: null },
+          { data: [], error: null },
+          { data: [], error: null },
+        ];
 
     if (ordersResult.error) throw ordersResult.error;
     if (paymentsResult.error) throw paymentsResult.error;
@@ -716,14 +754,14 @@ export async function buildDashboardWorkspace(cafeId: string): Promise<Dashboard
 
     for (const row of ordersResult.data ?? []) {
       const sessionId = String((row as any).service_session_id ?? '');
-      if (!sessionId || !openSessionIds.includes(sessionId)) continue;
+      if (!sessionId || !openSessionIdSet.has(sessionId)) continue;
       const latest = maxIso(String((row as any).created_at ?? ''), (row as any).submitted_at ? String((row as any).submitted_at) : null);
       sessionActivity.set(sessionId, maxIso(sessionActivity.get(sessionId), latest) ?? sessionActivity.get(sessionId) ?? '');
     }
 
     for (const row of paymentsResult.data ?? []) {
       const sessionId = String((row as any).service_session_id ?? '');
-      if (!sessionId || !openSessionIds.includes(sessionId)) continue;
+      if (!sessionId || !openSessionIdSet.has(sessionId)) continue;
       const createdAt = String((row as any).created_at ?? '');
       sessionActivity.set(sessionId, maxIso(sessionActivity.get(sessionId), createdAt) ?? sessionActivity.get(sessionId) ?? '');
     }
@@ -732,7 +770,7 @@ export async function buildDashboardWorkspace(cafeId: string): Promise<Dashboard
     for (const row of eventsResult.data ?? []) {
       const sessionId = String((row as any).service_session_id ?? '');
       const createdAt = String((row as any).created_at ?? '');
-      if (sessionId && openSessionIds.includes(sessionId)) {
+      if (sessionId && openSessionIdSet.has(sessionId)) {
         sessionActivity.set(sessionId, maxIso(sessionActivity.get(sessionId), createdAt) ?? sessionActivity.get(sessionId) ?? '');
       }
 
