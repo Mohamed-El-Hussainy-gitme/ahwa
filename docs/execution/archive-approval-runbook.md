@@ -4,6 +4,24 @@
 
 Run archive cleanup safely in production without breaking billing, dashboards, or reporting.
 
+## Windows PowerShell secret generation
+
+Use these commands to create and persist both deployment secrets on Windows:
+
+```powershell
+$CRON_SECRET = -join ((1..64) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+$ARCHIVE_APPROVAL_SECRET = -join ((1..64) | ForEach-Object { '{0:x2}' -f (Get-Random -Maximum 256) })
+
+$env:CRON_SECRET = $CRON_SECRET
+$env:ARCHIVE_APPROVAL_SECRET = $ARCHIVE_APPROVAL_SECRET
+
+[Environment]::SetEnvironmentVariable('CRON_SECRET', $CRON_SECRET, 'User')
+[Environment]::SetEnvironmentVariable('ARCHIVE_APPROVAL_SECRET', $ARCHIVE_APPROVAL_SECRET, 'User')
+
+Write-Host "CRON_SECRET=$CRON_SECRET"
+Write-Host "ARCHIVE_APPROVAL_SECRET=$ARCHIVE_APPROVAL_SECRET"
+```
+
 ## Step 1 - create plan
 
 Use:
@@ -46,6 +64,11 @@ Review the plan payload before execution:
 
 Do not approve execution if the window is unexpectedly large.
 
+Also confirm the business rule for deferred finance remains intact:
+- deferred settlements are already represented in reporting totals
+- `ops.deferred_ledger_entries` is not part of the archive target
+- `ops.deferred_customer_balances` remains the live debtor read model
+
 ## Step 3 - execute approved archive
 
 Use:
@@ -75,6 +98,8 @@ Inspect these sections carefully:
 - `missing_weekly_summaries`
 - `missing_monthly_summaries`
 - `missing_yearly_summaries`
+- `deferred_live_finance`
+- `deferred_finance_policy`
 
 ## Failure rules
 

@@ -22,6 +22,13 @@ This matrix defines what must be true after a real archive execution.
 - `ops.monthly_summaries` for each archived month
 - `ops.yearly_summaries` for each archived year
 
+### Deferred finance must remain live
+- `ops.deferred_ledger_entries` still exists in `ops.*`
+- `ops.deferred_customer_balances` still exists in `ops.*`
+- no `archive.deferred_ledger_entries` table exists
+- no `archive.deferred_customer_balances` table exists
+- deferred ledger foreign keys to `service_sessions` and `payments` remain `ON DELETE SET NULL`
+
 ## Route-level expectations
 
 ### archive-plan
@@ -43,3 +50,4 @@ A production archive run is acceptable only when:
 - post-check succeeded
 - no lingering runtime rows remain
 - summary coverage is complete for archived periods
+- deferred finance policy remains intact and live

@@ -91,6 +91,9 @@ Archive hardening, scheduler integration, and reporting backfill/reconciliation 
 ### 0031
 Archive approval flow and post-archive runtime verification. Real archive execution now requires a pending approval and a second approval secret before deleting runtime detail.
 
+### 0032
+Deferred finance non-archival policy. Codifies that `ops.deferred_ledger_entries` and `ops.deferred_customer_balances` stay live, and extends post-archive verification to assert that deferred finance remains outside `archive.*`.
+
 ## Current canonical boundaries
 
 - Daily runtime truth lives in `ops.*`

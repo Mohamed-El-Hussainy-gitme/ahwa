@@ -76,3 +76,24 @@ New SQL objects:
 - `public.ops_execute_archive_execution_approval(...)`
 
 The post-archive runtime check verifies both runtime residue cleanup and summary coverage for archived days, weeks, months, and years.
+
+## Phase 9 - deferred finance stays live
+
+Deferred customer finance is now explicitly outside the archive layer:
+- `ops.deferred_ledger_entries` stays live
+- `ops.deferred_customer_balances` stays live
+- archived service sessions and payments may null out ledger foreign keys through `ON DELETE SET NULL`
+
+Operational meaning:
+- deferred settlement is still counted inside day/week/month/year reporting through the closed-shift snapshots
+- the debtor ledger itself is not archived
+- table/session/order/payment detail may move to `archive.*` after the grace window without removing the open debtor balance
+
+New SQL object:
+- `public.ops_assert_deferred_finance_non_archival_policy()`
+
+The post-archive runtime check now also verifies:
+- no `archive.deferred_ledger_entries` table exists
+- no `archive.deferred_customer_balances` table exists
+- deferred ledger/payment foreign keys still use `ON DELETE SET NULL`
+- the live deferred finance tables still exist for the cafe

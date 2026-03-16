@@ -95,10 +95,31 @@ This first archive layer intentionally leaves `ops.deferred_ledger_entries` in t
 
 Reason:
 
-- current debtor balances still read raw ledger rows in the application
-- moving ledger rows requires a carried-forward balance model first
+- current debtor balances still read live ledger rows in the application
+- `ops.deferred_customer_balances` is the live read model used by billing and dashboard
+- moving debtor ledger rows would require a carried-forward balance model first
+- archived `service_sessions` and `payments` may safely null out the optional ledger references through `ON DELETE SET NULL`
 
 This keeps customer balances correct while still reducing most operational table growth.
+
+## Deferred settlement inside reports
+
+Deferred settlement still belongs to the closed day/week/month/year reporting chain:
+
+- a deferred checkout still contributes to the session being settled
+- `cash_total` contains the cash-paid portion
+- `deferred_total` contains the deferred-paid portion
+- `net_sales` still contains the whole delivered sale
+
+Example:
+- one session has four customers
+- three customers pay cash
+- one customer settles as deferred
+
+Result:
+- the session can still close normally
+- the closed shift/day/week/month/year reports include all four sold drinks
+- only the debtor ledger stays live after operational detail is archived
 
 
 ## التجميع الشهري والسنوي

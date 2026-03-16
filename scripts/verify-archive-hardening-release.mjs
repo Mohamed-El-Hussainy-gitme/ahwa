@@ -22,6 +22,7 @@ function expectIncludes(path, snippets) {
 
 const requiredFiles = [
   'database/migrations/0031_archive_approval_and_post_archive_checks.sql',
+  'database/migrations/0032_deferred_finance_non_archival_policy.sql',
   'apps/web/src/app/api/internal/maintenance/reporting/route.ts',
   'apps/web/vercel.json',
   'docs/database/reporting-maintenance.md',
@@ -55,11 +56,20 @@ expectIncludes('apps/web/vercel.json', [
   '/api/internal/maintenance/reporting?action=archive-plan',
 ]);
 
+expectIncludes('database/migrations/0032_deferred_finance_non_archival_policy.sql', [
+  'ops_assert_deferred_finance_non_archival_policy',
+  'ops_post_archive_runtime_check',
+  'archive.deferred_ledger_entries_must_not_exist',
+  'fk_deferred_payment_must_use_on_delete_set_null',
+]);
+
 expectIncludes('docs/database/reporting-maintenance.md', [
   'Phase 8 - archive approval flow and post-archive checks',
   'archive-plan',
   'archive-execute',
   'post-archive runtime check',
+  'Phase 9 - deferred finance stays live',
+  'ops_assert_deferred_finance_non_archival_policy',
 ]);
 
 expectIncludes('scripts/manage-reporting-archive-approval.mjs', [
@@ -73,6 +83,18 @@ expectIncludes('scripts/smoke-archive-hardening.mjs', [
   'archive-plan',
   'approval_required',
   'approval_id',
+]);
+
+expectIncludes('docs/execution/archive-approval-runbook.md', [
+  'Windows PowerShell secret generation',
+  'deferred_finance_policy',
+  'ops.deferred_ledger_entries',
+]);
+
+expectIncludes('docs/execution/post-archive-runtime-check-matrix.md', [
+  'Deferred finance must remain live',
+  'archive.deferred_ledger_entries',
+  'ON DELETE SET NULL',
 ]);
 
 const packageJson = readFileSync('package.json', 'utf8');
