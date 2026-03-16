@@ -345,14 +345,62 @@ type DeferredCustomerSummaryRow = {
   last_entry_kind: string | null;
 };
 
+type RuntimeContractScope = 'core' | 'reporting';
+
+type RuntimeContractCache = {
+  checkedAt: number;
+  promise: Promise<void>;
+};
+
+const RUNTIME_CONTRACT_TTL_MS = 60_000;
+const runtimeContractCache = new Map<RuntimeContractScope, RuntimeContractCache>();
+
+async function runRuntimeContractCheck(scope: RuntimeContractScope): Promise<void> {
+  const { error } = await supabaseAdmin().rpc('ops_assert_runtime_contract', {
+    p_require_reporting: scope === 'reporting',
+  });
+  if (error) throw error;
+}
+
+export async function ensureRuntimeContract(scope: RuntimeContractScope): Promise<void> {
+  const now = Date.now();
+  const cached = runtimeContractCache.get(scope);
+  if (cached && now - cached.checkedAt < RUNTIME_CONTRACT_TTL_MS) {
+    return cached.promise;
+  }
+
+  const promise = runRuntimeContractCheck(scope).catch((error) => {
+    runtimeContractCache.delete(scope);
+    throw error;
+  });
+
+  runtimeContractCache.set(scope, {
+    checkedAt: now,
+    promise,
+  });
+
+  await promise;
+}
+
 async function loadDeferredCustomerSummaryRows(cafeId: string): Promise<DeferredCustomerSummaryRow[]> {
+  await ensureRuntimeContract('core');
+
   const admin = adminOps();
-  const { data, error } = await admin.rpc('ops_deferred_customer_summaries', { p_cafe_id: cafeId });
+  const { data, error } = await admin
+    .from('deferred_customer_balances')
+    .select('debtor_name, entry_count, debt_total, repayment_total, balance, last_entry_at, last_debt_at, last_repayment_at, last_entry_kind')
+    .eq('cafe_id', cafeId)
+    .order('balance', { ascending: false })
+    .order('last_entry_at', { ascending: false })
+    .order('debtor_name', { ascending: true });
+
   if (error) throw error;
   return (data ?? []) as DeferredCustomerSummaryRow[];
 }
 
 export async function buildBillingWorkspace(cafeId: string): Promise<BillingWorkspace> {
+  await ensureRuntimeContract('core');
+
   const normalizedShift = await loadOpenShift(cafeId);
   const openSessionIds = normalizedShift
     ? (await loadOpenSessions(cafeId, normalizedShift.id)).map((row: any) => String(row.id))
@@ -444,6 +492,8 @@ function computeDeferredDerivedState(balance: number, lastDebtAt: string | null)
 }
 
 export async function buildDeferredCustomersWorkspace(cafeId: string): Promise<DeferredCustomerSummary[]> {
+  await ensureRuntimeContract('core');
+
   const rows = await loadDeferredCustomerSummaryRows(cafeId);
 
   return rows
@@ -484,37 +534,54 @@ export async function buildDeferredCustomerLedgerWorkspace(
   cafeId: string,
   debtorName: string,
 ): Promise<DeferredCustomerLedgerWorkspace> {
-  const admin = adminOps();
-  const { data, error } = await admin
-    .from('deferred_ledger_entries')
-    .select('id, debtor_name, entry_kind, amount, notes, created_at, payment_id, service_session_id, by_staff_id, by_owner_id')
-    .eq('cafe_id', cafeId)
-    .eq('debtor_name', debtorName)
-    .order('created_at', { ascending: false });
+  await ensureRuntimeContract('core');
 
+  const admin = adminOps();
+  const normalizedDebtorName = debtorName.trim();
+  const [{ data: balanceRows, error: balanceError }, { data, error }] = await Promise.all([
+    admin
+      .from('deferred_customer_balances')
+      .select('balance, debt_total, repayment_total, entry_count, last_entry_at, last_debt_at, last_repayment_at')
+      .eq('cafe_id', cafeId)
+      .eq('debtor_name', normalizedDebtorName)
+      .limit(1),
+    admin
+      .from('deferred_ledger_entries')
+      .select('id, debtor_name, entry_kind, amount, notes, created_at, payment_id, service_session_id, by_staff_id, by_owner_id')
+      .eq('cafe_id', cafeId)
+      .eq('debtor_name', normalizedDebtorName)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  if (balanceError) throw balanceError;
   if (error) throw error;
 
-  let balance = 0;
-  let debtTotal = 0;
-  let repaymentTotal = 0;
-  let lastEntryAt: string | null = null;
-  let lastDebtAt: string | null = null;
-  let lastRepaymentAt: string | null = null;
+  const balanceRow = (balanceRows ?? [])[0] as Record<string, unknown> | undefined;
+
+  let balance = Number(balanceRow?.balance ?? 0);
+  let debtTotal = Number(balanceRow?.debt_total ?? 0);
+  let repaymentTotal = Number(balanceRow?.repayment_total ?? 0);
+  let lastEntryAt: string | null = balanceRow?.last_entry_at ? String(balanceRow.last_entry_at) : null;
+  let lastDebtAt: string | null = balanceRow?.last_debt_at ? String(balanceRow.last_debt_at) : null;
+  let lastRepaymentAt: string | null = balanceRow?.last_repayment_at ? String(balanceRow.last_repayment_at) : null;
   const orderedAsc = [...(data ?? [])].reverse();
-  for (const row of orderedAsc) {
-    const amount = Number((row as any).amount ?? 0);
-    const entryKind = String((row as any).entry_kind ?? '');
-    const createdAt = String((row as any).created_at ?? '');
-    if (!lastEntryAt || createdAt > lastEntryAt) lastEntryAt = createdAt;
-    if (entryKind === 'debt') {
-      debtTotal += amount;
-      balance += amount;
-      if (!lastDebtAt || createdAt > lastDebtAt) lastDebtAt = createdAt;
-    }
-    if (entryKind === 'repayment') {
-      repaymentTotal += amount;
-      balance -= amount;
-      if (!lastRepaymentAt || createdAt > lastRepaymentAt) lastRepaymentAt = createdAt;
+
+  if (!balanceRow) {
+    for (const row of orderedAsc) {
+      const amount = Number((row as any).amount ?? 0);
+      const entryKind = String((row as any).entry_kind ?? '');
+      const createdAt = String((row as any).created_at ?? '');
+      if (!lastEntryAt || createdAt > lastEntryAt) lastEntryAt = createdAt;
+      if (entryKind === 'debt') {
+        debtTotal += amount;
+        balance += amount;
+        if (!lastDebtAt || createdAt > lastDebtAt) lastDebtAt = createdAt;
+      }
+      if (entryKind === 'repayment') {
+        repaymentTotal += amount;
+        balance -= amount;
+        if (!lastRepaymentAt || createdAt > lastRepaymentAt) lastRepaymentAt = createdAt;
+      }
     }
   }
 
@@ -687,6 +754,8 @@ export async function buildComplaintsWorkspace(cafeId: string): Promise<Complain
 }
 
 export async function buildDashboardWorkspace(cafeId: string): Promise<DashboardWorkspace> {
+  await ensureRuntimeContract('core');
+
   const admin = adminOps();
   const [waiter, stationBarista, stationShisha, billing] = await Promise.all([
     buildWaiterWorkspace(cafeId),

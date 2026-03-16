@@ -46,6 +46,8 @@ const requiredKeys = [
   'SUPABASE_SECRET_KEY',
   'AHWA_SESSION_SECRET',
   'AHWA_INSTALL_TOKEN',
+  'CRON_SECRET',
+  'ARCHIVE_APPROVAL_SECRET',
 ];
 
 for (const key of requiredKeys) {
@@ -62,3 +64,5 @@ console.log('release-readiness: ok');
 execSync('node ./scripts/check-ops-authz-coverage.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/check-final-1to1-lock.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/check-batch4-admin-hygiene.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-reporting-maintenance-release.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-archive-hardening-release.mjs', { stdio: 'inherit' });

@@ -15,7 +15,7 @@ import type {
   StaffPerformanceRow,
   StationCode,
 } from '@/lib/ops/types';
-import { buildDeferredCustomersWorkspace } from '@/app/api/ops/_server';
+import { buildDeferredCustomersWorkspace, ensureRuntimeContract } from '@/app/api/ops/_server';
 
 type ShiftRow = {
   id: string;
@@ -1158,9 +1158,10 @@ function buildSummaryBackedPeriod(input: {
     const currentBusinessDate = input.currentShift.businessDate;
 
     if (currentBusinessDate && inDateRange(currentBusinessDate, base.startDate, base.endDate)) {
+      const { businessDate: _ignoredBusinessDate, ...currentShiftRest } = input.currentShift;
       const currentDay: ReportBusinessDayRow[] = [
         {
-          ...input.currentShift,
+          ...currentShiftRest,
           businessDate: currentBusinessDate,
         },
       ];
@@ -1183,6 +1184,8 @@ function buildSummaryBackedPeriod(input: {
 }
 
 export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWorkspace> {
+  await ensureRuntimeContract('reporting');
+
   const referenceDate = cairoToday();
   const ranges = {
     day: { key: 'day' as const, label: 'اليوم', startDate: referenceDate, endDate: referenceDate },

@@ -32,6 +32,15 @@ Apply migrations in this order:
 20. `0020_canonical_shift_snapshots_and_time_reports.sql`
 21. `0021_platform_privacy_refactor_and_admin_views.sql`
 22. `0022_remove_support_grants_and_lock_final_access.sql`
+23. `0023_platform_subscription_money_follow_and_create_flow.sql`
+24. `0024_staff_employment_status_lifecycle.sql`
+25. `0025_ops_idempotency_for_sensitive_mutations.sql`
+26. `0026_platform_support_inbox_and_dashboard_refactor.sql`
+27. `0027_weekly_archiving_rollups.sql`
+28. `0028_operational_scope_monthly_yearly_rollups.sql`
+29. `0029_runtime_reporting_contract_and_deferred_balances.sql`
+30. `0030_archive_scheduler_and_backfill_reconciliation.sql`
+31. `0031_archive_approval_and_post_archive_checks.sql`
 
 ## Migration summary
 
@@ -63,6 +72,25 @@ Closed-shift history must read from `ops.shift_snapshots`.
 Platform privacy refactor.
 Super admin overview/detail become administrative-only and no longer expose detailed per-cafe runtime internals.
 
+### 0022
+Final security/access lock.
+Disables platform support grants in the canonical access path and keeps tenant data access scoped to `app.current_cafe_id()` only.
+
+### 0023 - 0026
+Platform subscription money flow, staff lifecycle, idempotency hardening, and platform support/dashboard refactor.
+
+### 0027 - 0028
+Daily/weekly/monthly/yearly reporting rollups plus archive tables for old operational detail.
+
+### 0029
+Runtime/reporting reconciliation. Introduces `ops.deferred_customer_balances` as the operational deferred read model, restores a hard runtime contract check, and wires shift close to refresh the day/week/month/year rollup chain.
+
+### 0030
+Archive hardening, scheduler integration, and reporting backfill/reconciliation maintenance functions.
+
+### 0031
+Archive approval flow and post-archive runtime verification. Real archive execution now requires a pending approval and a second approval secret before deleting runtime detail.
+
 ## Current canonical boundaries
 
 - Daily runtime truth lives in `ops.*`
@@ -71,8 +99,3 @@ Super admin overview/detail become administrative-only and no longer expose deta
 - No new migration should reintroduce `tables`, `table_sessions`, or `bill_accounts` as canonical runtime entities
 
 
-### 0022
-Final security/access lock.
-Disables platform support grants in the canonical access path and keeps tenant data access scoped to `app.current_cafe_id()` only.
-
-- `0024_staff_employment_status_lifecycle.sql` — adds staff lifecycle states (`active`, `inactive`, `left`) and hardens assignment/login against inactive staff.

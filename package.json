@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "build": "npm run build:shared && npm run build:web",
+    "build": "npm run typecheck && npm run build:shared && npm run build:web",
     "dev": "node ./scripts/dev-workspace.mjs",
     "typecheck": "npm run typecheck:shared && npm run typecheck:web",
     "dev:web": "npm run dev --workspace @ahwa/web",
@@ -25,6 +25,12 @@
     "verify:authz": "node ./scripts/check-ops-authz-coverage.mjs",
     "verify:1to1-lock": "node ./scripts/check-final-1to1-lock.mjs",
     "verify:release": "node ./scripts/check-release-readiness.mjs",
-    "verify:batch4": "node ./scripts/check-batch4-admin-hygiene.mjs"
+    "verify:batch4": "node ./scripts/check-batch4-admin-hygiene.mjs",
+    "verify:reporting-maintenance": "node ./scripts/verify-reporting-maintenance-release.mjs",
+    "smoke:reporting-maintenance": "node ./scripts/smoke-reporting-maintenance.mjs",
+    "verify:archive-hardening": "node ./scripts/verify-archive-hardening-release.mjs",
+    "smoke:archive-hardening": "node ./scripts/smoke-archive-hardening.mjs",
+    "archive:plan": "node ./scripts/manage-reporting-archive-approval.mjs plan",
+    "archive:execute": "node ./scripts/manage-reporting-archive-approval.mjs execute"
   }
 }
