@@ -17,7 +17,14 @@ export default async function Page({ params }: PageProps) {
   const slug = String(resolved.slug ?? '').trim().toLowerCase();
   if (!slug) redirect('/login?e=cafe_not_found');
 
-  const cafe = await resolveCafeBySlug(slug);
+  let cafe = null;
+
+  try {
+    cafe = await resolveCafeBySlug(slug);
+  } catch {
+    redirect('/login?e=cafe_not_found');
+  }
+
   if (!cafe || !cafe.isActive) {
     redirect('/login?e=cafe_not_found');
   }

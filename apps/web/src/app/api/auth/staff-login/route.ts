@@ -35,7 +35,13 @@ export async function POST(req: NextRequest) {
 
   const slug = parsed.data.cafeSlug.trim().toLowerCase();
 
-  const binding = await resolveCafeBindingBySlug(slug);
+  let binding = null;
+  try {
+    binding = await resolveCafeBindingBySlug(slug);
+  } catch {
+    return fail(404, 'CAFE_NOT_FOUND');
+  }
+
   if (!binding || !binding.isActive) {
     return fail(404, 'CAFE_NOT_FOUND');
   }

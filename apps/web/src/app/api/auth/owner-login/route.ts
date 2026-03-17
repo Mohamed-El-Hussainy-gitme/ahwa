@@ -24,7 +24,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'MISSING_CAFE_SLUG' }, { status: 400 });
   }
 
-  const binding = await resolveCafeBindingBySlug(slug);
+  let binding = null;
+  try {
+    binding = await resolveCafeBindingBySlug(slug);
+  } catch {
+    return NextResponse.json({ ok: false, error: 'CAFE_NOT_FOUND' }, { status: 404 });
+  }
+
   if (!binding || !binding.isActive) {
     return NextResponse.json({ ok: false, error: 'CAFE_NOT_FOUND' }, { status: 404 });
   }

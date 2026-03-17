@@ -169,13 +169,47 @@ async function listOperationalDatabases(): Promise<OperationalDatabaseOption[]> 
     .filter((row): row is OperationalDatabaseOption => row !== null);
 }
 
-async function scanOperationalCafeBindingBySlug(slug: string): Promise<ResolvedCafeBinding | null> {
+async function loadCafeBySlugFromOperationalDatabase(
+  databaseKey: string,
+  slug: string,
+): Promise<ResolvedCafe | null> {
+  const normalizedSlug = normalizeCafeSlug(slug);
+  if (!normalizedSlug) return null;
+  if (!isOperationalDatabaseConfigured(databaseKey)) return null;
+
+  const { data, error } = await supabaseAdminForDatabase(databaseKey)
+    .schema('ops')
+    .from('cafes')
+    .select('id, slug, display_name, is_active')
+    .eq('slug', normalizedSlug)
+    .maybeSingle<CafeRow>();
+
+  if (error) {
+    return null;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return parseCafeRow(data);
+}
+
+async function scanOperationalCafeBindingBySlug(
+  slug: string,
+  preferredDatabaseKey?: string | null,
+): Promise<ResolvedCafeBinding | null> {
   const normalizedSlug = normalizeCafeSlug(slug);
   if (!normalizedSlug) return null;
 
   const candidates = (await listOperationalDatabases())
     .filter((row) => row.isActive)
-    .filter((row) => isOperationalDatabaseConfigured(row.databaseKey));
+    .filter((row) => isOperationalDatabaseConfigured(row.databaseKey))
+    .sort((a, b) => {
+      const aPreferred = preferredDatabaseKey && a.databaseKey === preferredDatabaseKey ? 1 : 0;
+      const bPreferred = preferredDatabaseKey && b.databaseKey === preferredDatabaseKey ? 1 : 0;
+      return bPreferred - aPreferred;
+    });
 
   if (!candidates.length) {
     return null;
@@ -183,22 +217,11 @@ async function scanOperationalCafeBindingBySlug(slug: string): Promise<ResolvedC
 
   const scanned = await Promise.all(
     candidates.map(async (candidate): Promise<ResolvedCafeBinding | null> => {
-      const { data, error } = await supabaseAdminForDatabase(candidate.databaseKey)
-        .schema('ops')
-        .from('cafes')
-        .select('id, slug, display_name, is_active')
-        .eq('slug', normalizedSlug)
-        .maybeSingle<CafeRow>();
-
-      if (error) {
-        throw new Error(`OPERATIONAL_CAFE_SCAN_FAILED:${candidate.databaseKey}:${error.message}`);
-      }
-
-      if (!data) {
+      const cafe = await loadCafeBySlugFromOperationalDatabase(candidate.databaseKey, normalizedSlug);
+      if (!cafe) {
         return null;
       }
 
-      const cafe = parseCafeRow(data);
       return {
         ...cafe,
         databaseKey: candidate.databaseKey,
@@ -243,38 +266,59 @@ export async function listCafeDatabaseBindings(): Promise<CafeDatabaseBinding[]>
 }
 
 export async function resolveCafeBindingBySlug(slug: string): Promise<ResolvedCafeBinding | null> {
-  const cafe = await loadCafeBySlugFromControlPlane(slug);
+  const normalizedSlug = normalizeCafeSlug(slug);
+  if (!normalizedSlug) {
+    return null;
+  }
+
+  const cafe = await loadCafeBySlugFromControlPlane(normalizedSlug);
+  let preferredDatabaseKey: string | null = null;
+
   if (cafe) {
     const binding = await resolveCafeDatabaseBinding(cafe.id);
     if (binding) {
-      return {
-        ...cafe,
-        databaseKey: binding.databaseKey,
-        bindingSource: binding.bindingSource,
-        bindingCreatedAt: binding.createdAt,
-        bindingUpdatedAt: binding.updatedAt,
-      };
+      preferredDatabaseKey = binding.databaseKey;
+      const operationalCafe = await loadCafeBySlugFromOperationalDatabase(binding.databaseKey, normalizedSlug);
+      if (operationalCafe) {
+        return {
+          ...operationalCafe,
+          isActive: cafe.isActive,
+          displayName: operationalCafe.displayName || cafe.displayName,
+          databaseKey: binding.databaseKey,
+          bindingSource: binding.bindingSource,
+          bindingCreatedAt: binding.createdAt,
+          bindingUpdatedAt: binding.updatedAt,
+        };
+      }
     }
   }
 
-  return scanOperationalCafeBindingBySlug(slug);
-}
-
-export async function resolveCafeBySlug(slug: string): Promise<ResolvedCafe | null> {
-  const direct = await loadCafeBySlugFromControlPlane(slug);
-  if (direct) {
-    return direct;
-  }
-
-  const fallback = await scanOperationalCafeBindingBySlug(slug);
+  const fallback = await scanOperationalCafeBindingBySlug(normalizedSlug, preferredDatabaseKey);
   if (!fallback) {
     return null;
   }
 
+  if (!cafe) {
+    return fallback;
+  }
+
   return {
-    id: fallback.id,
-    slug: fallback.slug,
-    displayName: fallback.displayName,
-    isActive: fallback.isActive,
+    ...fallback,
+    isActive: cafe.isActive,
+    displayName: fallback.displayName || cafe.displayName,
+  };
+}
+
+export async function resolveCafeBySlug(slug: string): Promise<ResolvedCafe | null> {
+  const binding = await resolveCafeBindingBySlug(slug);
+  if (!binding) {
+    return null;
+  }
+
+  return {
+    id: binding.id,
+    slug: binding.slug,
+    displayName: binding.displayName,
+    isActive: binding.isActive,
   };
 }
