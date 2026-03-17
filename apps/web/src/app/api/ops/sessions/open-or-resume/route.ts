@@ -11,7 +11,7 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as { label?: string };
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
-    const shift = await requireOpenOpsShift(ctx.cafeId);
+    const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
     const label = String(body.label ?? '').trim();
 
     const rpc = await callOpsRpc<OpenOrResumeSessionRpcResult>('ops_open_or_resume_service_session', {
@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       p_shift_id: shift.id,
       p_session_label: label || null,
       ...actorRpcParams(ctx, 'p_staff_member_id', 'p_owner_user_id'),
-    });
+    }, ctx.databaseKey);
 
     const sessionId = String(rpc.service_session_id ?? '').trim();
     const sessionLabel = String(rpc.session_label ?? '').trim();

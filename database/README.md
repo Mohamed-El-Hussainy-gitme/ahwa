@@ -116,3 +116,8 @@ Search-path security hardening for the remaining linter-reported functions. This
 - `0034_control_plane_manual_database_selection.sql` belongs to the current primary database when it acts as the control plane.
 - Future operational databases should apply operational migrations only up to `0033_search_path_security_hardening.sql`.
 - New cafes can be assigned manually to an available operational database during platform create-cafe flow.
+
+
+## Phase 9 application binding note
+
+Phase 9 does not introduce a new SQL migration. The bug fixed in phase 9 was application-layer request binding, not control-plane data or schema shape. Keep the strict control-plane SQL contract from `0034` and `0035`, and fix runtime database selection only by explicit `databaseKey` propagation in application code.

@@ -5,8 +5,8 @@ export async function POST(req: Request) {
     const { debtorName } = await req.json() as { debtorName?: string };
     const name = String(debtorName ?? '').trim(); if (!name) throw new Error('INVALID_INPUT');
     const ctx = requireDeferredAccess(await requireOpsActorContext());
-    await ensureRuntimeContract('core');
-    const admin = adminOps();
+    await ensureRuntimeContract('core', ctx.databaseKey);
+    const admin = adminOps(ctx.databaseKey);
     const rows = await admin.from('deferred_customer_balances').select('balance').eq('cafe_id', ctx.cafeId).eq('debtor_name', name).limit(1);
     if (rows.error) throw rows.error;
     const balance = Number(((rows.data ?? [])[0] as any)?.balance ?? 0);

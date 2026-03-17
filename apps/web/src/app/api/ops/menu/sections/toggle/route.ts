@@ -9,7 +9,7 @@ export async function POST(request: Request) {
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
     const isActive = Boolean(body.isActive);
-    const { error } = await adminOps()
+    const { error } = await adminOps(ctx.databaseKey)
       .from('menu_sections')
       .update({ is_active: isActive })
       .eq('cafe_id', ctx.cafeId)

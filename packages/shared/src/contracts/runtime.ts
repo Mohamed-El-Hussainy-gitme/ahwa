@@ -9,6 +9,16 @@ export interface TenantContext {
   readonly tenantSlug: string;
 }
 
+export interface BoundTenantContext extends TenantContext {
+  readonly databaseKey: string;
+}
+
+export interface OperationalDatabaseBinding {
+  readonly cafeId: string;
+  readonly databaseKey: string;
+  readonly bindingSource: 'manual' | 'migration' | 'legacy' | 'unknown';
+}
+
 export interface DeviceGateContext extends TenantContext {
   readonly deviceId: string;
   readonly deviceMode: "shared_runtime" | "station_only" | "owner_private";

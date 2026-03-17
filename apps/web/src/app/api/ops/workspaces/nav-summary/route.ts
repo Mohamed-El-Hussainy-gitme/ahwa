@@ -4,7 +4,7 @@ import { jsonError, ok, requireOpsActorContext } from '@/app/api/ops/_helpers';
 export async function POST() {
   try {
     const ctx = await requireOpsActorContext();
-    return ok(await buildOpsNavSummary(ctx.cafeId));
+    return ok(await buildOpsNavSummary(ctx.cafeId, ctx.databaseKey));
   } catch (e) {
     return jsonError(e, 400);
   }

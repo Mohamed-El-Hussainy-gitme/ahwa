@@ -18,7 +18,7 @@ export async function POST(req: Request) {
       p_cafe_id: ctx.cafeId,
       p_service_session_id: normalizedServiceSessionId,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-    });
+    }, ctx.databaseKey);
 
     if (!rpc.ok) {
       throw new Error('SESSION_CLOSE_FAILED');

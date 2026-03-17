@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     if (!name || !Number.isFinite(numericAmount) || numericAmount <= 0) throw new Error('INVALID_INPUT');
 
     const ctx = requireDeferredAccess(await requireOpsActorContext());
-    const shift = await requireOpenOpsShift(ctx.cafeId);
+    const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
 
     const started = await beginIdempotentMutation(req, ctx, 'ops.deferred.repay', {
       shiftId: shift.id,
@@ -53,7 +53,7 @@ export async function POST(req: Request) {
       p_amount: numericAmount,
       p_notes: repaymentNotes,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-    });
+    }, ctx.databaseKey);
 
     const paymentId = String(rpc.payment_id ?? '').trim();
     if (!rpc.ok || !paymentId) {

@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import BrandLogo from "@/ui/brand/BrandLogo";
 
 export default function OwnerLoginClient() {
   const r = useRouter();
@@ -54,13 +55,14 @@ export default function OwnerLoginClient() {
   return (
     <div className="min-h-dvh bg-gradient-to-b from-amber-50 to-slate-50 p-4 flex items-center justify-center">
       <div className="w-full max-w-sm rounded-3xl border border-neutral-200/70 bg-white p-5 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-amber-100 text-xl">👑</div>
-          <div>
-            <div className="text-xl font-semibold text-neutral-900">دخول المعلم</div>
-            <div className="mt-0.5 text-sm text-neutral-500">رقم الموبايل + كلمة المرور</div>
-            {resolvedSlug ? <div className="mt-1 text-xs text-neutral-500">القهوة: <span className="font-semibold">{resolvedSlug}</span></div> : null}
-          </div>
+        <div className="mb-3">
+          <BrandLogo className="mx-auto w-[220px]" priority />
+        </div>
+
+        <div className="text-center">
+          <div className="text-xl font-semibold text-neutral-900">دخول المعلم</div>
+          <div className="mt-0.5 text-sm text-neutral-500">رقم الموبايل + كلمة المرور</div>
+          {resolvedSlug ? <div className="mt-1 text-xs text-neutral-500">القهوة: <span className="font-semibold">{resolvedSlug}</span></div> : null}
         </div>
 
         <div className="mt-4 space-y-2">

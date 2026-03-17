@@ -89,7 +89,7 @@ export async function POST(req: Request) {
         p_requested_quantity: quantity ?? null,
         p_notes: notes ?? null,
         ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-      });
+      }, ctx.databaseKey);
 
       const complaintId = String(created.complaint_id ?? '').trim();
       if (!complaintId) {
@@ -121,7 +121,7 @@ export async function POST(req: Request) {
       p_requested_quantity: quantity ?? null,
       p_notes: notes ?? null,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-    });
+    }, ctx.databaseKey);
 
     const itemIssueId = String(created.item_issue_id ?? '').trim();
     if (!itemIssueId) {
@@ -144,7 +144,7 @@ export async function POST(req: Request) {
     });
 
     if (effectiveOrderItemId && action !== 'none') {
-      const item = await loadOrderItemMutationContext(ctx.cafeId, effectiveOrderItemId);
+      const item = await loadOrderItemMutationContext(ctx.cafeId, effectiveOrderItemId, ctx.databaseKey);
       const resolvedQuantity = Number(created.resolved_quantity ?? quantity ?? 0);
       const eventType = action === 'remake'
         ? 'station.remake_requested'

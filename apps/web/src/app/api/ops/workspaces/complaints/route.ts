@@ -4,7 +4,7 @@ import { jsonError, ok, requireComplaintsAccess, requireOpsActorContext } from '
 export async function POST() {
   try {
     const ctx = requireComplaintsAccess(await requireOpsActorContext());
-    return ok(await buildComplaintsWorkspace(ctx.cafeId));
+    return ok(await buildComplaintsWorkspace(ctx.cafeId, ctx.databaseKey));
   } catch (e) {
     return jsonError(e, 400);
   }

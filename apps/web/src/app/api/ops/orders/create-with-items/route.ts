@@ -29,7 +29,7 @@ export async function POST(req: Request) {
     }
 
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
-    const shift = await requireOpenOpsShift(ctx.cafeId);
+    const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
 
     const rpc = await callOpsRpc<CreateOrderRpcResult>('ops_create_order_with_items', {
       p_cafe_id: ctx.cafeId,
@@ -37,7 +37,7 @@ export async function POST(req: Request) {
       p_service_session_id: String(body.serviceSessionId),
       p_items: items,
       ...actorRpcParams(ctx, 'p_created_by_staff_id', 'p_created_by_owner_id'),
-    });
+    }, ctx.databaseKey);
 
     const orderId = String(rpc.order_id ?? '').trim();
     const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();

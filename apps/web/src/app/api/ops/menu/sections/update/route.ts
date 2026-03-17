@@ -12,8 +12,8 @@ export async function POST(request: Request) {
     if (!sectionId || !title) throw new Error('INVALID_INPUT');
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    await loadSection(ctx.cafeId, sectionId);
-    const { error } = await adminOps()
+    await loadSection(ctx.cafeId, sectionId, ctx.databaseKey);
+    const { error } = await adminOps(ctx.databaseKey)
       .from('menu_sections')
       .update({ title, station_code: stationCode })
       .eq('cafe_id', ctx.cafeId)

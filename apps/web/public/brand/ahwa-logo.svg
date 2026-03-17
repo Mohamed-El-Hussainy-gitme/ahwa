@@ -1,0 +1,73 @@
+<svg width="1200" height="720" viewBox="0 0 1200 720" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="title desc">
+  <title id="title">Ahwa logo</title>
+  <desc id="desc">A red hookah beside a white coffee cup with the Ahwa wordmark in gold.</desc>
+  <defs>
+    <linearGradient id="glassRed" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#7F0000"/>
+      <stop offset="35%" stop-color="#C81810"/>
+      <stop offset="65%" stop-color="#FF3B1F"/>
+      <stop offset="100%" stop-color="#8B0F08"/>
+    </linearGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4B423E"/>
+      <stop offset="20%" stop-color="#B8AAA2"/>
+      <stop offset="50%" stop-color="#6F625D"/>
+      <stop offset="80%" stop-color="#D7CEC8"/>
+      <stop offset="100%" stop-color="#564A46"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFF2B8"/>
+      <stop offset="45%" stop-color="#FFC84A"/>
+      <stop offset="100%" stop-color="#D88906"/>
+    </linearGradient>
+    <linearGradient id="coffee" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#5A2E10"/>
+      <stop offset="100%" stop-color="#2F1708"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(600 370) rotate(90) scale(260 360)">
+      <stop offset="0%" stop-color="#FF8A36" stop-opacity="0.45"/>
+      <stop offset="65%" stop-color="#FF6A00" stop-opacity="0.12"/>
+      <stop offset="100%" stop-color="#000000" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="softGlow" x="0" y="0" width="1200" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="36"/>
+    </filter>
+    <filter id="shadow" x="0" y="0" width="1200" height="720" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <ellipse cx="600" cy="370" rx="300" ry="240" fill="url(#glow)" filter="url(#softGlow)"/>
+
+  <g filter="url(#shadow)">
+    <path d="M405 446C405 410 431 382 468 382H500C537 382 563 410 563 446C563 498 526 538 484 538C442 538 405 498 405 446Z" fill="url(#glassRed)"/>
+    <path d="M432 454C432 418 449 394 469 394C486 394 500 409 500 441C500 480 483 512 461 512C444 512 432 492 432 454Z" fill="#FF8C63" opacity="0.22"/>
+    <rect x="452" y="352" width="64" height="42" rx="14" fill="url(#metal)"/>
+    <path d="M473 199H495C507 199 516 208 516 220V269C516 281 507 290 495 290H473C461 290 452 281 452 269V220C452 208 461 199 473 199Z" fill="url(#metal)"/>
+    <path d="M450 163C450 151 460 141 472 141H496C508 141 518 151 518 163V183C518 195 508 205 496 205H472C460 205 450 195 450 183V163Z" fill="#B1190D"/>
+    <ellipse cx="484" cy="145" rx="34" ry="10" fill="#7A0906" opacity="0.6"/>
+    <path d="M436 283C436 270 446 260 459 260H509C522 260 532 270 532 283V316C532 329 522 339 509 339H459C446 339 436 329 436 316V283Z" fill="url(#metal)"/>
+    <path d="M426 332C426 316 439 303 455 303H513C529 303 542 316 542 332V362H426V332Z" fill="url(#metal)"/>
+    <path d="M410 121C410 110 419 101 430 101H538C549 101 558 110 558 121C558 132 549 141 538 141H430C419 141 410 132 410 121Z" fill="url(#metal)"/>
+    <ellipse cx="484" cy="101" rx="84" ry="20" fill="#3A2A24"/>
+    <path d="M326 420C312 411 305 395 307 378C310 353 331 333 356 333H397C412 333 425 346 425 361C425 376 412 389 397 389H364C353 389 344 397 343 408C342 419 350 428 361 430L433 445C446 448 454 462 451 475C448 488 435 496 422 493L350 478C339 476 328 471 320 463C307 451 301 434 304 418C305 409 310 401 317 396C323 392 332 392 338 396L363 410L326 420Z" fill="#33231E"/>
+    <path d="M330 420C311 405 301 380 303 356C307 307 348 269 397 269C407 269 415 277 415 287C415 297 407 305 397 305C366 305 339 329 337 361C336 374 340 386 348 396L330 420Z" fill="#4A342D"/>
+    <rect x="338" y="426" width="22" height="10" rx="5" fill="#E9B34B"/>
+    <rect x="362" y="426" width="22" height="10" rx="5" fill="#C88B20"/>
+    <circle cx="546" cy="276" r="12" fill="url(#metal)"/>
+
+    <path d="M380 84C398 54 394 24 370 6C362 0 363 -12 371 -17C379 -22 391 -20 398 -13C435 20 441 65 410 108C401 121 385 121 378 111C373 103 374 93 380 84Z" fill="#F7E6C7" transform="translate(0 82)" opacity="0.95"/>
+    <path d="M420 108C435 84 433 56 414 37C407 30 408 19 415 14C423 8 434 9 441 16C472 46 476 91 451 126C444 136 430 137 422 129C415 123 414 115 420 108Z" fill="#F4D4A5" transform="translate(0 62)" opacity="0.8"/>
+
+    <ellipse cx="675" cy="401" rx="96" ry="28" fill="#D9DDE2"/>
+    <ellipse cx="675" cy="395" rx="82" ry="22" fill="#F5F7FA"/>
+    <path d="M602 327C602 293 629 266 663 266H689C723 266 750 293 750 327V364C750 398 723 425 689 425H663C629 425 602 398 602 364V327Z" fill="#FCFCFD"/>
+    <path d="M675 285C712 285 741 304 741 327C741 338 735 349 724 357C709 368 689 374 675 374C661 374 641 368 626 357C615 349 609 338 609 327C609 304 638 285 675 285Z" fill="url(#coffee)"/>
+    <path d="M750 304H778C801 304 820 323 820 346C820 369 801 388 778 388H750V360H776C784 360 790 354 790 346C790 338 784 332 776 332H750V304Z" fill="#F5F7FA"/>
+    <path d="M672 246C684 227 681 206 666 191C659 184 660 174 667 169C675 163 686 164 693 171C718 195 723 231 699 262C692 271 679 272 671 265C664 260 664 252 672 246Z" fill="#F5D1A8" opacity="0.9"/>
+    <path d="M715 260C726 241 724 224 711 210C705 204 706 195 713 190C720 184 730 184 736 190C757 211 761 242 742 269C736 278 724 279 717 273C711 269 710 264 715 260Z" fill="#F1C28D" opacity="0.75"/>
+
+    <text x="600" y="600" text-anchor="middle" fill="url(#gold)" font-family="Georgia, 'Times New Roman', serif" font-size="132" font-weight="700" letter-spacing="1">Ahwa</text>
+    <ellipse cx="600" cy="620" rx="150" ry="18" fill="#FFBF47" opacity="0.22"/>
+  </g>
+</svg>

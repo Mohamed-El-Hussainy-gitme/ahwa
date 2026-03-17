@@ -11,8 +11,8 @@ export async function POST(request: Request) {
     if (!title) throw new Error('TITLE_REQUIRED');
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    const sortOrder = Number.isInteger(body.sortOrder) ? Number(body.sortOrder) : await nextSectionSortOrder(ctx.cafeId);
-    const { data, error } = await adminOps()
+    const sortOrder = Number.isInteger(body.sortOrder) ? Number(body.sortOrder) : await nextSectionSortOrder(ctx.cafeId, ctx.databaseKey);
+    const { data, error } = await adminOps(ctx.databaseKey)
       .from('menu_sections')
       .insert({ cafe_id: ctx.cafeId, title, station_code: stationCode, sort_order: sortOrder, is_active: true })
       .select('id')

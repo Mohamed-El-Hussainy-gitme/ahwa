@@ -423,8 +423,8 @@ function buildPeriodReport(input: {
   };
 }
 
-async function loadActorMaps(cafeId: string): Promise<ActorMaps> {
-  const admin = adminOps();
+async function loadActorMaps(cafeId: string, databaseKey: string): Promise<ActorMaps> {
+  const admin = adminOps(databaseKey);
   const [{ data: staffRows, error: staffError }, { data: ownerRows, error: ownerError }] = await Promise.all([
     admin.from('staff_members').select('id, full_name').eq('cafe_id', cafeId),
     admin.from('owner_users').select('id, full_name').eq('cafe_id', cafeId),
@@ -663,7 +663,7 @@ function parseLiveItemIssueEntry(row: ItemIssueDetailRow, shift: ShiftRow, actor
   };
 }
 
-async function loadSnapshotAggregates(cafeId: string, shiftRows: ShiftRow[]): Promise<AggregateMaps> {
+async function loadSnapshotAggregates(cafeId: string, shiftRows: ShiftRow[], databaseKey: string): Promise<AggregateMaps> {
   const shiftRowsById = new Map<string, ReportShiftRow>();
   const productsByShift = new Map<string, Map<string, ProductReportRow>>();
   const staffByShift = new Map<string, Map<string, StaffPerformanceRow>>();
@@ -675,7 +675,7 @@ async function loadSnapshotAggregates(cafeId: string, shiftRows: ShiftRow[]): Pr
     return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
   }
 
-  const { data, error } = await adminOps()
+  const { data, error } = await adminOps(databaseKey)
     .from('shift_snapshots')
     .select('shift_id, snapshot_json')
     .eq('cafe_id', cafeId)
@@ -698,7 +698,7 @@ async function loadSnapshotAggregates(cafeId: string, shiftRows: ShiftRow[]): Pr
   return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
 }
 
-async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps: ActorMaps): Promise<AggregateMaps> {
+async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps: ActorMaps, databaseKey: string): Promise<AggregateMaps> {
   const shiftRowsById = new Map<string, ReportShiftRow>();
   const productsByShift = new Map<string, Map<string, ProductReportRow>>();
   const staffByShift = new Map<string, Map<string, StaffPerformanceRow>>();
@@ -724,33 +724,33 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     { data: itemIssueRows, error: itemIssueError },
     { data: fulfillmentRows, error: fulfillmentError },
   ] = await Promise.all([
-    adminOps()
+    adminOps(databaseKey)
       .from('order_items')
       .select('shift_id, station_code, unit_price, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_remade, qty_cancelled, qty_waived, menu_products!inner(id, product_name)')
       .eq('cafe_id', cafeId)
       .in('shift_id', shiftIds),
-    adminOps()
+    adminOps(databaseKey)
       .from('payments')
       .select('shift_id, payment_kind, total_amount, by_staff_id, by_owner_id')
       .eq('cafe_id', cafeId)
       .in('shift_id', shiftIds),
-    adminOps()
+    adminOps(databaseKey)
       .from('service_sessions')
       .select('shift_id, status')
       .eq('cafe_id', cafeId)
       .in('shift_id', shiftIds),
-    adminOps()
+    adminOps(databaseKey)
       .from('complaints')
       .select('shift_id, id, order_item_id, service_session_id, station_code, complaint_kind, complaint_scope, status, resolution_kind, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label)')
       .eq('cafe_id', cafeId)
       .in('shift_id', shiftIds)
       .eq('complaint_scope', 'general'),
-    adminOps()
+    adminOps(databaseKey)
       .from('order_item_issues')
       .select('shift_id, id, order_item_id, service_session_id, station_code, issue_kind, action_kind, status, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items!inner(menu_products(product_name))')
       .eq('cafe_id', cafeId)
       .in('shift_id', shiftIds),
-    adminOps()
+    adminOps(databaseKey)
       .from('fulfillment_events')
       .select('shift_id, event_code, quantity, by_staff_id, by_owner_id')
       .eq('cafe_id', cafeId)
@@ -1086,27 +1086,27 @@ async function loadSummarySnapshots(cafeId: string, ranges: {
   week: { startDate: string; endDate: string };
   month: { startDate: string; endDate: string };
   year: { startDate: string; endDate: string };
-}): Promise<SummarySnapshotBundle> {
+}, databaseKey: string): Promise<SummarySnapshotBundle> {
   const [{ data: dailyRows, error: dailyError }, { data: weeklyRows, error: weeklyError }, { data: monthlyRows, error: monthlyError }, { data: yearlyRows, error: yearlyError }] = await Promise.all([
-    adminOps()
+    adminOps(databaseKey)
       .from('daily_snapshots')
       .select('business_date, snapshot_json')
       .eq('cafe_id', cafeId)
       .gte('business_date', ranges.year.startDate)
       .lte('business_date', ranges.year.endDate),
-    adminOps()
+    adminOps(databaseKey)
       .from('weekly_summaries')
       .select('week_start_date, summary_json')
       .eq('cafe_id', cafeId)
       .eq('week_start_date', ranges.week.startDate)
       .limit(1),
-    adminOps()
+    adminOps(databaseKey)
       .from('monthly_summaries')
       .select('month_start_date, summary_json')
       .eq('cafe_id', cafeId)
       .eq('month_start_date', ranges.month.startDate)
       .limit(1),
-    adminOps()
+    adminOps(databaseKey)
       .from('yearly_summaries')
       .select('year_start_date, summary_json')
       .eq('cafe_id', cafeId)
@@ -1297,8 +1297,8 @@ function buildValidatedSummaryBackedPeriod(input: {
   return summaryBacked;
 }
 
-export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWorkspace> {
-  await ensureRuntimeContract('reporting');
+export async function buildReportsWorkspace(cafeId: string, databaseKey: string): Promise<ReportsWorkspace> {
+  await ensureRuntimeContract('reporting', databaseKey);
 
   const referenceDate = cairoToday();
   const ranges = {
@@ -1309,10 +1309,10 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
   };
 
   const [actorMaps, deferredCustomers, summarySnapshots, shiftsResponse] = await Promise.all([
-    loadActorMaps(cafeId),
-    buildDeferredCustomersWorkspace(cafeId),
-    loadSummarySnapshots(cafeId, ranges),
-    adminOps()
+    loadActorMaps(cafeId, databaseKey),
+    buildDeferredCustomersWorkspace(cafeId, databaseKey),
+    loadSummarySnapshots(cafeId, ranges, databaseKey),
+    adminOps(databaseKey)
       .from('shifts')
       .select('id, shift_kind, status, opened_at, closed_at, business_date')
       .eq('cafe_id', cafeId)
@@ -1361,12 +1361,12 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
     };
   }
 
-  const snapshotAggregates = await loadSnapshotAggregates(cafeId, shifts);
+  const snapshotAggregates = await loadSnapshotAggregates(cafeId, shifts, databaseKey);
   const missingClosedIds = shifts
     .filter((row) => row.status === 'closed' && !snapshotAggregates.shiftRowsById.has(row.id))
     .map((row) => row.id);
   const liveShiftRows = shifts.filter((row) => row.status === 'open' || missingClosedIds.includes(row.id));
-  const liveAggregates = await loadLiveAggregates(cafeId, liveShiftRows, actorMaps);
+  const liveAggregates = await loadLiveAggregates(cafeId, liveShiftRows, actorMaps, databaseKey);
 
   const combinedShiftRowsById = new Map<string, ReportShiftRow>(snapshotAggregates.shiftRowsById);
   const combinedProductsByShift = new Map<string, Map<string, ProductReportRow>>(snapshotAggregates.productsByShift);

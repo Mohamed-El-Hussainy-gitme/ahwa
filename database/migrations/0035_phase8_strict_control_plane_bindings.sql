@@ -28,14 +28,7 @@ as $$
   limit 1;
 $$;
 
-drop function if exists public.control_assign_cafe_database(
-  uuid,
-  uuid,
-  text,
-  text
-);
-
-create function public.control_assign_cafe_database(
+create or replace function public.control_assign_cafe_database(
   p_super_admin_user_id uuid,
   p_cafe_id uuid,
   p_database_key text,
@@ -100,10 +93,9 @@ begin
     now()
   )
   on conflict (cafe_id)
-  do update set
-    database_key = excluded.database_key,
-    binding_source = excluded.binding_source,
-    updated_at = now();
+  do update set database_key = excluded.database_key,
+                binding_source = excluded.binding_source,
+                updated_at = now();
 
   return jsonb_build_object(
     'ok', true,
@@ -114,11 +106,7 @@ begin
 end;
 $$;
 
-drop function if exists public.control_get_cafe_database_binding(
-  uuid
-);
-
-create function public.control_get_cafe_database_binding(
+create or replace function public.control_get_cafe_database_binding(
   p_cafe_id uuid
 )
 returns jsonb
@@ -157,7 +145,7 @@ drop function if exists public.platform_create_cafe_with_owner(
   text
 );
 
-create function public.platform_create_cafe_with_owner(
+create or replace function public.platform_create_cafe_with_owner(
   p_super_admin_user_id uuid,
   p_cafe_slug text,
   p_cafe_display_name text,

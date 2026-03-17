@@ -4,7 +4,7 @@ import { jsonError, ok, requireOwnerRole, requireOpsActorContext } from '@/app/a
 export async function POST() {
   try {
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    return ok(await buildMenuWorkspace(ctx.cafeId));
+    return ok(await buildMenuWorkspace(ctx.cafeId, ctx.databaseKey));
   } catch (error) {
     return jsonError(error, 400);
   }

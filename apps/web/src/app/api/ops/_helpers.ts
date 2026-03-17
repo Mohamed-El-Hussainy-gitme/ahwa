@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getCookieValue, RUNTIME_SESSION_COOKIE } from '@/lib/auth/cookies';
 import { decodeRuntimeSession, assertBoundRuntimeSession } from '@/lib/runtime/session';
-import { adminOps, bindOperationalRequestContext } from '@/app/api/ops/_server';
+import { adminOps } from '@/app/api/ops/_server';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { resolveMessage } from '@/lib/messages/catalog';
 
@@ -84,11 +84,6 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
     actorStaffId,
   } satisfies OpsActorContext;
 
-  bindOperationalRequestContext({
-    cafeId: context.cafeId,
-    databaseKey: context.databaseKey,
-  });
-
   return context;
 }
 
@@ -164,8 +159,8 @@ export function requireStationAccess(ctx: OpsActorContext, stationCode: OpsStati
   throw new Error('FORBIDDEN');
 }
 
-export async function requireOpenOpsShift(cafeId: string) {
-  const admin = adminOps();
+export async function requireOpenOpsShift(cafeId: string, databaseKey: string) {
+  const admin = adminOps(databaseKey);
   const { data, error } = await admin
     .from('shifts')
     .select('id, shift_kind, status, opened_at')
@@ -211,7 +206,7 @@ function readIdempotencyKey(request: Request) {
 
 export async function beginIdempotentMutation(
   request: Request,
-  ctx: Pick<OpsActorContext, 'cafeId' | 'runtimeUserId' | 'actorOwnerId' | 'actorStaffId'>,
+  ctx: Pick<OpsActorContext, 'cafeId' | 'databaseKey' | 'runtimeUserId' | 'actorOwnerId' | 'actorStaffId'>,
   actionName: string,
   payload: unknown,
 ): Promise<{ replayResponse: NextResponse | null; mutation: BegunIdempotentMutation | null }> {
@@ -225,7 +220,7 @@ export async function beginIdempotentMutation(
     .update(`${actionName}|${stableStringify(payload)}`)
     .digest('hex');
 
-  const admin = adminOps();
+  const admin = adminOps(ctx.databaseKey);
   const insertPayload = {
     cafe_id: ctx.cafeId,
     idempotency_key: key,
@@ -281,7 +276,7 @@ export async function beginIdempotentMutation(
 }
 
 export async function completeIdempotentMutation(
-  ctx: Pick<OpsActorContext, 'cafeId'>,
+  ctx: Pick<OpsActorContext, 'cafeId' | 'databaseKey'>,
   mutation: BegunIdempotentMutation | null,
   responseBody: Record<string, unknown>,
   responseStatus = 200,
@@ -290,7 +285,7 @@ export async function completeIdempotentMutation(
     return;
   }
 
-  const admin = adminOps();
+  const admin = adminOps(ctx.databaseKey);
   const { error } = await admin
     .from('idempotency_keys')
     .update({
@@ -309,14 +304,14 @@ export async function completeIdempotentMutation(
 }
 
 export async function releaseIdempotentMutation(
-  ctx: Pick<OpsActorContext, 'cafeId'>,
+  ctx: Pick<OpsActorContext, 'cafeId' | 'databaseKey'>,
   mutation: BegunIdempotentMutation | null,
 ) {
   if (!mutation) {
     return;
   }
 
-  const admin = adminOps();
+  const admin = adminOps(ctx.databaseKey);
   const { error } = await admin
     .from('idempotency_keys')
     .delete()

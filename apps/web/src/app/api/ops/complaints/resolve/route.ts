@@ -43,7 +43,7 @@ export async function POST(req: Request) {
       p_quantity: null,
       p_notes: notes ?? null,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-    });
+    }, ctx.databaseKey);
 
     publishOpsMutation(ctx, {
       type: 'complaint.updated',

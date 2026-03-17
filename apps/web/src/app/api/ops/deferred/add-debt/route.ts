@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     if (!name || numericAmount <= 0) throw new Error('INVALID_INPUT');
 
     const ctx = requireDeferredAccess(await requireOpsActorContext());
-    const shift = await requireOpenOpsShift(ctx.cafeId);
+    const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
 
     const started = await beginIdempotentMutation(req, ctx, 'ops.deferred.add-debt', {
       shiftId: shift.id,
@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     }
     mutation = started.mutation;
 
-    const admin = adminOps();
+    const admin = adminOps(ctx.databaseKey);
     const payload: Record<string, unknown> = {
       cafe_id: ctx.cafeId,
       shift_id: shift.id,

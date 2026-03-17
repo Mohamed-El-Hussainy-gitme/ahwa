@@ -39,7 +39,7 @@ export async function POST(req: Request) {
     }
 
     const ctx = requireBillingAccess(await requireOpsActorContext());
-    const billing = await resolveBillingContext(ctx.cafeId, allocations);
+    const billing = await resolveBillingContext(ctx.cafeId, ctx.databaseKey, allocations);
 
     const started = await beginIdempotentMutation(req, ctx, 'ops.billing.defer', {
       shiftId: billing.shiftId,
@@ -59,7 +59,7 @@ export async function POST(req: Request) {
       p_debtor_name: normalizedDebtorName,
       p_lines: billing.lines,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-    });
+    }, ctx.databaseKey);
 
     const paymentId = String(rpc.payment_id ?? '').trim();
     if (!rpc.ok || !paymentId) {

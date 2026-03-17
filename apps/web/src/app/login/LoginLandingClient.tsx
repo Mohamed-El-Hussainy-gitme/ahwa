@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import BrandLogo from "@/ui/brand/BrandLogo";
 
 export default function LoginLandingClient() {
   const r = useRouter();
@@ -108,12 +109,13 @@ export default function LoginLandingClient() {
   return (
     <div className="min-h-dvh bg-gradient-to-b from-amber-50 to-slate-50 p-4 flex items-center justify-center">
       <div className="w-full max-w-sm rounded-3xl border border-neutral-200/70 bg-white p-5 shadow-sm">
-        <div className="flex items-center gap-3">
-          <div className="grid h-10 w-10 place-items-center rounded-2xl bg-amber-100 text-xl">☕</div>
-          <div>
-            <div className="text-xl font-semibold text-neutral-900">دخول القهوة</div>
-            <div className="mt-0.5 text-sm text-neutral-500">اكتب كود القهوة (slug) للمتابعة</div>
-          </div>
+        <div className="mb-3">
+          <BrandLogo className="mx-auto w-[220px]" priority />
+        </div>
+
+        <div className="text-center">
+          <div className="text-xl font-semibold text-neutral-900">دخول القهوة</div>
+          <div className="mt-0.5 text-sm text-neutral-500">اكتب كود القهوة (slug) للمتابعة</div>
         </div>
 
         {msg && (

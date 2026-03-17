@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     }
 
     const ctx = requireDeliveryAccess(await requireOpsActorContext());
-    const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId);
+    const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId, ctx.databaseKey);
 
     const started = await beginIdempotentMutation(req, ctx, 'ops.delivery.deliver', {
       orderItemId: normalizedOrderItemId,
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       p_order_item_id: normalizedOrderItemId,
       p_quantity: normalizedQuantity,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-    });
+    }, ctx.databaseKey);
 
     publishOpsMutation(ctx, {
       type: 'delivery.delivered',

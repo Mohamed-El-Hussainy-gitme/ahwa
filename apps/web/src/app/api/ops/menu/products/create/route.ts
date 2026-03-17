@@ -20,9 +20,9 @@ export async function POST(request: Request) {
     }
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    await loadSection(ctx.cafeId, sectionId);
-    const sortOrder = await nextProductSortOrder(ctx.cafeId, sectionId);
-    const { data, error } = await adminOps()
+    await loadSection(ctx.cafeId, sectionId, ctx.databaseKey);
+    const sortOrder = await nextProductSortOrder(ctx.cafeId, sectionId, ctx.databaseKey);
+    const { data, error } = await adminOps(ctx.databaseKey)
       .from('menu_products')
       .insert({
         cafe_id: ctx.cafeId,

@@ -33,7 +33,7 @@ export async function POST(req: Request) {
   try {
     const { allocations } = (await req.json()) as SettleRequestBody;
     const ctx = requireBillingAccess(await requireOpsActorContext());
-    const billing = await resolveBillingContext(ctx.cafeId, allocations);
+    const billing = await resolveBillingContext(ctx.cafeId, ctx.databaseKey, allocations);
 
     const started = await beginIdempotentMutation(req, ctx, 'ops.billing.settle', {
       shiftId: billing.shiftId,
@@ -51,7 +51,7 @@ export async function POST(req: Request) {
       p_service_session_id: billing.serviceSessionId,
       p_lines: billing.lines,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-    });
+    }, ctx.databaseKey);
 
     const paymentId = String(rpc.payment_id ?? '').trim();
     if (!rpc.ok || !paymentId) {

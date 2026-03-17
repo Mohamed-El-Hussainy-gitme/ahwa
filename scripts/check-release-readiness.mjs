@@ -101,3 +101,4 @@ execSync('node ./scripts/verify-reporting-maintenance-release.mjs', { stdio: 'in
 execSync('node ./scripts/verify-reporting-read-path.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-archive-hardening-release.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-control-plane-manual-db-selection.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-phase9-explicit-db-propagation.mjs', { stdio: 'inherit' });

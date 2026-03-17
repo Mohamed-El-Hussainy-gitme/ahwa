@@ -7,7 +7,7 @@ export async function POST(request: Request) {
     const debtorName = String(body.debtorName ?? '').trim();
     if (!debtorName) throw new Error('DEBTOR_NAME_REQUIRED');
     const ctx = requireDeferredAccess(await requireOpsActorContext());
-    return ok(await buildDeferredCustomerLedgerWorkspace(ctx.cafeId, debtorName));
+    return ok(await buildDeferredCustomerLedgerWorkspace(ctx.cafeId, debtorName, ctx.databaseKey));
   } catch (error) {
     return jsonError(error, 400);
   }

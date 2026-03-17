@@ -44,12 +44,13 @@ export function normalizeAllocations(allocations: AllocationInput[] | undefined)
 
 export async function resolveBillingContext(
   cafeId: string,
+  databaseKey: string,
   allocations: AllocationInput[] | undefined,
 ): Promise<BillingContext> {
   const normalized = normalizeAllocations(allocations);
   const orderItemIds = normalized.map((allocation) => allocation.orderItemId);
 
-  const { data, error } = await adminOps()
+  const { data, error } = await adminOps(databaseKey)
     .from('order_items')
     .select('id, shift_id, service_session_id, unit_price, qty_delivered, qty_paid, qty_deferred, qty_waived')
     .eq('cafe_id', cafeId)

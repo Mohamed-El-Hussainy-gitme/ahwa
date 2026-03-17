@@ -1,4 +1,4 @@
-import { adminOps, requireBoundOperationalDatabaseKey } from '@/app/api/ops/_server';
+import { adminOps } from '@/app/api/ops/_server';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import type { OpsActorContext } from '@/app/api/ops/_helpers';
 
@@ -22,8 +22,8 @@ function asJsonObject<T extends JsonObject>(value: unknown, functionName: string
 export async function callOpsRpc<T extends JsonObject>(
   functionName: string,
   args: Record<string, unknown>,
+  databaseKey: string,
 ): Promise<T> {
-  const databaseKey = requireBoundOperationalDatabaseKey(`callOpsRpc:${functionName}`);
   const { data, error } = await supabaseAdminForDatabase(databaseKey).rpc(functionName, args);
   if (error) {
     throw error;
@@ -46,8 +46,9 @@ export function actorRpcParams(
 export async function loadOrderItemMutationContext(
   cafeId: string,
   orderItemId: string,
+  databaseKey: string,
 ): Promise<OrderItemMutationContext> {
-  const { data, error } = await adminOps()
+  const { data, error } = await adminOps(databaseKey)
     .from('order_items')
     .select('id, shift_id, service_session_id, station_code')
     .eq('cafe_id', cafeId)

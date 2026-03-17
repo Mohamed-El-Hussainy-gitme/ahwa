@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     }
 
     const ctx = await requireOpsActorContext();
-    const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId);
+    const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId, ctx.databaseKey);
     const stationCode = item.stationCode === 'shisha' ? 'shisha' : 'barista';
     requireStationAccess(ctx, stationCode);
 
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       p_order_item_id: normalizedOrderItemId,
       p_quantity: normalizedQuantity,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
-    });
+    }, ctx.databaseKey);
 
     publishOpsMutation(ctx, {
       type: 'station.ready',

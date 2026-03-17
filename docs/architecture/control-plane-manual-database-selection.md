@@ -24,3 +24,10 @@
 - The control plane owns cafe lookup and binding resolution for every rollout stage.
 - Future operational databases should receive migrations through `0033` only.
 - Control-plane-only migrations start at `0034`, and strict binding cleanup continues in `0035`.
+
+
+## Phase 9 request binding rule
+
+- `databaseKey` must propagate explicitly through ops helpers, workspace builders, RPC wrappers, and route handlers.
+- `adminOps()` and `ensureRuntimeContract()` must receive `databaseKey` explicitly; ambient request-scoped fallback is no longer part of the canonical contract.
+- Request-context bugs in Next.js route execution must be fixed in application code, not masked by reintroducing a default database.

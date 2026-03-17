@@ -14,13 +14,13 @@ export async function POST(request: Request) {
     if (!productId || !sectionId || !productName || !Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('INVALID_INPUT');
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    const current = await loadProduct(ctx.cafeId, productId);
-    await loadSection(ctx.cafeId, sectionId);
-    const nextSortOrder = String(current.section_id) === sectionId ? Number(current.sort_order ?? 0) : await nextProductSortOrder(ctx.cafeId, sectionId);
+    const current = await loadProduct(ctx.cafeId, productId, ctx.databaseKey);
+    await loadSection(ctx.cafeId, sectionId, ctx.databaseKey);
+    const nextSortOrder = String(current.section_id) === sectionId ? Number(current.sort_order ?? 0) : await nextProductSortOrder(ctx.cafeId, sectionId, ctx.databaseKey);
 
-    const { error } = await adminOps().from('menu_products').update({ section_id: sectionId, product_name: productName, station_code: stationCode, unit_price: unitPrice, sort_order: nextSortOrder }).eq('cafe_id', ctx.cafeId).eq('id', productId);
+    const { error } = await adminOps(ctx.databaseKey).from('menu_products').update({ section_id: sectionId, product_name: productName, station_code: stationCode, unit_price: unitPrice, sort_order: nextSortOrder }).eq('cafe_id', ctx.cafeId).eq('id', productId);
     if (error) throw error;
-    if (String(current.section_id) !== sectionId) await renumberProductSortOrders(ctx.cafeId, String(current.section_id));
+    if (String(current.section_id) !== sectionId) await renumberProductSortOrders(ctx.cafeId, String(current.section_id), ctx.databaseKey);
 
     publishOpsMutation(ctx, { type: 'menu.product_updated', entityId: productId, data: { sectionId, productName, stationCode, unitPrice } });
     return ok({ ok: true });
