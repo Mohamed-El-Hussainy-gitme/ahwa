@@ -1,6 +1,7 @@
 import 'server-only';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { assertOperationalDatabaseEnv, getDefaultOperationalDatabaseKey } from './env';
+import { assertOperationalDatabaseEnv } from './env';
+import type { BoundRuntimeSessionPayload } from '@/lib/runtime/session';
 
 type AdminClient = SupabaseClient;
 
@@ -17,19 +18,24 @@ function getAdminCache() {
 }
 
 export function supabaseAdminForDatabase(databaseKey: string): AdminClient {
-  const cache = getAdminCache();
-  if (cache.has(databaseKey)) {
-    return cache.get(databaseKey)!;
+  const normalizedDatabaseKey = databaseKey.trim();
+  if (!normalizedDatabaseKey) {
+    throw new Error('supabaseAdminForDatabase requires a databaseKey');
   }
 
-  const { url, adminKey } = assertOperationalDatabaseEnv(databaseKey, 'supabaseAdminForDatabase');
+  const cache = getAdminCache();
+  if (cache.has(normalizedDatabaseKey)) {
+    return cache.get(normalizedDatabaseKey)!;
+  }
+
+  const { url, adminKey } = assertOperationalDatabaseEnv(normalizedDatabaseKey, 'supabaseAdminForDatabase');
   const client = createClient(url, adminKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-  cache.set(databaseKey, client);
+  cache.set(normalizedDatabaseKey, client);
   return client;
 }
 
-export function supabaseAdmin(databaseKey = getDefaultOperationalDatabaseKey()): AdminClient {
-  return supabaseAdminForDatabase(databaseKey);
+export function supabaseAdminForRuntimeSession(session: BoundRuntimeSessionPayload): AdminClient {
+  return supabaseAdminForDatabase(session.databaseKey);
 }

@@ -10,7 +10,7 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: 'FORBIDDEN' }, { status: 403 });
     }
 
-    const state = await readCurrentShiftState(ctx.cafeId);
+    const state = await readCurrentShiftState({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey });
     if (!state.shift) {
       return NextResponse.json({ ok: true, shift: null, assignments: [] });
     }

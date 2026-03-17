@@ -1,4 +1,9 @@
-import { getEnrichedRuntimeMeFromCookie } from '@/lib/runtime/me';
+import { NextResponse } from 'next/server';
+import { clearAuthCookies } from '@/lib/auth/cookies';
+import {
+  getEnrichedRuntimeMeFromCookie,
+  isUnboundRuntimeSessionError,
+} from '@/lib/runtime/me';
 import { subscribeOpsEvents } from '@/lib/ops/events';
 import type { OpsRealtimeEvent } from '@/lib/ops/types';
 
@@ -6,9 +11,25 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const me = await getEnrichedRuntimeMeFromCookie();
+  let me;
+  try {
+    me = await getEnrichedRuntimeMeFromCookie();
+  } catch (error) {
+    if (isUnboundRuntimeSessionError(error)) {
+      const response = NextResponse.json(
+        { error: 'UNBOUND_RUNTIME_SESSION' },
+        { status: 409 },
+      );
+      clearAuthCookies(response);
+      return response;
+    }
+    throw error;
+  }
+
   if (!me?.tenantId) {
-    return new Response('UNAUTHORIZED', { status: 401 });
+    const response = NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
+    clearAuthCookies(response);
+    return response;
   }
 
   const cafeId = String(me.tenantId);

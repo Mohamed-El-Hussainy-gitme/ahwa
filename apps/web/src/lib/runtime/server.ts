@@ -1,10 +1,21 @@
 import { redirect } from 'next/navigation';
-import { getEnrichedRuntimeMeFromCookie, type EnrichedRuntimeMe } from '@/lib/runtime/me';
+import {
+  getEnrichedRuntimeMeFromCookie,
+  isUnboundRuntimeSessionError,
+  type EnrichedRuntimeMe,
+} from '@/lib/runtime/me';
 
 export type RuntimeMe = EnrichedRuntimeMe;
 
 export async function getRuntimeMe(): Promise<RuntimeMe | null> {
-  return getEnrichedRuntimeMeFromCookie();
+  try {
+    return await getEnrichedRuntimeMeFromCookie();
+  } catch (error) {
+    if (isUnboundRuntimeSessionError(error)) {
+      return null;
+    }
+    throw error;
+  }
 }
 
 export async function requireRuntimeMe(): Promise<RuntimeMe> {

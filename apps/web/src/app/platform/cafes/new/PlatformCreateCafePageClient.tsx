@@ -95,7 +95,7 @@ export default function PlatformCreateCafePageClient() {
     amountPaid: defaults.amountPaid,
     isComplimentary: defaults.isComplimentary,
     notes: defaults.notes,
-    databaseKey: 'ops-db-01',
+    databaseKey: '',
   });
 
   async function loadOperationalDatabases() {
@@ -118,7 +118,7 @@ export default function PlatformCreateCafePageClient() {
           ...value,
           databaseKey: value.databaseKey && items.some((item) => item.database_key === value.databaseKey)
             ? value.databaseKey
-            : items[0]?.database_key ?? value.databaseKey,
+            : items[0]?.database_key ?? '',
         }));
       }
     } catch (loadError) {
@@ -133,6 +133,11 @@ export default function PlatformCreateCafePageClient() {
   }, []);
 
   async function submitCreateCafe() {
+    if (!form.databaseKey) {
+      setError('لا توجد قاعدة تشغيل متاحة لربط القهوة الجديدة.');
+      return;
+    }
+
     setBusy(true);
     setError(null);
     setSuccess(null);
@@ -176,7 +181,7 @@ export default function PlatformCreateCafePageClient() {
         amountPaid: defaults.amountPaid,
         isComplimentary: defaults.isComplimentary,
         notes: defaults.notes,
-        databaseKey: databaseOptions[0]?.database_key ?? 'ops-db-01',
+        databaseKey: databaseOptions[0]?.database_key ?? '',
       });
       if (createdCafeId) {
         router.replace(`/platform/cafes?selected=${encodeURIComponent(createdCafeId)}`);
@@ -221,9 +226,14 @@ export default function PlatformCreateCafePageClient() {
           <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={form.endsAt} onChange={(e) => setForm((v) => ({ ...v, endsAt: e.target.value }))} />
           <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="أيام السماح" value={form.graceDays} onChange={(e) => setForm((v) => ({ ...v, graceDays: e.target.value }))} />
           <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="القيمة المدفوعة" value={form.amountPaid} onChange={(e) => setForm((v) => ({ ...v, amountPaid: e.target.value }))} />
-          <select className="rounded-2xl border border-slate-200 px-4 py-3 text-sm md:col-span-2" value={form.databaseKey} onChange={(e) => setForm((v) => ({ ...v, databaseKey: e.target.value }))}>
+          <select
+            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm md:col-span-2 disabled:bg-slate-100 disabled:text-slate-500"
+            value={form.databaseKey}
+            disabled={loadingDatabases || databaseOptions.length === 0}
+            onChange={(e) => setForm((v) => ({ ...v, databaseKey: e.target.value }))}
+          >
             {databaseOptions.length === 0 ? (
-              <option value="ops-db-01">ops-db-01</option>
+              <option value="">لا توجد قاعدة تشغيل متاحة حاليًا</option>
             ) : databaseOptions.map((option) => (
               <option key={option.database_key} value={option.database_key}>
                 {option.display_name} — {option.database_key} ({option.cafe_count})
@@ -247,7 +257,7 @@ export default function PlatformCreateCafePageClient() {
         {success ? <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{success}</div> : null}
 
         <div className="mt-5 flex flex-wrap gap-2">
-          <button disabled={busy} onClick={() => void submitCreateCafe()} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+          <button disabled={busy || loadingDatabases || databaseOptions.length === 0 || !form.databaseKey} onClick={() => void submitCreateCafe()} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
             {busy ? 'جارٍ الإنشاء...' : 'إنشاء القهوة والاشتراك الأول'}
           </button>
           <button type="button" onClick={() => router.push('/platform/cafes')} className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700">

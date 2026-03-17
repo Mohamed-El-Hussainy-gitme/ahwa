@@ -36,6 +36,10 @@ export async function POST(request: Request) {
       return platformFail(400, 'INVALID_INPUT', 'Cafe and owner fields are required.');
     }
 
+    if (!body.databaseKey?.trim()) {
+      return platformFail(400, 'DATABASE_KEY_REQUIRED', 'An explicit operational database binding is required.');
+    }
+
     const subscriptionAmountPaid = Number(body.subscriptionAmountPaid ?? 0);
     if (!Number.isFinite(subscriptionAmountPaid) || subscriptionAmountPaid < 0) {
       return platformFail(400, 'INVALID_INPUT', 'Subscription amount must be a non-negative number.');

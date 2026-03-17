@@ -35,6 +35,7 @@ export async function POST(request: Request) {
 
     const opened = await openShiftWithAssignments({
       cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
       ownerUserId: ctx.actorOwnerId,
       kind: parsed.data.kind,
       notes: parsed.data.notes ?? null,

@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
 import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
-import { resolveCafeBySlug } from '@/lib/ops/cafes';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { resolveCafeBySlug, resolveCafeDatabaseBinding } from '@/lib/ops/cafes';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
+import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 
 const Input = z.object({
   phone: z.string().min(1),
@@ -28,7 +29,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'CAFE_NOT_FOUND' }, { status: 404 });
   }
 
-  const rpc = await supabaseAdmin().rpc('ops_verify_owner_login', {
+  const binding = await resolveCafeDatabaseBinding(cafe.id);
+  if (!binding) {
+    return NextResponse.json({ ok: false, error: 'CAFE_DATABASE_UNBOUND' }, { status: 409 });
+  }
+
+  if (!isOperationalDatabaseConfigured(binding.databaseKey)) {
+    return NextResponse.json(
+      { ok: false, error: 'CAFE_DATABASE_UNAVAILABLE' },
+      { status: 409 },
+    );
+  }
+
+  const rpc = await supabaseAdminForDatabase(binding.databaseKey).rpc('ops_verify_owner_login', {
     p_slug: slug,
     p_phone: parsed.data.phone.trim(),
     p_password: parsed.data.password,
@@ -43,9 +56,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'BAD_CREDENTIALS' }, { status: 401 });
   }
 
+  const resolvedCafeId = String(row.cafe_id ?? '');
+  if (!resolvedCafeId || resolvedCafeId !== cafe.id) {
+    return NextResponse.json({ ok: false, error: 'CAFE_BINDING_MISMATCH' }, { status: 409 });
+  }
+
+  const resolvedCafeSlug = String(row.cafe_slug ?? cafe.slug).trim().toLowerCase();
+  if (resolvedCafeSlug !== cafe.slug) {
+    return NextResponse.json({ ok: false, error: 'CAFE_SLUG_MISMATCH' }, { status: 409 });
+  }
+
   const token = encodeRuntimeSession({
-    tenantId: String(row.cafe_id),
-    tenantSlug: String(row.cafe_slug ?? slug),
+    sessionVersion: 2,
+    databaseKey: binding.databaseKey,
+    tenantId: cafe.id,
+    tenantSlug: cafe.slug,
     userId: String(row.owner_user_id),
     fullName: String(row.full_name ?? ''),
     accountKind: 'owner',
@@ -58,7 +83,11 @@ export async function POST(req: NextRequest) {
 
   const response = NextResponse.json({
     ok: true,
-    tenant: { id: String(row.cafe_id), slug: String(row.cafe_slug ?? slug) },
+    tenant: { id: cafe.id, slug: cafe.slug },
+    binding: {
+      databaseKey: binding.databaseKey,
+      bindingSource: binding.bindingSource,
+    },
     user: {
       id: String(row.owner_user_id),
       fullName: String(row.full_name ?? ''),

@@ -19,8 +19,7 @@ The old `canonical-runtime` client, `runtime/proxy` bridge, and the separate leg
 ## Run locally
 
 1. Copy `apps/web/.env.example` to `apps/web/.env.local`
-2. Set `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, `SUPABASE_SECRET_KEY`, `AHWA_SESSION_SECRET`, and optional bootstrap/device pairing tokens
-3. Legacy fallback names (`NEXT_PUBLIC_SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`) still work if you have not migrated yet
+2. Set `CONTROL_PLANE_SUPABASE_URL`, `CONTROL_PLANE_SUPABASE_PUBLISHABLE_KEY`, `CONTROL_PLANE_SUPABASE_SECRET_KEY`, at least one `AHWA_OPERATIONAL_DATABASE__<TOKEN>__*` group, `AHWA_SESSION_SECRET`, and optional bootstrap/device pairing tokens
 3. Run:
 
 ```bash

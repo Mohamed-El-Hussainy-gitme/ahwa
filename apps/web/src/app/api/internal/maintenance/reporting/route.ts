@@ -1,17 +1,33 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ApiRouteError, apiJsonError } from '@/app/api/_shared';
-import { adminOps } from '@/app/api/ops/_server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
 type MaintenanceAction = 'backfill' | 'reconcile' | 'archive' | 'archive-plan' | 'archive-execute';
 
-type CafeRow = { id: string };
+type CafeRow = {
+  id: string;
+  is_active: boolean | null;
+  created_at: string | null;
+};
+
+type CafeBindingRow = {
+  cafe_id: string;
+  database_key: string | null;
+};
+
+type CafeMaintenanceTarget = {
+  cafeId: string;
+  databaseKey: string | null;
+  isActive: boolean;
+};
 
 type ExecutionBody = {
   action?: string;
   approvalId?: string;
   approvedBy?: string;
   notes?: string;
+  databaseKey?: string;
 };
 
 function assertCronAuth(request: NextRequest | Request) {
@@ -66,19 +82,52 @@ function normalizeGetAction(rawAction: string | null, dryRun: boolean): Exclude<
   return value as Exclude<MaintenanceAction, 'archive-execute'>;
 }
 
-async function loadCafeIds(cafeId: string | null, includeInactive: boolean): Promise<string[]> {
-  const admin = adminOps();
-  let query = admin.from('cafes').select('id').order('created_at', { ascending: true });
-  if (!includeInactive) query = query.eq('is_active', true);
-  if (cafeId) query = query.eq('id', cafeId).limit(1);
-  const { data, error } = await query;
+async function loadCafeMaintenanceTargets(cafeId: string | null, includeInactive: boolean): Promise<CafeMaintenanceTarget[]> {
+  const admin = controlPlaneAdmin();
+  const [{ data: cafes, error: cafesError }, { data: bindings, error: bindingsError }] = await Promise.all([
+    admin.schema('ops').from('cafes').select('id, is_active, created_at').order('created_at', { ascending: true }),
+    admin.schema('control').from('cafe_database_bindings').select('cafe_id, database_key'),
+  ]);
+
+  if (cafesError) throw cafesError;
+  if (bindingsError) throw bindingsError;
+
+  const bindingMap = new Map<string, string>();
+  for (const row of ((bindings ?? []) as CafeBindingRow[])) {
+    const databaseKey = typeof row.database_key === 'string' ? row.database_key.trim() : '';
+    if (row.cafe_id && databaseKey) {
+      bindingMap.set(String(row.cafe_id), databaseKey);
+    }
+  }
+
+  return ((cafes ?? []) as CafeRow[])
+    .filter((row) => !cafeId || String(row.id) === cafeId)
+    .filter((row) => includeInactive || !!row.is_active)
+    .map((row) => ({
+      cafeId: String(row.id),
+      databaseKey: bindingMap.get(String(row.id)) ?? null,
+      isActive: !!row.is_active,
+    }));
+}
+
+async function loadKnownOperationalDatabaseKeys(): Promise<string[]> {
+  const { data, error } = await controlPlaneAdmin()
+    .schema('control')
+    .from('cafe_database_bindings')
+    .select('database_key');
+
   if (error) throw error;
-  return ((data ?? []) as CafeRow[]).map((row) => String(row.id));
+
+  return [...new Set(
+    ((data ?? []) as Array<{ database_key?: string | null }>)
+      .map((row) => (typeof row.database_key === 'string' ? row.database_key.trim() : ''))
+      .filter(Boolean),
+  )];
 }
 
 async function runGetActionForCafe(
   action: Exclude<MaintenanceAction, 'archive-execute'>,
-  cafeId: string,
+  target: CafeMaintenanceTarget,
   options: {
     startDate: string;
     endDate: string;
@@ -86,10 +135,14 @@ async function runGetActionForCafe(
     requestedBy: string;
   },
 ) {
-  const admin = supabaseAdmin();
+  if (!target.databaseKey) {
+    throw new Error('CAFE_DATABASE_UNBOUND');
+  }
+
+  const admin = supabaseAdminForDatabase(target.databaseKey);
   if (action === 'backfill') {
     const { data, error } = await admin.rpc('ops_backfill_reporting_history', {
-      p_cafe_id: cafeId,
+      p_cafe_id: target.cafeId,
       p_start_date: options.startDate,
       p_end_date: options.endDate,
       p_rebuild_deferred_balances: true,
@@ -100,7 +153,7 @@ async function runGetActionForCafe(
 
   if (action === 'reconcile') {
     const { data, error } = await admin.rpc('ops_reconcile_reporting_window', {
-      p_cafe_id: cafeId,
+      p_cafe_id: target.cafeId,
       p_start_date: options.startDate,
       p_end_date: options.endDate,
     });
@@ -109,7 +162,7 @@ async function runGetActionForCafe(
   }
 
   const { data, error } = await admin.rpc('ops_request_archive_execution_approval', {
-    p_cafe_id: cafeId,
+    p_cafe_id: target.cafeId,
     p_grace_days: options.graceDays,
     p_requested_by: options.requestedBy,
     p_request_json: {
@@ -117,24 +170,39 @@ async function runGetActionForCafe(
       action: 'archive-plan',
       startDate: options.startDate,
       endDate: options.endDate,
+      databaseKey: target.databaseKey,
     },
   });
   if (error) throw error;
   return data;
 }
 
-async function executeArchiveApproval(approvalId: string, approvedBy: string, notes: string | null) {
-  const admin = supabaseAdmin();
+async function executeArchiveApproval(databaseKey: string, approvalId: string, approvedBy: string, notes: string | null) {
+  const admin = supabaseAdminForDatabase(databaseKey);
   const { data, error } = await admin.rpc('ops_execute_archive_execution_approval', {
     p_approval_id: approvalId,
     p_approved_by: approvedBy,
     p_request_json: {
       source: 'internal-maintenance-route',
       notes,
+      databaseKey,
     },
   });
   if (error) throw error;
   return data;
+}
+
+function looksLikeApprovalNotFound(payload: unknown): boolean {
+  if (!payload || typeof payload !== 'object') {
+    return false;
+  }
+
+  const record = payload as Record<string, unknown>;
+  const values = [record.reason, record.code, record.error]
+    .filter((value): value is string => typeof value === 'string')
+    .map((value) => value.toUpperCase());
+
+  return values.some((value) => value.includes('NOT_FOUND') || value.includes('UNKNOWN_APPROVAL'));
 }
 
 export async function GET(request: NextRequest) {
@@ -151,34 +219,53 @@ export async function GET(request: NextRequest) {
     const endDate = isoDateDaysAgo(0);
     const startDate = isoDateDaysAgo(windowDays);
 
-    const cafeIds = await loadCafeIds(cafeId, includeInactive);
-    const results: Array<{ cafeId: string; ok: boolean; result?: unknown; error?: string }> = [];
+    const targets = await loadCafeMaintenanceTargets(cafeId, includeInactive);
+    const results: Array<{ cafeId: string; databaseKey: string | null; ok: boolean; result?: unknown; error?: string }> = [];
 
-    for (const id of cafeIds) {
-      try {
-        const result = await runGetActionForCafe(action, id, {
-          startDate,
-          endDate,
-          graceDays,
-          requestedBy,
+    const targetsByDatabase = new Map<string, CafeMaintenanceTarget[]>();
+    for (const target of targets) {
+      if (!target.databaseKey) {
+        results.push({
+          cafeId: target.cafeId,
+          databaseKey: null,
+          ok: false,
+          error: 'CAFE_DATABASE_UNBOUND',
         });
-        if (!isPayloadOk(result)) {
-          const message = result && typeof result === 'object' && 'reason' in result
-            ? String((result as { reason?: string }).reason ?? 'ACTION_FAILED')
-            : 'ACTION_FAILED';
-          throw new Error(message);
+        continue;
+      }
+
+      const group = targetsByDatabase.get(target.databaseKey) ?? [];
+      group.push(target);
+      targetsByDatabase.set(target.databaseKey, group);
+    }
+
+    for (const [databaseKey, databaseTargets] of targetsByDatabase.entries()) {
+      for (const target of databaseTargets) {
+        try {
+          const result = await runGetActionForCafe(action, target, {
+            startDate,
+            endDate,
+            graceDays,
+            requestedBy,
+          });
+          if (!isPayloadOk(result)) {
+            const message = result && typeof result === 'object' && 'reason' in result
+              ? String((result as { reason?: string }).reason ?? 'ACTION_FAILED')
+              : 'ACTION_FAILED';
+            throw new Error(message);
+          }
+          results.push({ cafeId: target.cafeId, databaseKey, ok: true, result });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
+          results.push({ cafeId: target.cafeId, databaseKey, ok: false, error: message });
         }
-        results.push({ cafeId: id, ok: true, result });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : 'UNKNOWN_ERROR';
-        results.push({ cafeId: id, ok: false, error: message });
       }
     }
 
     return NextResponse.json({
       ok: true,
       action,
-      cafeCount: cafeIds.length,
+      cafeCount: targets.length,
       dryRun,
       startDate,
       endDate,
@@ -207,18 +294,40 @@ export async function POST(request: NextRequest) {
     }
 
     const approvedBy = (body.approvedBy ?? 'manual').trim() || 'manual';
-    const result = await executeArchiveApproval(approvalId, approvedBy, body.notes?.trim() ?? null);
-    const ok = isPayloadOk(result);
+    const databaseKeys = body.databaseKey?.trim()
+      ? [body.databaseKey.trim()]
+      : await loadKnownOperationalDatabaseKeys();
 
-    return NextResponse.json(
-      {
-        ok,
-        action,
-        approvalId,
-        result,
-      },
-      { status: ok ? 200 : 409 },
-    );
+    if (!databaseKeys.length) {
+      throw new ApiRouteError('NO_OPERATIONAL_DATABASES_CONFIGURED', 'NO_OPERATIONAL_DATABASES_CONFIGURED', 409);
+    }
+
+    let lastError: unknown = null;
+    for (const databaseKey of databaseKeys) {
+      try {
+        const result = await executeArchiveApproval(databaseKey, approvalId, approvedBy, body.notes?.trim() ?? null);
+        if (looksLikeApprovalNotFound(result)) {
+          lastError = new Error('APPROVAL_NOT_FOUND');
+          continue;
+        }
+
+        const ok = isPayloadOk(result);
+        return NextResponse.json(
+          {
+            ok,
+            action,
+            approvalId,
+            databaseKey,
+            result,
+          },
+          { status: ok ? 200 : 409 },
+        );
+      } catch (error) {
+        lastError = error;
+      }
+    }
+
+    throw lastError instanceof Error ? lastError : new Error('APPROVAL_NOT_FOUND');
   } catch (error) {
     return apiJsonError(error, 400, 'MAINTENANCE_FAILED');
   }

@@ -10,9 +10,12 @@ Set Root Directory to `apps/web`.
 
 ### Required environment variables
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SECRET_KEY`
+- `CONTROL_PLANE_SUPABASE_URL`
+- `CONTROL_PLANE_SUPABASE_PUBLISHABLE_KEY`
+- `CONTROL_PLANE_SUPABASE_SECRET_KEY`
+- `AHWA_OPERATIONAL_DATABASE__OPS_MAIN__URL`
+- `AHWA_OPERATIONAL_DATABASE__OPS_MAIN__PUBLISHABLE_KEY`
+- `AHWA_OPERATIONAL_DATABASE__OPS_MAIN__SECRET_KEY`
 - `AHWA_SESSION_SECRET`
 - `AHWA_INSTALL_TOKEN` (recommended)
 - `AHWA_DEVICE_PAIRING_CODE` (optional, falls back to `AHWA_INSTALL_TOKEN`)
@@ -22,9 +25,6 @@ Set Root Directory to `apps/web`.
 - There is no separate `apps/api` deployment anymore.
 - Runtime auth, device activation, platform admin routes, and ops commands all run through the active web app server routes.
 
-## Legacy fallback names
+## Multi-database note
 
-The app still accepts legacy Supabase env names during migration:
-
-- `NEXT_PUBLIC_SUPABASE_ANON_KEY`
-- `SUPABASE_SERVICE_ROLE_KEY`
+Add one `AHWA_OPERATIONAL_DATABASE__<TOKEN>__*` set per operational database. The web app no longer reads legacy global Supabase keys.

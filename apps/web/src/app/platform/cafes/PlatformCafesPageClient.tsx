@@ -28,6 +28,13 @@ type CafeOwnerRow = {
   is_active: boolean;
 };
 
+type BindingStatus = 'bound' | 'unbound' | 'invalid';
+
+type CafeDatabaseBinding = {
+  database_key: string;
+  binding_source: string;
+};
+
 type CafeRow = {
   id: string;
   slug: string;
@@ -39,7 +46,9 @@ type CafeRow = {
   active_owner_count?: number;
   owners?: CafeOwnerRow[];
   current_subscription?: CafeSubscriptionRow | null;
-  database_key?: string;
+  database_key?: string | null;
+  database_binding?: CafeDatabaseBinding | null;
+  binding_status?: BindingStatus;
 };
 
 type CafeListResponse = { ok: true; items: CafeRow[] };
@@ -89,7 +98,11 @@ function isCafeRow(value: unknown): value is CafeRow {
     (typeof value.active_owner_count === 'number' || typeof value.active_owner_count === 'undefined') &&
     (typeof value.owners === 'undefined' || (Array.isArray(value.owners) && value.owners.every(isCafeOwnerRow))) &&
     (typeof value.current_subscription === 'undefined' || value.current_subscription === null || isCafeSubscriptionRow(value.current_subscription)) &&
-    (typeof value.database_key === 'string' || typeof value.database_key === 'undefined')
+    (typeof value.database_key === 'string' || value.database_key === null || typeof value.database_key === 'undefined') &&
+    (typeof value.database_binding === 'undefined' ||
+      value.database_binding === null ||
+      (isRecord(value.database_binding) && typeof value.database_binding.database_key === 'string' && typeof value.database_binding.binding_source === 'string')) &&
+    (typeof value.binding_status === 'undefined' || value.binding_status === 'bound' || value.binding_status === 'unbound' || value.binding_status === 'invalid')
   );
 }
 
@@ -143,6 +156,31 @@ function subscriptionBadgeClass(status: SubscriptionStatus) {
       return 'border-amber-200 bg-amber-50 text-amber-700';
     case 'suspended':
       return 'border-rose-200 bg-rose-50 text-rose-700';
+  }
+}
+
+function bindingStatusLabel(cafe: CafeRow) {
+  switch (cafe.binding_status) {
+    case 'bound':
+      return cafe.database_binding?.database_key ?? cafe.database_key ?? 'مرتبط';
+    case 'invalid':
+      return `ربط غير صالح${cafe.database_binding?.database_key ? ` (${cafe.database_binding.database_key})` : ''}`;
+    case 'unbound':
+      return 'غير مربوط';
+    default:
+      return cafe.database_binding?.database_key ?? cafe.database_key ?? 'غير مربوط';
+  }
+}
+
+function bindingBadgeClass(status: BindingStatus | undefined) {
+  switch (status) {
+    case 'bound':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'invalid':
+      return 'border-amber-200 bg-amber-50 text-amber-700';
+    case 'unbound':
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-600';
   }
 }
 
@@ -293,11 +331,14 @@ export default function PlatformCafesPageClient() {
                         >
                           <div className="font-semibold text-slate-900">{cafe.display_name}</div>
                           <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
-                          <div className="mt-1 text-[11px] text-slate-400">{cafe.database_key ?? 'ops-db-01'}</div>
+                          <div className="mt-1 text-[11px] text-slate-400">{bindingStatusLabel(cafe)}</div>
                         </button>
                         <div className="mt-2 flex flex-wrap gap-2 text-xs">
                           <span className={`rounded-full border px-2 py-1 font-semibold ${cafeStatusBadgeClass(cafe.is_active)}`}>
                             {cafe.is_active ? 'مفعلة' : 'معطلة'}
+                          </span>
+                          <span className={`rounded-full border px-2 py-1 font-semibold ${bindingBadgeClass(cafe.binding_status)}`}>
+                            {cafe.binding_status === 'bound' ? 'مربوط' : cafe.binding_status === 'invalid' ? 'ربط غير صالح' : 'غير مربوط'}
                           </span>
                           {subscription ? (
                             <span className={`rounded-full border px-2 py-1 font-semibold ${subscriptionBadgeClass(subscription.effective_status)}`}>
@@ -372,7 +413,7 @@ export default function PlatformCafesPageClient() {
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="font-semibold text-slate-900">{selectedCafe.display_name}</div>
               <div className="mt-1 text-xs text-slate-500">{selectedCafe.slug}</div>
-              <div className="mt-1 text-xs text-slate-400">قاعدة التشغيل: {selectedCafe.database_key ?? 'ops-db-01'}</div>
+              <div className="mt-1 text-xs text-slate-400">قاعدة التشغيل: {bindingStatusLabel(selectedCafe)}</div>
               <div className="mt-3 space-y-2 text-sm text-slate-700">
                 <div>المالك: {selectedCafe.owners?.[0]?.full_name ?? '—'}</div>
                 <div>آخر نشاط: {formatDateTime(selectedCafe.last_activity_at ?? selectedCafe.created_at)}</div>

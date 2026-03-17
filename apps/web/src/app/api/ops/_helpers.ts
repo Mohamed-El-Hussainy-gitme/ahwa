@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
-import { getEnrichedRuntimeMeFromCookie } from '@/lib/runtime/me';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getCookieValue, RUNTIME_SESSION_COOKIE } from '@/lib/auth/cookies';
+import { decodeRuntimeSession, assertBoundRuntimeSession } from '@/lib/runtime/session';
+import { adminOps, bindOperationalRequestContext } from '@/app/api/ops/_server';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { resolveMessage } from '@/lib/messages/catalog';
 
@@ -10,6 +11,8 @@ export type OpsStationCode = 'barista' | 'shisha';
 
 export type OpsActorContext = {
   cafeId: string;
+  tenantSlug: string;
+  databaseKey: string;
   runtimeUserId: string;
   fullName: string;
   accountKind: 'owner' | 'employee';
@@ -38,21 +41,25 @@ export type BegunIdempotentMutation = {
 };
 
 export async function requireOpsActorContext(): Promise<OpsActorContext> {
-  const me = await getEnrichedRuntimeMeFromCookie();
-  if (!me) {
+  const token = await getCookieValue(RUNTIME_SESSION_COOKIE);
+  const decoded = decodeRuntimeSession(token);
+  if (!decoded) {
     throw new Error('UNAUTHORIZED');
   }
 
-  const cafeId = String(me.tenantId ?? '');
-  const runtimeUserId = String(me.userId ?? '');
-  const fullName = String(me.fullName ?? '').trim();
-  const accountKind: 'owner' | 'employee' = me.accountKind === 'owner' ? 'owner' : 'employee';
-  const shiftId = me.shiftId ? String(me.shiftId) : null;
-  const shiftRole = me.shiftRole ? (String(me.shiftRole) as OpsShiftRole) : null;
-  const actorOwnerId = me.actorOwnerId ? String(me.actorOwnerId) : null;
-  const actorStaffId = me.actorStaffId ? String(me.actorStaffId) : null;
+  const session = assertBoundRuntimeSession(decoded, 'requireOpsActorContext');
+  const cafeId = String(session.tenantId ?? '');
+  const tenantSlug = String(session.tenantSlug ?? '').trim();
+  const databaseKey = String(session.databaseKey ?? '').trim();
+  const runtimeUserId = String(session.userId ?? '');
+  const fullName = String(session.fullName ?? '').trim();
+  const accountKind: 'owner' | 'employee' = session.accountKind === 'owner' ? 'owner' : 'employee';
+  const shiftId = session.shiftId ? String(session.shiftId) : null;
+  const shiftRole = session.shiftRole ? (String(session.shiftRole) as OpsShiftRole) : null;
+  const actorOwnerId = session.actorOwnerId ? String(session.actorOwnerId) : null;
+  const actorStaffId = session.actorStaffId ? String(session.actorStaffId) : null;
 
-  if (!cafeId || !runtimeUserId || !fullName) {
+  if (!cafeId || !tenantSlug || !databaseKey || !runtimeUserId || !fullName) {
     throw new Error('INVALID_RUNTIME_CONTEXT');
   }
 
@@ -64,8 +71,10 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
     throw new Error('STAFF_ACTOR_NOT_BOUND');
   }
 
-  return {
+  const context = {
     cafeId,
+    tenantSlug,
+    databaseKey,
     runtimeUserId,
     fullName,
     accountKind,
@@ -73,7 +82,14 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
     shiftRole,
     actorOwnerId,
     actorStaffId,
-  };
+  } satisfies OpsActorContext;
+
+  bindOperationalRequestContext({
+    cafeId: context.cafeId,
+    databaseKey: context.databaseKey,
+  });
+
+  return context;
 }
 
 function isOwner(ctx: OpsActorContext): ctx is OwnerOpsActorContext {
@@ -149,7 +165,7 @@ export function requireStationAccess(ctx: OpsActorContext, stationCode: OpsStati
 }
 
 export async function requireOpenOpsShift(cafeId: string) {
-  const admin = supabaseAdmin().schema('ops');
+  const admin = adminOps();
   const { data, error } = await admin
     .from('shifts')
     .select('id, shift_kind, status, opened_at')
@@ -209,7 +225,7 @@ export async function beginIdempotentMutation(
     .update(`${actionName}|${stableStringify(payload)}`)
     .digest('hex');
 
-  const admin = supabaseAdmin().schema('ops');
+  const admin = adminOps();
   const insertPayload = {
     cafe_id: ctx.cafeId,
     idempotency_key: key,
@@ -274,7 +290,7 @@ export async function completeIdempotentMutation(
     return;
   }
 
-  const admin = supabaseAdmin().schema('ops');
+  const admin = adminOps();
   const { error } = await admin
     .from('idempotency_keys')
     .update({
@@ -300,7 +316,7 @@ export async function releaseIdempotentMutation(
     return;
   }
 
-  const admin = supabaseAdmin().schema('ops');
+  const admin = adminOps();
   const { error } = await admin
     .from('idempotency_keys')
     .delete()

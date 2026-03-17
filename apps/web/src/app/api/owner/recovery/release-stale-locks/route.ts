@@ -6,7 +6,7 @@ import { NextResponse } from 'next/server';
 export async function POST() {
   try {
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    const result = await releaseStaleIdempotencyLocks(ctx.cafeId);
+    const result = await releaseStaleIdempotencyLocks({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey });
     return NextResponse.json({
       ok: true,
       code: result.releasedCount > 0 ? 'RECOVERY_LOCKS_RELEASED' : 'RECOVERY_NO_STALE_LOCKS',

@@ -54,6 +54,7 @@ export async function POST(request: Request) {
 
     const result = await closeShift({
       cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
       shiftId,
       ownerUserId: ctx.actorOwnerId,
       notes: parsed.data.notes ?? null,

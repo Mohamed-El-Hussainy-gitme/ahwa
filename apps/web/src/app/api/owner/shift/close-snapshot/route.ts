@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { requireOpsActorContext, requireOwnerOrSupervisor } from '@/app/api/ops/_helpers';
 
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   try {
     const ctx = requireOwnerOrSupervisor(await requireOpsActorContext());
-    const admin = supabaseAdmin().schema('ops');
+    const admin = supabaseAdminForDatabase(ctx.databaseKey).schema('ops');
 
     let shiftId = parsed.data.shiftId;
     if (!shiftId) {
@@ -41,7 +41,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: 'NO_OPEN_SHIFT' }, { status: 409 });
     }
 
-    const rpc = await supabaseAdmin().rpc('ops_build_shift_snapshot', {
+    const rpc = await supabaseAdminForDatabase(ctx.databaseKey).rpc('ops_build_shift_snapshot', {
       p_cafe_id: ctx.cafeId,
       p_shift_id: shiftId,
     });

@@ -22,6 +22,7 @@ export async function POST(request: Request) {
 
     const staffId = await createStaffMember({
       cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
       fullName: parsed.data.name.trim(),
       pin: parsed.data.pin.trim(),
       employeeCode: parsed.data.employeeCode?.trim() || null,
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       entityId: staffId,
     });
 
-    const staff = await listStaffMembers(ctx.cafeId, true);
+    const staff = await listStaffMembers({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey }, true);
     const created = staff.find((item) => item.id === staffId) ?? null;
     return NextResponse.json({
       ok: true,

@@ -1,17 +1,30 @@
 import { NextResponse } from 'next/server';
-import { getEnrichedRuntimeMeFromCookie } from '@/lib/runtime/me';
+import { clearAuthCookies } from '@/lib/auth/cookies';
+import {
+  getEnrichedRuntimeMeFromCookie,
+  isUnboundRuntimeSessionError,
+} from '@/lib/runtime/me';
 import { readCurrentShiftState } from '@/lib/ops/owner-admin';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET() {
-  const me = await getEnrichedRuntimeMeFromCookie();
-  if (!me) {
-    return NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
-  }
-
   try {
-    const state = await readCurrentShiftState(String(me.tenantId));
+    const me = await getEnrichedRuntimeMeFromCookie();
+    if (!me) {
+      const response = NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
+      clearAuthCookies(response);
+      return response;
+    }
+
+    const databaseKey = String(me.databaseKey ?? '').trim();
+    if (!databaseKey) {
+      const response = NextResponse.json({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
+      clearAuthCookies(response);
+      return response;
+    }
+
+    const state = await readCurrentShiftState({ cafeId: String(me.tenantId), databaseKey });
     const shift = state.shift;
 
     return NextResponse.json({
@@ -38,7 +51,13 @@ export async function GET() {
         : null,
       assignments: state.assignments.map((item) => ({ userId: item.userId, role: item.role })),
     });
-  } catch {
-    return NextResponse.json({ ok: false, error: 'SHIFT_FETCH_FAILED' }, { status: 500 });
+  } catch (error) {
+    if (isUnboundRuntimeSessionError(error)) {
+      const response = NextResponse.json({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
+      clearAuthCookies(response);
+      return response;
+    }
+    const code = error instanceof Error ? error.message : 'SHIFT_FETCH_FAILED';
+    return NextResponse.json({ ok: false, error: code }, { status: 500 });
   }
 }

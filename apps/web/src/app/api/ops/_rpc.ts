@@ -1,5 +1,5 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
-import { adminOps } from '@/app/api/ops/_server';
+import { adminOps, requireBoundOperationalDatabaseKey } from '@/app/api/ops/_server';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import type { OpsActorContext } from '@/app/api/ops/_helpers';
 
 type JsonObject = Record<string, unknown>;
@@ -23,7 +23,8 @@ export async function callOpsRpc<T extends JsonObject>(
   functionName: string,
   args: Record<string, unknown>,
 ): Promise<T> {
-  const { data, error } = await supabaseAdmin().rpc(functionName, args);
+  const databaseKey = requireBoundOperationalDatabaseKey(`callOpsRpc:${functionName}`);
+  const { data, error } = await supabaseAdminForDatabase(databaseKey).rpc(functionName, args);
   if (error) {
     throw error;
   }

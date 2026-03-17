@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
 type RecoveryOrderItemRow = {
   service_session_id: string | null;
@@ -26,6 +26,11 @@ type RecoveryLockRow = {
   created_at: string | null;
 };
 
+type CafeDatabaseScope = {
+  cafeId: string;
+  databaseKey: string;
+};
+
 export type RecoverySessionSummary = {
   id: string;
   label: string;
@@ -50,8 +55,8 @@ export type RecoveryState = {
   }>;
 };
 
-function ops() {
-  return supabaseAdmin().schema('ops');
+function ops(databaseKey: string) {
+  return supabaseAdminForDatabase(databaseKey).schema('ops');
 }
 
 function toNumber(value: number | string | null | undefined) {
@@ -96,11 +101,11 @@ function computeItemCounts(item: RecoveryOrderItemRow) {
   return { waitingQty, readyQty, billableQty };
 }
 
-async function readOpenShiftId(cafeId: string) {
-  const { data, error } = await ops()
+async function readOpenShiftId(scope: CafeDatabaseScope) {
+  const { data, error } = await ops(scope.databaseKey)
     .from('shifts')
     .select('id')
-    .eq('cafe_id', cafeId)
+    .eq('cafe_id', scope.cafeId)
     .eq('status', 'open')
     .order('opened_at', { ascending: false })
     .limit(1)
@@ -110,11 +115,11 @@ async function readOpenShiftId(cafeId: string) {
   return data?.id ? String(data.id) : null;
 }
 
-async function readOpenSessions(cafeId: string): Promise<RecoverySessionRow[]> {
-  const { data, error } = await ops()
+async function readOpenSessions(scope: CafeDatabaseScope): Promise<RecoverySessionRow[]> {
+  const { data, error } = await ops(scope.databaseKey)
     .from('service_sessions')
     .select('id, session_label, opened_at')
-    .eq('cafe_id', cafeId)
+    .eq('cafe_id', scope.cafeId)
     .eq('status', 'open')
     .order('opened_at', { ascending: true });
 
@@ -127,13 +132,13 @@ async function readOpenSessions(cafeId: string): Promise<RecoverySessionRow[]> {
   }));
 }
 
-async function readOrderItemsForSessions(cafeId: string, sessionIds: string[]) {
+async function readOrderItemsForSessions(scope: CafeDatabaseScope, sessionIds: string[]) {
   if (sessionIds.length === 0) return [];
 
-  const { data, error } = await ops()
+  const { data, error } = await ops(scope.databaseKey)
     .from('order_items')
     .select('service_session_id, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled')
-    .eq('cafe_id', cafeId)
+    .eq('cafe_id', scope.cafeId)
     .in('service_session_id', sessionIds);
 
   if (error) throw error;
@@ -153,12 +158,12 @@ async function readOrderItemsForSessions(cafeId: string, sessionIds: string[]) {
   }));
 }
 
-async function readStaleLocks(cafeId: string, olderThanSeconds = 120): Promise<RecoveryLockRow[]> {
+async function readStaleLocks(scope: CafeDatabaseScope, olderThanSeconds = 120): Promise<RecoveryLockRow[]> {
   const threshold = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
-  const { data, error } = await ops()
+  const { data, error } = await ops(scope.databaseKey)
     .from('idempotency_keys')
     .select('idempotency_key, action_name, created_at')
-    .eq('cafe_id', cafeId)
+    .eq('cafe_id', scope.cafeId)
     .eq('status', 'pending')
     .lt('created_at', threshold)
     .order('created_at', { ascending: true })
@@ -201,14 +206,14 @@ function buildSessionSummaries(sessions: RecoverySessionRow[], items: RecoveryOr
   });
 }
 
-export async function readRecoveryState(cafeId: string): Promise<RecoveryState> {
+export async function readRecoveryState(scope: CafeDatabaseScope): Promise<RecoveryState> {
   const [openShiftId, sessions, staleLocks] = await Promise.all([
-    readOpenShiftId(cafeId),
-    readOpenSessions(cafeId),
-    readStaleLocks(cafeId),
+    readOpenShiftId(scope),
+    readOpenSessions(scope),
+    readStaleLocks(scope),
   ]);
 
-  const items = await readOrderItemsForSessions(cafeId, sessions.map((session) => session.id));
+  const items = await readOrderItemsForSessions(scope, sessions.map((session) => session.id));
   const sessionSummaries = buildSessionSummaries(sessions, items);
 
   return {
@@ -225,25 +230,27 @@ export async function readRecoveryState(cafeId: string): Promise<RecoveryState> 
   };
 }
 
-export async function closeRecoverableServiceSession(input: {
-  cafeId: string;
+export async function closeRecoverableServiceSession(input: CafeDatabaseScope & {
   serviceSessionId: string;
   ownerUserId: string;
   notes?: string | null;
 }) {
-  const sessions = await readOpenSessions(input.cafeId);
+  const sessions = await readOpenSessions({ cafeId: input.cafeId, databaseKey: input.databaseKey });
   const target = sessions.find((session) => session.id === input.serviceSessionId);
   if (!target) {
     throw new Error('RECOVERY_SESSION_NOT_RECOVERABLE');
   }
 
-  const items = await readOrderItemsForSessions(input.cafeId, [input.serviceSessionId]);
+  const items = await readOrderItemsForSessions(
+    { cafeId: input.cafeId, databaseKey: input.databaseKey },
+    [input.serviceSessionId],
+  );
   const summary = buildSessionSummaries([target], items)[0];
   if (!summary?.recoverable) {
     throw new Error('RECOVERY_SESSION_NOT_RECOVERABLE');
   }
 
-  const rpc = await supabaseAdmin().rpc('ops_close_service_session', {
+  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_close_service_session', {
     p_cafe_id: input.cafeId,
     p_service_session_id: input.serviceSessionId,
     p_by_owner_id: input.ownerUserId,
@@ -261,17 +268,17 @@ export async function closeRecoverableServiceSession(input: {
   return rpc.data;
 }
 
-export async function releaseStaleIdempotencyLocks(cafeId: string, olderThanSeconds = 120) {
-  const staleLocks = await readStaleLocks(cafeId, olderThanSeconds);
+export async function releaseStaleIdempotencyLocks(scope: CafeDatabaseScope, olderThanSeconds = 120) {
+  const staleLocks = await readStaleLocks(scope, olderThanSeconds);
   if (staleLocks.length === 0) {
     return { releasedCount: 0 };
   }
 
   const threshold = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
-  const { error } = await ops()
+  const { error } = await ops(scope.databaseKey)
     .from('idempotency_keys')
     .delete()
-    .eq('cafe_id', cafeId)
+    .eq('cafe_id', scope.cafeId)
     .eq('status', 'pending')
     .lt('created_at', threshold);
 

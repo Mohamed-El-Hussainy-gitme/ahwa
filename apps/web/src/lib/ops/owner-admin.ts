@@ -1,9 +1,14 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
 export type ShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
 
-function ops() {
-  return supabaseAdmin().schema('ops');
+type CafeDatabaseScope = {
+  cafeId: string;
+  databaseKey: string;
+};
+
+function ops(databaseKey: string) {
+  return supabaseAdminForDatabase(databaseKey).schema('ops');
 }
 
 export function currentCairoDate(): string {
@@ -16,11 +21,11 @@ export function currentCairoDate(): string {
   return formatter.format(new Date());
 }
 
-export async function listStaffMembers(cafeId: string, includeInactive = false) {
-  let query = ops()
+export async function listStaffMembers(scope: CafeDatabaseScope, includeInactive = false) {
+  let query = ops(scope.databaseKey)
     .from('staff_members')
     .select('id, full_name, employee_code, is_active, employment_status, created_at')
-    .eq('cafe_id', cafeId)
+    .eq('cafe_id', scope.cafeId)
     .order('created_at', { ascending: false });
 
   if (!includeInactive) {
@@ -40,13 +45,12 @@ export async function listStaffMembers(cafeId: string, includeInactive = false) 
   }));
 }
 
-export async function createStaffMember(input: {
-  cafeId: string;
+export async function createStaffMember(input: CafeDatabaseScope & {
   fullName: string;
   pin: string;
   employeeCode?: string | null;
 }) {
-  const rpc = await supabaseAdmin().rpc('ops_create_staff_member_v2', {
+  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_create_staff_member_v2', {
     p_cafe_id: input.cafeId,
     p_full_name: input.fullName,
     p_pin: input.pin,
@@ -58,29 +62,32 @@ export async function createStaffMember(input: {
   return staffId;
 }
 
-export async function setStaffMemberActive(cafeId: string, staffMemberId: string, isActive: boolean) {
-  const rpc = await supabaseAdmin().rpc('ops_set_staff_member_active', {
-    p_cafe_id: cafeId,
-    p_staff_member_id: staffMemberId,
-    p_is_active: isActive,
+export async function setStaffMemberActive(input: CafeDatabaseScope & { staffMemberId: string; isActive: boolean }) {
+  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_set_staff_member_active', {
+    p_cafe_id: input.cafeId,
+    p_staff_member_id: input.staffMemberId,
+    p_is_active: input.isActive,
   });
   if (rpc.error) throw rpc.error;
 }
 
-export async function setStaffMemberStatus(cafeId: string, staffMemberId: string, employmentStatus: 'active' | 'inactive' | 'left') {
-  const rpc = await supabaseAdmin().rpc('ops_set_staff_member_status', {
-    p_cafe_id: cafeId,
-    p_staff_member_id: staffMemberId,
-    p_employment_status: employmentStatus,
+export async function setStaffMemberStatus(input: CafeDatabaseScope & {
+  staffMemberId: string;
+  employmentStatus: 'active' | 'inactive' | 'left';
+}) {
+  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_set_staff_member_status', {
+    p_cafe_id: input.cafeId,
+    p_staff_member_id: input.staffMemberId,
+    p_employment_status: input.employmentStatus,
   });
   if (rpc.error) throw rpc.error;
 }
 
-export async function setStaffMemberPin(cafeId: string, staffMemberId: string, pin: string) {
-  const rpc = await supabaseAdmin().rpc('ops_set_staff_member_pin', {
-    p_cafe_id: cafeId,
-    p_staff_member_id: staffMemberId,
-    p_pin: pin,
+export async function setStaffMemberPin(input: CafeDatabaseScope & { staffMemberId: string; pin: string }) {
+  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_set_staff_member_pin', {
+    p_cafe_id: input.cafeId,
+    p_staff_member_id: input.staffMemberId,
+    p_pin: input.pin,
   });
   if (rpc.error) throw rpc.error;
 }
@@ -105,11 +112,12 @@ export type CurrentShiftState = {
   }>;
 };
 
-export async function readCurrentShiftState(cafeId: string): Promise<CurrentShiftState> {
-  const { data: shift, error: shiftError } = await ops()
+export async function readCurrentShiftState(scope: CafeDatabaseScope): Promise<CurrentShiftState> {
+  const admin = ops(scope.databaseKey);
+  const { data: shift, error: shiftError } = await admin
     .from('shifts')
     .select('id, shift_kind, business_date, status, opened_at, closed_at, notes')
-    .eq('cafe_id', cafeId)
+    .eq('cafe_id', scope.cafeId)
     .eq('status', 'open')
     .order('opened_at', { ascending: false })
     .limit(1)
@@ -122,10 +130,10 @@ export async function readCurrentShiftState(cafeId: string): Promise<CurrentShif
 
   const shiftId = String(shift.id);
 
-  const { data: assignments, error: assignmentsError } = await ops()
+  const { data: assignments, error: assignmentsError } = await admin
     .from('shift_role_assignments')
     .select('id, role_code, staff_member_id, owner_user_id, is_active, assigned_at')
-    .eq('cafe_id', cafeId)
+    .eq('cafe_id', scope.cafeId)
     .eq('shift_id', shiftId)
     .eq('is_active', true)
     .order('assigned_at', { ascending: true });
@@ -137,10 +145,10 @@ export async function readCurrentShiftState(cafeId: string): Promise<CurrentShif
 
   const [staffRows, ownerRows] = await Promise.all([
     staffIds.length > 0
-      ? ops().from('staff_members').select('id, full_name').eq('cafe_id', cafeId).in('id', staffIds)
+      ? admin.from('staff_members').select('id, full_name').eq('cafe_id', scope.cafeId).in('id', staffIds)
       : Promise.resolve({ data: [], error: null }),
     ownerIds.length > 0
-      ? ops().from('owner_users').select('id, full_name').eq('cafe_id', cafeId).in('id', ownerIds)
+      ? admin.from('owner_users').select('id, full_name').eq('cafe_id', scope.cafeId).in('id', ownerIds)
       : Promise.resolve({ data: [], error: null }),
   ]);
 
@@ -175,11 +183,11 @@ export async function readCurrentShiftState(cafeId: string): Promise<CurrentShif
   };
 }
 
-export async function listShiftHistory(cafeId: string, limit = 50) {
-  const { data, error } = await ops()
+export async function listShiftHistory(scope: CafeDatabaseScope, limit = 50) {
+  const { data, error } = await ops(scope.databaseKey)
     .from('shifts')
     .select('id, shift_kind, status, opened_at, closed_at')
-    .eq('cafe_id', cafeId)
+    .eq('cafe_id', scope.cafeId)
     .order('opened_at', { ascending: false })
     .limit(limit);
 
@@ -194,14 +202,14 @@ export async function listShiftHistory(cafeId: string, limit = 50) {
   }));
 }
 
-export async function openShiftWithAssignments(input: {
-  cafeId: string;
+export async function openShiftWithAssignments(input: CafeDatabaseScope & {
   ownerUserId: string;
   kind: 'morning' | 'evening';
   notes?: string | null;
   assignments: Array<{ userId: string; role: ShiftRole }>;
 }) {
-  const openRpc = await supabaseAdmin().rpc('ops_open_shift', {
+  const admin = supabaseAdminForDatabase(input.databaseKey);
+  const openRpc = await admin.rpc('ops_open_shift', {
     p_cafe_id: input.cafeId,
     p_shift_kind: input.kind,
     p_business_date: currentCairoDate(),
@@ -215,7 +223,7 @@ export async function openShiftWithAssignments(input: {
   if (!shiftId) throw new Error('SHIFT_OPEN_FAILED');
 
   for (const assignment of input.assignments) {
-    const rpc = await supabaseAdmin().rpc('ops_assign_shift_role', {
+    const rpc = await admin.rpc('ops_assign_shift_role', {
       p_cafe_id: input.cafeId,
       p_shift_id: shiftId,
       p_role_code: assignment.role,
@@ -234,14 +242,18 @@ export async function openShiftWithAssignments(input: {
   } as const;
 }
 
-
-async function autoCloseClosableSessions(cafeId: string, shiftId: string, ownerUserId: string) {
-  const admin = ops();
+async function autoCloseClosableSessions(input: {
+  cafeId: string;
+  databaseKey: string;
+  shiftId: string;
+  ownerUserId: string;
+}) {
+  const admin = ops(input.databaseKey);
   const { data: sessions, error: sessionsError } = await admin
     .from('service_sessions')
     .select('id')
-    .eq('cafe_id', cafeId)
-    .eq('shift_id', shiftId)
+    .eq('cafe_id', input.cafeId)
+    .eq('shift_id', input.shiftId)
     .eq('status', 'open');
 
   if (sessionsError) throw sessionsError;
@@ -250,10 +262,10 @@ async function autoCloseClosableSessions(cafeId: string, shiftId: string, ownerU
     const sessionId = String((session as { id?: string | null }).id ?? '');
     if (!sessionId) continue;
 
-    const rpc = await supabaseAdmin().rpc('ops_close_service_session', {
-      p_cafe_id: cafeId,
+    const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_close_service_session', {
+      p_cafe_id: input.cafeId,
       p_service_session_id: sessionId,
-      p_by_owner_id: ownerUserId,
+      p_by_owner_id: input.ownerUserId,
       p_notes: null,
     });
 
@@ -267,15 +279,19 @@ async function autoCloseClosableSessions(cafeId: string, shiftId: string, ownerU
   }
 }
 
-export async function closeShift(input: {
-  cafeId: string;
+export async function closeShift(input: CafeDatabaseScope & {
   shiftId: string;
   ownerUserId: string;
   notes?: string | null;
 }) {
-  await autoCloseClosableSessions(input.cafeId, input.shiftId, input.ownerUserId);
+  await autoCloseClosableSessions({
+    cafeId: input.cafeId,
+    databaseKey: input.databaseKey,
+    shiftId: input.shiftId,
+    ownerUserId: input.ownerUserId,
+  });
 
-  const rpc = await supabaseAdmin().rpc('ops_close_shift', {
+  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_close_shift', {
     p_cafe_id: input.cafeId,
     p_shift_id: input.shiftId,
     p_by_owner_id: input.ownerUserId,

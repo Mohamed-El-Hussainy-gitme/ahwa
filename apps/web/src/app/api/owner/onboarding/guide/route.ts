@@ -1,19 +1,20 @@
 import { ok, jsonError, requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
-function ops() {
-  return supabaseAdmin().schema('ops');
+function ops(databaseKey: string) {
+  return supabaseAdminForDatabase(databaseKey).schema('ops');
 }
 
 export async function GET() {
   try {
     const ctx = requireOwnerRole(await requireOpsActorContext());
+    const admin = ops(ctx.databaseKey);
 
     const [sectionsRes, productsRes, staffRes, shiftRes] = await Promise.all([
-      ops().from('menu_sections').select('id', { count: 'exact', head: true }).eq('cafe_id', ctx.cafeId).eq('is_active', true),
-      ops().from('menu_products').select('id', { count: 'exact', head: true }).eq('cafe_id', ctx.cafeId).eq('is_active', true),
-      ops().from('staff_members').select('id', { count: 'exact', head: true }).eq('cafe_id', ctx.cafeId).eq('employment_status', 'active').eq('is_active', true),
-      ops().from('shifts').select('id', { count: 'exact', head: false }).eq('cafe_id', ctx.cafeId).eq('status', 'open').order('opened_at', { ascending: false }).limit(1).maybeSingle(),
+      admin.from('menu_sections').select('id', { count: 'exact', head: true }).eq('cafe_id', ctx.cafeId).eq('is_active', true),
+      admin.from('menu_products').select('id', { count: 'exact', head: true }).eq('cafe_id', ctx.cafeId).eq('is_active', true),
+      admin.from('staff_members').select('id', { count: 'exact', head: true }).eq('cafe_id', ctx.cafeId).eq('employment_status', 'active').eq('is_active', true),
+      admin.from('shifts').select('id', { count: 'exact', head: false }).eq('cafe_id', ctx.cafeId).eq('status', 'open').order('opened_at', { ascending: false }).limit(1).maybeSingle(),
     ]);
 
     if (sectionsRes.error) throw sectionsRes.error;
@@ -24,7 +25,7 @@ export async function GET() {
     const openShiftId = shiftRes.data ? String(shiftRes.data.id) : null;
     let assignmentsCount = 0;
     if (openShiftId) {
-      const assignmentsRes = await ops()
+      const assignmentsRes = await admin
         .from('shift_role_assignments')
         .select('id', { count: 'exact', head: true })
         .eq('cafe_id', ctx.cafeId)

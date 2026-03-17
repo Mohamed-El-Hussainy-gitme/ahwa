@@ -10,7 +10,7 @@ export async function GET() {
       return NextResponse.json({ ok: false, error: 'FORBIDDEN' }, { status: 403 });
     }
 
-    const shifts = await listShiftHistory(ctx.cafeId, 50);
+    const shifts = await listShiftHistory({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey }, 50);
     return NextResponse.json({ ok: true, shifts });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'SHIFT_HISTORY_FAILED';

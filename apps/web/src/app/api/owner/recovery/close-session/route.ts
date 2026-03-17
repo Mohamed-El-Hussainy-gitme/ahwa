@@ -20,6 +20,7 @@ export async function POST(request: Request) {
     const ctx = requireOwnerRole(await requireOpsActorContext());
     await closeRecoverableServiceSession({
       cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
       serviceSessionId: parsed.data.serviceSessionId,
       ownerUserId: ctx.actorOwnerId,
       notes: parsed.data.notes ?? null,

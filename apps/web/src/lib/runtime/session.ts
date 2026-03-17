@@ -2,17 +2,28 @@ import { createHmac, timingSafeEqual } from 'crypto';
 
 export const RUNTIME_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
 
+export type RuntimeShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
+export type RuntimeAccountKind = 'owner' | 'employee';
+export type RuntimeSessionVersion = 1 | 2;
+
 export type RuntimeSessionPayload = {
+  sessionVersion: RuntimeSessionVersion;
+  databaseKey: string | null;
   tenantId: string;
   tenantSlug: string;
   userId: string;
   fullName: string;
-  accountKind: 'owner' | 'employee';
+  accountKind: RuntimeAccountKind;
   ownerLabel?: 'owner' | 'partner';
   shiftId?: string | null;
-  shiftRole?: 'supervisor' | 'waiter' | 'barista' | 'shisha' | null;
+  shiftRole?: RuntimeShiftRole | null;
   actorOwnerId?: string | null;
   actorStaffId?: string | null;
+};
+
+export type BoundRuntimeSessionPayload = RuntimeSessionPayload & {
+  sessionVersion: 2;
+  databaseKey: string;
 };
 
 function getSecret(): string {
@@ -23,6 +34,27 @@ function getSecret(): string {
 
 function sign(payload: string): string {
   return createHmac('sha256', getSecret()).update(payload, 'utf8').digest('base64url');
+}
+
+function normalizeDatabaseKey(value: unknown): string | null {
+  if (typeof value !== 'string') return null;
+  const normalized = value.trim();
+  return normalized ? normalized : null;
+}
+
+export function isBoundRuntimeSession(session: RuntimeSessionPayload | null | undefined): session is BoundRuntimeSessionPayload {
+  return !!session && session.sessionVersion === 2 && typeof session.databaseKey === 'string' && session.databaseKey.trim().length > 0;
+}
+
+export function assertBoundRuntimeSession(
+  session: RuntimeSessionPayload | null | undefined,
+  where = 'assertBoundRuntimeSession',
+): BoundRuntimeSessionPayload {
+  if (!isBoundRuntimeSession(session)) {
+    throw new Error(`[${where}] UNBOUND_RUNTIME_SESSION`);
+  }
+
+  return session;
 }
 
 export function encodeRuntimeSession(session: RuntimeSessionPayload): string {
@@ -50,7 +82,12 @@ export function decodeRuntimeSession(raw: string | null | undefined): RuntimeSes
       return null;
     }
 
+    const databaseKey = normalizeDatabaseKey(parsed.databaseKey);
+    const sessionVersion: RuntimeSessionVersion = parsed.sessionVersion === 2 && databaseKey ? 2 : 1;
+
     return {
+      sessionVersion,
+      databaseKey,
       tenantId: parsed.tenantId,
       tenantSlug: parsed.tenantSlug,
       userId: parsed.userId,

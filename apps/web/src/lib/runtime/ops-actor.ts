@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
 export type RuntimeAccountKind = 'owner' | 'employee';
 
@@ -11,6 +11,7 @@ export type RuntimeOpsActorIdentity = {
 
 type BindOwnerInput = {
   cafeId: string;
+  databaseKey: string;
   runtimeUserId: string;
   phone: string;
   fullName?: string | null;
@@ -18,16 +19,17 @@ type BindOwnerInput = {
 
 type BindStaffInput = {
   cafeId: string;
+  databaseKey: string;
   runtimeUserId: string;
   fullName: string;
 };
 
-function adminOps() {
-  return supabaseAdmin().schema('ops');
+function adminOps(databaseKey: string) {
+  return supabaseAdminForDatabase(databaseKey).schema('ops');
 }
 
 export async function bindOwnerRuntimeActor(input: BindOwnerInput): Promise<RuntimeOpsActorIdentity> {
-  const admin = adminOps();
+  const admin = adminOps(input.databaseKey);
   const phone = input.phone.trim();
   if (!phone) {
     throw new Error('OWNER_PHONE_REQUIRED');
@@ -68,7 +70,7 @@ export async function bindOwnerRuntimeActor(input: BindOwnerInput): Promise<Runt
 }
 
 export async function bindStaffRuntimeActor(input: BindStaffInput): Promise<RuntimeOpsActorIdentity> {
-  const admin = adminOps();
+  const admin = adminOps(input.databaseKey);
   const fullName = input.fullName.trim();
   if (!fullName) {
     throw new Error('STAFF_NAME_REQUIRED');
@@ -110,10 +112,11 @@ export async function bindStaffRuntimeActor(input: BindStaffInput): Promise<Runt
 
 export async function resolveRuntimeOpsActor(input: {
   cafeId: string;
+  databaseKey: string;
   runtimeUserId: string;
   accountKind: RuntimeAccountKind;
 }): Promise<RuntimeOpsActorIdentity> {
-  const admin = adminOps();
+  const admin = adminOps(input.databaseKey);
 
   if (input.accountKind === 'owner') {
     const { data, error } = await admin

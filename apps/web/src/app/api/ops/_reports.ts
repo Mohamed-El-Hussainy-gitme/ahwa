@@ -1,4 +1,3 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
 import type {
   ComplaintRecord,
   DeferredCustomerSummary,
@@ -15,7 +14,7 @@ import type {
   StaffPerformanceRow,
   StationCode,
 } from '@/lib/ops/types';
-import { buildDeferredCustomersWorkspace, ensureRuntimeContract } from '@/app/api/ops/_server';
+import { adminOps, buildDeferredCustomersWorkspace, ensureRuntimeContract } from '@/app/api/ops/_server';
 
 type ShiftRow = {
   id: string;
@@ -113,10 +112,6 @@ type AggregateMaps = {
   complaintsByShift: Map<string, ReportComplaintEntry[]>;
   itemIssuesByShift: Map<string, ReportItemIssueEntry[]>;
 };
-
-function adminOps() {
-  return supabaseAdmin().schema('ops');
-}
 
 function cairoToday(): string {
   return new Intl.DateTimeFormat('en-CA', {

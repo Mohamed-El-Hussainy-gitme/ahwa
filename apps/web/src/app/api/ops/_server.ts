@@ -1,4 +1,5 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import type {
   BillingSession,
   BillableItem,
@@ -25,8 +26,33 @@ import type {
   BillingWorkspace,
 } from '@/lib/ops/types';
 
-export function adminOps() {
-  return supabaseAdmin().schema('ops');
+export type BoundOperationalDatabaseContext = {
+  cafeId: string;
+  databaseKey: string;
+};
+
+const operationalDatabaseContext = new AsyncLocalStorage<BoundOperationalDatabaseContext>();
+
+export function bindOperationalRequestContext(context: BoundOperationalDatabaseContext): BoundOperationalDatabaseContext {
+  operationalDatabaseContext.enterWith(context);
+  return context;
+}
+
+export function getBoundOperationalRequestContext(): BoundOperationalDatabaseContext | null {
+  return operationalDatabaseContext.getStore() ?? null;
+}
+
+export function requireBoundOperationalDatabaseKey(where = 'requireBoundOperationalDatabaseKey'): string {
+  const context = getBoundOperationalRequestContext();
+  const databaseKey = context?.databaseKey?.trim();
+  if (!databaseKey) {
+    throw new Error(`[${where}] UNBOUND_OPERATIONAL_DATABASE`);
+  }
+  return databaseKey;
+}
+
+export function adminOps(databaseKey = requireBoundOperationalDatabaseKey('adminOps')) {
+  return supabaseAdminForDatabase(databaseKey).schema('ops');
 }
 
 export function normalizeShift(row: any | null): OpsShift | null {
@@ -353,28 +379,30 @@ type RuntimeContractCache = {
 };
 
 const RUNTIME_CONTRACT_TTL_MS = 60_000;
-const runtimeContractCache = new Map<RuntimeContractScope, RuntimeContractCache>();
+const runtimeContractCache = new Map<string, RuntimeContractCache>();
 
-async function runRuntimeContractCheck(scope: RuntimeContractScope): Promise<void> {
-  const { error } = await supabaseAdmin().rpc('ops_assert_runtime_contract', {
+async function runRuntimeContractCheck(scope: RuntimeContractScope, databaseKey: string): Promise<void> {
+  const { error } = await supabaseAdminForDatabase(databaseKey).rpc('ops_assert_runtime_contract', {
     p_require_reporting: scope === 'reporting',
   });
   if (error) throw error;
 }
 
-export async function ensureRuntimeContract(scope: RuntimeContractScope): Promise<void> {
+export async function ensureRuntimeContract(scope: RuntimeContractScope, databaseKey = requireBoundOperationalDatabaseKey('ensureRuntimeContract')): Promise<void> {
+  const normalizedDatabaseKey = databaseKey.trim();
+  const cacheKey = `${scope}:${normalizedDatabaseKey}`;
   const now = Date.now();
-  const cached = runtimeContractCache.get(scope);
+  const cached = runtimeContractCache.get(cacheKey);
   if (cached && now - cached.checkedAt < RUNTIME_CONTRACT_TTL_MS) {
     return cached.promise;
   }
 
-  const promise = runRuntimeContractCheck(scope).catch((error) => {
-    runtimeContractCache.delete(scope);
+  const promise = runRuntimeContractCheck(scope, normalizedDatabaseKey).catch((error) => {
+    runtimeContractCache.delete(cacheKey);
     throw error;
   });
 
-  runtimeContractCache.set(scope, {
+  runtimeContractCache.set(cacheKey, {
     checkedAt: now,
     promise,
   });

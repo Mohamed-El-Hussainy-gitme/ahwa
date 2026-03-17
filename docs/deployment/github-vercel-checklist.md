@@ -5,9 +5,13 @@
 1. Keep runtime secrets out of git:
    - never commit `apps/web/.env.local`
    - store real values only in your local machine or Vercel project settings
-2. Use the preferred Supabase key names:
-   - `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-   - `SUPABASE_SECRET_KEY`
+2. Use the explicit multi-DB Supabase contract:
+   - `CONTROL_PLANE_SUPABASE_URL`
+   - `CONTROL_PLANE_SUPABASE_PUBLISHABLE_KEY`
+   - `CONTROL_PLANE_SUPABASE_SECRET_KEY`
+   - `AHWA_OPERATIONAL_DATABASE__OPS_MAIN__URL`
+   - `AHWA_OPERATIONAL_DATABASE__OPS_MAIN__PUBLISHABLE_KEY`
+   - `AHWA_OPERATIONAL_DATABASE__OPS_MAIN__SECRET_KEY`
 3. Keep these app secrets unique per environment:
    - `AHWA_SESSION_SECRET`
    - `AHWA_INSTALL_TOKEN`
@@ -31,20 +35,23 @@ npm run build:web
 
 ## Required Vercel environment variables
 
-- `NEXT_PUBLIC_SUPABASE_URL`
-- `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`
-- `SUPABASE_SECRET_KEY`
+- `CONTROL_PLANE_SUPABASE_URL`
+- `CONTROL_PLANE_SUPABASE_PUBLISHABLE_KEY`
+- `CONTROL_PLANE_SUPABASE_SECRET_KEY`
+- `AHWA_OPERATIONAL_DATABASE__OPS_MAIN__URL`
+- `AHWA_OPERATIONAL_DATABASE__OPS_MAIN__PUBLISHABLE_KEY`
+- `AHWA_OPERATIONAL_DATABASE__OPS_MAIN__SECRET_KEY`
 - `AHWA_SESSION_SECRET`
 - `AHWA_INSTALL_TOKEN`
 - `AHWA_DEVICE_PAIRING_CODE` (optional but recommended)
 
 ## Rotation plan
 
-1. Create a new Supabase publishable key and a new secret key in the Supabase dashboard.
+1. Create or rotate the control-plane publishable/secret keys and the per-database operational publishable/secret keys in Supabase.
 2. Update local `.env.local` and Vercel project settings with the new values.
 3. Redeploy Vercel.
 4. Verify login, runtime ops, platform admin, and deferred billing flows.
-5. Remove or deactivate old legacy keys after validation.
+5. Remove any old legacy global keys after validation.
 
 ## Git commands
 

@@ -2,9 +2,28 @@ import { getCookieValue, RUNTIME_SESSION_COOKIE } from '@/lib/auth/cookies';
 import { decodeRuntimeSession, type RuntimeSessionPayload } from '@/lib/runtime/session';
 import { resolveRuntimeOpsActor, type RuntimeAccountKind, type RuntimeOpsActorIdentity } from '@/lib/runtime/ops-actor';
 
+export const UNBOUND_RUNTIME_SESSION_CODE = 'UNBOUND_RUNTIME_SESSION';
+
+export class UnboundRuntimeSessionError extends Error {
+  readonly code = UNBOUND_RUNTIME_SESSION_CODE;
+
+  constructor(message = UNBOUND_RUNTIME_SESSION_CODE) {
+    super(message);
+    this.name = 'UnboundRuntimeSessionError';
+  }
+}
+
+export function isUnboundRuntimeSessionError(error: unknown): error is UnboundRuntimeSessionError {
+  return (
+    error instanceof UnboundRuntimeSessionError ||
+    (error instanceof Error && error.message.includes(UNBOUND_RUNTIME_SESSION_CODE))
+  );
+}
+
 export type RuntimeMe = {
   tenantId: string;
   tenantSlug: string;
+  databaseKey?: string;
   userId: string;
   fullName: string;
   accountKind: RuntimeAccountKind;
@@ -19,6 +38,7 @@ function toRuntimeMe(session: RuntimeSessionPayload): RuntimeMe {
   return {
     tenantId: session.tenantId,
     tenantSlug: session.tenantSlug,
+    databaseKey: session.databaseKey ?? undefined,
     userId: session.userId,
     fullName: session.fullName,
     accountKind: session.accountKind,
@@ -46,8 +66,14 @@ export async function enrichRuntimeMe(me: RuntimeMe, rawSessionToken?: string | 
     };
   }
 
+  const databaseKey = String(me.databaseKey ?? '').trim();
+  if (!databaseKey) {
+    throw new UnboundRuntimeSessionError();
+  }
+
   const actor = await resolveRuntimeOpsActor({
     cafeId: String(me.tenantId),
+    databaseKey,
     runtimeUserId: String(me.userId),
     accountKind: me.accountKind,
   });

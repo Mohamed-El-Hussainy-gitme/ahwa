@@ -19,7 +19,12 @@ export async function POST(request: Request) {
   try {
     const ctx = requireOwnerRole(await requireOpsActorContext());
 
-    await setStaffMemberActive(ctx.cafeId, parsed.data.userId, parsed.data.isActive);
+    await setStaffMemberActive({
+      cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
+      staffMemberId: parsed.data.userId,
+      isActive: parsed.data.isActive,
+    });
     publishOpsEvent({
       type: 'runtime.staff.updated',
       cafeId: ctx.cafeId,

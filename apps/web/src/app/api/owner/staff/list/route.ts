@@ -6,7 +6,7 @@ export async function GET() {
   try {
     const ctx = requireOwnerOrSupervisor(await requireOpsActorContext());
 
-    const staff = await listStaffMembers(ctx.cafeId, true);
+    const staff = await listStaffMembers({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey }, true);
     return NextResponse.json({
       ok: true,
       staff: staff.map((item) => ({
