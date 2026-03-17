@@ -7,6 +7,7 @@ import {
   extractPlatformApiErrorMessage,
   isPlatformApiOk,
 } from '@/lib/platform-auth/api';
+import { extractCafeListItems } from '@/lib/platform-data';
 
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'suspended';
 
@@ -208,7 +209,7 @@ export default function PlatformCafesPageClient() {
       if (!response.ok || !isPlatformApiOk(payload)) {
         throw new Error(extractPlatformApiErrorMessage(payload, 'LOAD_CAFES_FAILED'));
       }
-      setCafes(isCafeListResponse(payload) ? payload.items : []);
+      setCafes(extractCafeListItems(payload) as CafeRow[]);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'LOAD_CAFES_FAILED');
     } finally {

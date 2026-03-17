@@ -1,5 +1,6 @@
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
+import { normalizeCafeListRow } from '@/lib/platform-data';
 import {
   assertPlatformEnv,
   platformJsonError,
@@ -62,18 +63,21 @@ export async function GET() {
     }
 
     const items = Array.isArray(data)
-      ? data.map((item) => {
-          if (!item || typeof item !== 'object' || item === null) return item;
-          const cafe = item as Record<string, unknown>;
-          const binding = typeof cafe.id === 'string' ? toDatabaseBinding(bindings.get(cafe.id)) : null;
-          const bindingStatus = toBindingStatus(binding?.database_key);
-          return {
-            ...cafe,
-            database_key: binding?.database_key ?? null,
-            database_binding: binding,
-            binding_status: bindingStatus,
-          };
-        })
+      ? data
+          .map((item) => {
+            if (!item || typeof item !== 'object') return null;
+            const cafe = item as Record<string, unknown>;
+            const binding = typeof cafe.id === 'string' ? toDatabaseBinding(bindings.get(cafe.id)) : null;
+            const bindingStatus = toBindingStatus(binding?.database_key);
+            return normalizeCafeListRow({
+              ...cafe,
+              owners: Array.isArray(cafe.owners) ? cafe.owners : [],
+              database_key: binding?.database_key ?? null,
+              database_binding: binding,
+              binding_status: bindingStatus,
+            });
+          })
+          .filter((item): item is NonNullable<typeof item> => item !== null)
       : [];
 
     return platformOk({ items });

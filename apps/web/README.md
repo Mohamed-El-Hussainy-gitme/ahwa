@@ -37,3 +37,7 @@ npm run dev:web
 ## Phase 9 operational database propagation
 
 Ops routes, workspace loaders, and mutation helpers must receive `databaseKey` explicitly from the bound runtime session. Do not reintroduce implicit database discovery or per-request default fallbacks inside the web app.
+
+## Platform response hardening
+
+Platform list/create flows now normalize control-plane payloads defensively on both the server and the client. Cafe rows must be rendered even when optional aggregates such as `owners` arrive as `null`, and platform API errors should surface the underlying PostgREST message/details instead of collapsing to `REQUEST_FAILED`.

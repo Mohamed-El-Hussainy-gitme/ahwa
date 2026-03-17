@@ -6,6 +6,7 @@ import {
   extractPlatformApiErrorMessage,
   isPlatformApiOk,
 } from '@/lib/platform-auth/api';
+import { extractCreatedCafeId, extractOperationalDatabaseOptions } from '@/lib/platform-data';
 
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'suspended';
 
@@ -109,9 +110,8 @@ export default function PlatformCreateCafePageClient() {
       if (!response.ok || !isPlatformApiOk(payload)) {
         throw new Error(extractPlatformApiErrorMessage(payload, 'LOAD_OPERATIONAL_DATABASES_FAILED'));
       }
-      const items = isOperationalDatabasesResponse(payload)
-        ? payload.items.filter((item) => item.is_active && item.is_accepting_new_cafes)
-        : [];
+      const items = extractOperationalDatabaseOptions(payload)
+        .filter((item) => item.is_active && item.is_accepting_new_cafes);
       setDatabaseOptions(items);
       if (items.length > 0) {
         setForm((value) => ({
@@ -166,7 +166,7 @@ export default function PlatformCreateCafePageClient() {
       if (!response.ok || !isPlatformApiOk(payload)) {
         throw new Error(extractPlatformApiErrorMessage(payload, 'CREATE_CAFE_FAILED'));
       }
-      const createdCafeId = isCreateCafeResponse(payload) ? payload.data?.cafe_id ?? '' : '';
+      const createdCafeId = extractCreatedCafeId(payload);
       setSuccess('تم إنشاء القهوة والاشتراك الأول بنجاح.');
       setForm({
         cafeSlug: '',

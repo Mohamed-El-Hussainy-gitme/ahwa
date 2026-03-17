@@ -6,3 +6,4 @@ export * from './contracts/shifts.js';
 export * from './contracts/staff.js';
 export * from './contracts/menu.js';
 export * from './contracts/audit.js';
+export * from './contracts/platform.js';

@@ -50,6 +50,10 @@ export function platformFail(status: number, code: PlatformErrorCode, message: s
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
+}
+
 export async function requirePlatformAdmin(): Promise<PlatformAdminSession> {
   const jar = await cookies();
   const session = decodePlatformAdminSession(jar.get(PLATFORM_ADMIN_COOKIE)?.value);
@@ -76,6 +80,24 @@ function platformErrorFromUnknown(error: unknown, fallbackStatus = 400): Platfor
     }
 
     return new PlatformApiError('REQUEST_FAILED', error.message, fallbackStatus);
+  }
+
+  if (isRecord(error)) {
+    const code = typeof error.code === 'string' && error.code.trim().length > 0
+      ? error.code.trim()
+      : 'REQUEST_FAILED';
+    const message = typeof error.message === 'string' && error.message.trim().length > 0
+      ? error.message.trim()
+      : null;
+    const details = typeof error.details === 'string' && error.details.trim().length > 0
+      ? error.details.trim()
+      : null;
+    const hint = typeof error.hint === 'string' && error.hint.trim().length > 0
+      ? error.hint.trim()
+      : null;
+
+    const composedMessage = [message, details, hint].filter((value): value is string => Boolean(value)).join(' — ');
+    return new PlatformApiError(code, composedMessage || code, fallbackStatus);
   }
 
   return new PlatformApiError('REQUEST_FAILED', 'REQUEST_FAILED', fallbackStatus);

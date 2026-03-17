@@ -8,6 +8,7 @@ import {
   extractPlatformApiErrorMessage,
   isPlatformApiOk,
 } from '@/lib/platform-auth/api';
+import { extractCafeListItems } from '@/lib/platform-data';
 import PlatformPortfolioOverview from './PlatformPortfolioOverview';
 
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'suspended';
@@ -819,7 +820,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
     const json: unknown = await res.json().catch(() => ({}));
     if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'LOAD_CAFES_FAILED');
 
-    const items = isCafeListResponse(json) ? json.items : [];
+    const items = extractCafeListItems(json) as CafeRow[];
     setCafes(items);
 
     const nextSelected =
