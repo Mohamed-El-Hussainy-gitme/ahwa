@@ -19,13 +19,26 @@ export async function POST(request: Request) {
     assertPlatformEnv();
 
     const admin = controlPlaneAdmin();
-    const { data, error } = await admin.rpc('platform_get_cafe_detail', {
-      p_super_admin_user_id: session.superAdminUserId,
-      p_cafe_id: body.cafeId.trim(),
-    });
+    const [{ data, error }, bindingResult] = await Promise.all([
+      admin.rpc('platform_get_cafe_detail', {
+        p_super_admin_user_id: session.superAdminUserId,
+        p_cafe_id: body.cafeId.trim(),
+      }),
+      admin.schema('control').from('cafe_database_bindings').select('database_key, binding_source').eq('cafe_id', body.cafeId.trim()).maybeSingle(),
+    ]);
 
     if (error) throw error;
-    return platformOk({ data: data ?? null });
+    if (bindingResult.error) throw bindingResult.error;
+
+    const enriched =
+      data && typeof data === 'object'
+        ? {
+            ...(data as Record<string, unknown>),
+            database_binding: bindingResult.data ?? { database_key: 'ops-db-01', binding_source: 'default' },
+          }
+        : data;
+
+    return platformOk({ data: enriched ?? null });
   } catch (error) {
     return platformJsonError(error);
   }

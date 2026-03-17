@@ -43,7 +43,6 @@ Apply migrations in this order:
 31. `0031_archive_approval_and_post_archive_checks.sql`
 32. `0032_deferred_finance_non_archival_policy.sql`
 33. `0033_search_path_security_hardening.sql`
-34. `0034_control_plane_manual_database_selection.sql`
 
 ## Migration summary
 
@@ -112,11 +111,8 @@ Search-path security hardening for the remaining linter-reported functions. This
 
 
 
-### 0034
-Introduces a minimal `control.*` registry for operational databases and cafe bindings, adds manual database selection during platform cafe creation, and standardizes the env contract for future operational databases.
+## 0034 control plane manual database selection
 
-## Multi-DB note
-
-- The current production database may temporarily host base runtime + control plane + `ops-db-01`.
-- Any future operational database should apply migrations `0001` through `0033` only.
-- `0034` belongs to the control-plane side of the architecture.
+- `0034_control_plane_manual_database_selection.sql` belongs to the current primary database when it acts as the control plane.
+- Future operational databases should apply operational migrations only up to `0033_search_path_security_hardening.sql`.
+- New cafes can be assigned manually to an available operational database during platform create-cafe flow.

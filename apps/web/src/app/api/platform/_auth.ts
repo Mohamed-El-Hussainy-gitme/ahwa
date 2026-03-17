@@ -5,7 +5,7 @@ import {
   PLATFORM_ADMIN_COOKIE,
   type PlatformAdminSession,
 } from '@/lib/platform-auth/session';
-import { assertControlPlaneAdminEnv } from '@/lib/supabase/env';
+import { getControlPlaneSupabaseAdminKey, getControlPlaneSupabaseUrl } from '@/lib/supabase/env';
 
 type PlatformErrorCode =
   | 'UNAUTHORIZED'
@@ -16,8 +16,8 @@ type PlatformErrorCode =
   | 'REQUEST_FAILED'
   | 'PLATFORM_LOGIN_FAILED'
   | 'BAD_CREDENTIALS'
-  | 'MISSING_CONTROL_PLANE_SUPABASE_URL'
-  | 'MISSING_CONTROL_PLANE_SUPABASE_SECRET_KEY'
+  | 'MISSING_CONTROL_PLANE_URL'
+  | 'MISSING_CONTROL_PLANE_SECRET_KEY'
   | 'MISSING_SESSION_SECRET'
   | string;
 
@@ -87,13 +87,18 @@ export function platformJsonError(error: unknown, fallbackStatus = 400) {
 }
 
 export function assertPlatformEnv() {
-  try {
-    assertControlPlaneAdminEnv('assertPlatformEnv');
-  } catch (error) {
-    const message = error instanceof Error ? error.message : 'CONTROL_PLANE_SUPABASE_URL / CONTROL_PLANE_SUPABASE_SECRET_KEY are missing.';
+  if (!getControlPlaneSupabaseUrl()) {
     throw new PlatformApiError(
-      message.includes('SECRET_KEY') ? 'MISSING_CONTROL_PLANE_SUPABASE_SECRET_KEY' : 'MISSING_CONTROL_PLANE_SUPABASE_URL',
-      message,
+      'MISSING_CONTROL_PLANE_URL',
+      'CONTROL_PLANE_SUPABASE_URL is missing.',
+      500,
+    );
+  }
+
+  if (!getControlPlaneSupabaseAdminKey()) {
+    throw new PlatformApiError(
+      'MISSING_CONTROL_PLANE_SECRET_KEY',
+      'CONTROL_PLANE_SUPABASE_SECRET_KEY is missing.',
       500,
     );
   }

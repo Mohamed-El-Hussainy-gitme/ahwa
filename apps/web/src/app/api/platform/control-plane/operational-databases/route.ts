@@ -13,10 +13,7 @@ export async function GET() {
 
     const admin = controlPlaneAdmin();
     const { data, error } = await admin.rpc('control_list_operational_databases');
-
-    if (error) {
-      throw error;
-    }
+    if (error) throw error;
 
     return platformOk({ items: Array.isArray(data) ? data : [] });
   } catch (error) {

@@ -1,39 +1,21 @@
 # Control plane manual database selection
 
-## Goal
+## Canonical env contract
 
-Keep the current single-database deployment working while introducing a canonical control-plane registry for future operational databases.
+- `CONTROL_PLANE_SUPABASE_*` drives platform and control-plane traffic.
+- `AHWA_DEFAULT_OPERATIONAL_DATABASE_KEY` identifies the default operational database.
+- `AHWA_OPERATIONAL_DATABASE__<TOKEN>__*` defines each operational database.
+- Legacy `NEXT_PUBLIC_SUPABASE_*` and `SUPABASE_SECRET_KEY` names are fallback-only and are no longer the preferred production contract.
 
-## Canonical rules
+## Manual database selection for cafe creation
 
-- New cafes are created manually against a selected `database_key`.
-- Available options come from `control.operational_databases`.
-- The selected database is persisted in `control.cafe_database_bindings`.
-- Canonical production envs are now split by scope:
-  - `CONTROL_PLANE_SUPABASE_*`
-  - `AHWA_DEFAULT_OPERATIONAL_DATABASE_KEY`
-  - `AHWA_OPERATIONAL_DATABASE__<TOKEN>__*`
-- Browser `NEXT_PUBLIC_*` keys are optional local-development fallbacks only, not the canonical multi-db contract.
-- Future operational databases must use the normalized env shape:
-  - `AHWA_OPERATIONAL_DATABASE__<TOKEN>__URL`
-  - `AHWA_OPERATIONAL_DATABASE__<TOKEN>__PUBLISHABLE_KEY`
-  - `AHWA_OPERATIONAL_DATABASE__<TOKEN>__SECRET_KEY`
-- Legacy `anon/service_role` keys remain compatibility-only and must not be used for new database definitions.
+- The platform create-cafe flow reads the available operational databases from `control.operational_databases`.
+- The super admin chooses `database_key` manually when creating a cafe.
+- The selected binding is stored in `control.cafe_database_bindings`.
+- If no database is chosen, the canonical default is `public.control_get_default_operational_database_key()`.
 
 ## Current rollout model
 
-- The current production Supabase project can temporarily act as:
-  - base web runtime
-  - control plane
-  - `ops-db-01`
-- Future operational databases should apply operational migrations only (`0001` through `0033`).
-- The control-plane migration (`0034`) belongs to the control-plane database.
-- The current active rollout may still point both control plane and `ops-db-01` to the same Supabase project, but the env contract must stay split.
-
-## Manual cafe creation flow
-
-1. Super admin opens `إنشاء قهوة جديدة`.
-2. The page loads available databases from `control.operational_databases`.
-3. The super admin selects the target database manually.
-4. `platform_create_cafe_with_owner(...)` creates the cafe and owner.
-5. The cafe is bound to the selected `database_key` in `control.cafe_database_bindings`.
+- The active database can act as both the control plane and `ops-db-01` during the first rollout.
+- Future operational databases should receive migrations through `0033` only.
+- Control-plane-only migrations start at `0034`.

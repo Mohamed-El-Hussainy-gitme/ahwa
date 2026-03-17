@@ -1,6 +1,6 @@
 import 'server-only';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import { assertControlPlaneAdminEnv } from '@/lib/supabase/env';
+import { assertControlPlaneEnv } from '@/lib/supabase/env';
 
 type AdminClient = SupabaseClient;
 
@@ -14,12 +14,10 @@ export function controlPlaneAdmin(): AdminClient {
     return globalThis.__ahwaControlPlaneAdmin__;
   }
 
-  const { url, adminKey } = assertControlPlaneAdminEnv('controlPlaneAdmin');
-
+  const { url, adminKey } = assertControlPlaneEnv('controlPlaneAdmin');
   const client = createClient(url, adminKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
-
   globalThis.__ahwaControlPlaneAdmin__ = client;
   return client;
 }

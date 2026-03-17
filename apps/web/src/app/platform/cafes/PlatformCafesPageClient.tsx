@@ -20,17 +20,6 @@ type CafeSubscriptionRow = {
   countdown_seconds: number;
 };
 
-
-type CafeDatabaseBindingRow = {
-  database_key: string;
-  display_name: string;
-  is_active: boolean;
-  is_accepting_new_cafes: boolean;
-  binding_source: string;
-  created_at: string;
-  updated_at: string;
-};
-
 type CafeOwnerRow = {
   id: string;
   full_name: string;
@@ -50,7 +39,7 @@ type CafeRow = {
   active_owner_count?: number;
   owners?: CafeOwnerRow[];
   current_subscription?: CafeSubscriptionRow | null;
-  database_binding?: CafeDatabaseBindingRow | null;
+  database_key?: string;
 };
 
 type CafeListResponse = { ok: true; items: CafeRow[] };
@@ -61,20 +50,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isSubscriptionStatus(value: unknown): value is SubscriptionStatus {
   return value === 'trial' || value === 'active' || value === 'expired' || value === 'suspended';
-}
-
-
-function isCafeDatabaseBindingRow(value: unknown): value is CafeDatabaseBindingRow {
-  return (
-    isRecord(value) &&
-    typeof value.database_key === 'string' &&
-    typeof value.display_name === 'string' &&
-    typeof value.is_active === 'boolean' &&
-    typeof value.is_accepting_new_cafes === 'boolean' &&
-    typeof value.binding_source === 'string' &&
-    typeof value.created_at === 'string' &&
-    typeof value.updated_at === 'string'
-  );
 }
 
 function isCafeOwnerRow(value: unknown): value is CafeOwnerRow {
@@ -114,7 +89,7 @@ function isCafeRow(value: unknown): value is CafeRow {
     (typeof value.active_owner_count === 'number' || typeof value.active_owner_count === 'undefined') &&
     (typeof value.owners === 'undefined' || (Array.isArray(value.owners) && value.owners.every(isCafeOwnerRow))) &&
     (typeof value.current_subscription === 'undefined' || value.current_subscription === null || isCafeSubscriptionRow(value.current_subscription)) &&
-    (typeof value.database_binding === 'undefined' || value.database_binding === null || isCafeDatabaseBindingRow(value.database_binding))
+    (typeof value.database_key === 'string' || typeof value.database_key === 'undefined')
   );
 }
 
@@ -318,6 +293,7 @@ export default function PlatformCafesPageClient() {
                         >
                           <div className="font-semibold text-slate-900">{cafe.display_name}</div>
                           <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
+                          <div className="mt-1 text-[11px] text-slate-400">{cafe.database_key ?? 'ops-db-01'}</div>
                         </button>
                         <div className="mt-2 flex flex-wrap gap-2 text-xs">
                           <span className={`rounded-full border px-2 py-1 font-semibold ${cafeStatusBadgeClass(cafe.is_active)}`}>
@@ -396,9 +372,9 @@ export default function PlatformCafesPageClient() {
             <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
               <div className="font-semibold text-slate-900">{selectedCafe.display_name}</div>
               <div className="mt-1 text-xs text-slate-500">{selectedCafe.slug}</div>
+              <div className="mt-1 text-xs text-slate-400">قاعدة التشغيل: {selectedCafe.database_key ?? 'ops-db-01'}</div>
               <div className="mt-3 space-y-2 text-sm text-slate-700">
                 <div>المالك: {selectedCafe.owners?.[0]?.full_name ?? '—'}</div>
-                <div>قاعدة التشغيل: {selectedCafe.database_binding?.display_name ?? selectedCafe.database_binding?.database_key ?? 'غير مربوطة'}</div>
                 <div>آخر نشاط: {formatDateTime(selectedCafe.last_activity_at ?? selectedCafe.created_at)}</div>
                 <div>الاشتراك: {selectedCafe.current_subscription ? countdownLabel(selectedCafe.current_subscription.countdown_seconds) : 'بدون اشتراك'}</div>
               </div>
