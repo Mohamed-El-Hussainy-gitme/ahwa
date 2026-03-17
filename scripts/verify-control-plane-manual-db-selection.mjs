@@ -1,8 +1,20 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
+import path from 'node:path';
 
 function fail(message) {
   console.error(`verify-control-plane-manual-db-selection: ${message}`);
   process.exit(1);
+}
+
+function walk(dir) {
+  const out = [];
+  for (const entry of readdirSync(dir)) {
+    const full = path.join(dir, entry);
+    const stat = statSync(full);
+    if (stat.isDirectory()) out.push(...walk(full));
+    else if (stat.isFile()) out.push(full.replace(/\\/g, '/'));
+  }
+  return out;
 }
 
 function extractOperationalTokens(contents) {
@@ -27,6 +39,7 @@ const requiredFiles = [
   'apps/web/src/lib/control-plane/admin.ts',
   'apps/web/src/app/api/platform/control-plane/operational-databases/route.ts',
   'docs/architecture/control-plane-manual-database-selection.md',
+  'database/migrations/0037_control_plane_public_binding_readers.sql',
 ];
 
 for (const file of requiredFiles) {
@@ -51,5 +64,12 @@ for (const forbidden of ['AHWA_DEFAULT_OPERATIONAL_DATABASE_KEY=', 'AHWA_OPERATI
 
 assertOperationalDatabaseGroups(rootEnv, 'root env example');
 assertOperationalDatabaseGroups(webEnv, 'apps/web env example');
+
+
+const webFiles = walk('apps/web/src').filter((file) => file.endsWith('.ts') || file.endsWith('.tsx'));
+const directControlSchemaUsage = webFiles.filter((file) => /\.schema\((['"])control\1\)/.test(readFileSync(file, 'utf8')));
+if (directControlSchemaUsage.length) {
+  fail(`apps/web must not query control schema directly: ${directControlSchemaUsage.join(', ')}`);
+}
 
 console.log('verify-control-plane-manual-db-selection: ok');

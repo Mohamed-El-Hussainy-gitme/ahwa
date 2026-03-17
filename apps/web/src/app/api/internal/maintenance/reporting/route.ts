@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ApiRouteError, apiJsonError } from '@/app/api/_shared';
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
+import { listCafeDatabaseBindings } from '@/lib/control-plane/cafes';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
 type MaintenanceAction = 'backfill' | 'reconcile' | 'archive' | 'archive-plan' | 'archive-execute';
@@ -12,8 +13,8 @@ type CafeRow = {
 };
 
 type CafeBindingRow = {
-  cafe_id: string;
-  database_key: string | null;
+  cafeId: string;
+  databaseKey: string | null;
 };
 
 type CafeMaintenanceTarget = {
@@ -84,19 +85,18 @@ function normalizeGetAction(rawAction: string | null, dryRun: boolean): Exclude<
 
 async function loadCafeMaintenanceTargets(cafeId: string | null, includeInactive: boolean): Promise<CafeMaintenanceTarget[]> {
   const admin = controlPlaneAdmin();
-  const [{ data: cafes, error: cafesError }, { data: bindings, error: bindingsError }] = await Promise.all([
+  const [{ data: cafes, error: cafesError }, bindings] = await Promise.all([
     admin.schema('ops').from('cafes').select('id, is_active, created_at').order('created_at', { ascending: true }),
-    admin.schema('control').from('cafe_database_bindings').select('cafe_id, database_key'),
+    listCafeDatabaseBindings(),
   ]);
 
   if (cafesError) throw cafesError;
-  if (bindingsError) throw bindingsError;
 
   const bindingMap = new Map<string, string>();
-  for (const row of ((bindings ?? []) as CafeBindingRow[])) {
-    const databaseKey = typeof row.database_key === 'string' ? row.database_key.trim() : '';
-    if (row.cafe_id && databaseKey) {
-      bindingMap.set(String(row.cafe_id), databaseKey);
+  for (const row of (bindings as CafeBindingRow[])) {
+    const databaseKey = typeof row.databaseKey === 'string' ? row.databaseKey.trim() : '';
+    if (row.cafeId && databaseKey) {
+      bindingMap.set(String(row.cafeId), databaseKey);
     }
   }
 
@@ -111,16 +111,11 @@ async function loadCafeMaintenanceTargets(cafeId: string | null, includeInactive
 }
 
 async function loadKnownOperationalDatabaseKeys(): Promise<string[]> {
-  const { data, error } = await controlPlaneAdmin()
-    .schema('control')
-    .from('cafe_database_bindings')
-    .select('database_key');
-
-  if (error) throw error;
+  const bindings = await listCafeDatabaseBindings();
 
   return [...new Set(
-    ((data ?? []) as Array<{ database_key?: string | null }>)
-      .map((row) => (typeof row.database_key === 'string' ? row.database_key.trim() : ''))
+    bindings
+      .map((row) => row.databaseKey.trim())
       .filter(Boolean),
   )];
 }

@@ -19,11 +19,18 @@
 - New deployments must register at least one active operational database row before platform create-cafe is usable.
 - Legacy `default` and `backfill` binding rows are cleaned up by the strict phase-8 migration.
 
+## PostgREST boundary for control-plane data
+
+- `control.*` must stay unexposed from the HTTP schema list.
+- Web routes must not call `.schema('control')` directly.
+- Read access to control-plane bindings must go through public `SECURITY DEFINER` RPCs such as `control_get_cafe_database_binding()` and `control_list_cafe_database_bindings()`.
+- This keeps the control plane private while preserving platform/admin read paths and multi-database runtime resolution.
+
 ## Current rollout model
 
 - The control plane owns cafe lookup and binding resolution for every rollout stage.
 - Future operational databases should receive migrations through `0033` only.
-- Control-plane-only migrations start at `0034`, and strict binding cleanup continues in `0035`.
+- Control-plane-only migrations start at `0034`; strict binding cleanup and PostgREST-safe control-plane readers continue through `0037`.
 
 
 ## Phase 9 request binding rule

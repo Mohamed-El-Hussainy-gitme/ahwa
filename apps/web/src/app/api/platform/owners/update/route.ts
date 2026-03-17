@@ -1,4 +1,5 @@
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
+import { mirrorOwnerToOperationalDatabase } from '@/lib/control-plane/runtime-provisioning';
 import {
   assertPlatformEnv,
   platformFail,
@@ -47,6 +48,8 @@ export async function POST(request: Request) {
     if (error) {
       throw error;
     }
+
+    await mirrorOwnerToOperationalDatabase(body.cafeId.trim(), body.ownerUserId.trim());
 
     return platformOk({ data });
   } catch (error) {

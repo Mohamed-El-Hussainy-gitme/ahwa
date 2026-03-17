@@ -1,4 +1,5 @@
 export {
+  listCafeDatabaseBindings,
   resolveCafeBySlug,
   resolveCafeBindingBySlug,
   resolveCafeDatabaseBinding,

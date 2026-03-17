@@ -1,4 +1,5 @@
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
+import { mirrorOwnerToOperationalDatabase } from '@/lib/control-plane/runtime-provisioning';
 import {
   assertPlatformEnv,
   platformFail,
@@ -44,6 +45,15 @@ export async function POST(request: Request) {
     if (error) {
       throw error;
     }
+
+    const created = data && typeof data === 'object' ? data as { owner_user_id?: string | null } : null;
+    const ownerUserId = typeof created?.owner_user_id === 'string' ? created.owner_user_id.trim() : '';
+
+    if (!ownerUserId) {
+      throw new Error('CONTROL_PLANE_CREATE_OWNER_RESPONSE_INVALID');
+    }
+
+    await mirrorOwnerToOperationalDatabase(body.cafeId.trim(), ownerUserId);
 
     return platformOk({ data });
   } catch (error) {

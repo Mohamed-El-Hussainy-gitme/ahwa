@@ -1,4 +1,5 @@
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
+import { listCafeDatabaseBindings } from '@/lib/control-plane/cafes';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 import { normalizeCafeListRow } from '@/lib/platform-data';
 import {
@@ -9,9 +10,9 @@ import {
 } from '@/app/api/platform/_auth';
 
 type CafeBindingRow = {
-  cafe_id: string;
-  database_key: string;
-  binding_source: string | null;
+  cafeId: string;
+  databaseKey: string;
+  bindingSource: string | null;
 };
 
 type BindingStatus = 'bound' | 'unbound' | 'invalid';
@@ -29,13 +30,13 @@ function toBindingStatus(databaseKey: string | null | undefined): BindingStatus 
 }
 
 function toDatabaseBinding(row: CafeBindingRow | undefined): DatabaseBindingPayload | null {
-  if (!row?.database_key?.trim()) {
+  if (!row?.databaseKey?.trim()) {
     return null;
   }
 
   return {
-    database_key: row.database_key.trim(),
-    binding_source: row.binding_source?.trim() || 'unknown',
+    database_key: row.databaseKey.trim(),
+    binding_source: row.bindingSource?.trim() || 'unknown',
   };
 }
 
@@ -45,21 +46,18 @@ export async function GET() {
     assertPlatformEnv();
 
     const admin = controlPlaneAdmin();
-    const [{ data, error }, bindingsResult] = await Promise.all([
+    const [{ data, error }, bindingRows] = await Promise.all([
       admin.rpc('platform_list_cafes'),
-      admin.schema('control').from('cafe_database_bindings').select('cafe_id, database_key, binding_source'),
+      listCafeDatabaseBindings(),
     ]);
 
     if (error) {
       throw error;
     }
-    if (bindingsResult.error) {
-      throw bindingsResult.error;
-    }
 
     const bindings = new Map<string, CafeBindingRow>();
-    for (const row of ((bindingsResult.data ?? []) as CafeBindingRow[])) {
-      bindings.set(row.cafe_id, row);
+    for (const row of (bindingRows as CafeBindingRow[])) {
+      bindings.set(row.cafeId, row);
     }
 
     const items = Array.isArray(data)

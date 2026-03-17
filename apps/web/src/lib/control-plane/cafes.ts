@@ -53,16 +53,19 @@ function parseCafeRow(row: CafeRow): ResolvedCafe {
 
 function parseCafeDatabaseBinding(
   payload: CafeBindingRpcRow | null | undefined,
-  cafeId: string,
+  expectedCafeId?: string,
 ): CafeDatabaseBinding | null {
   if (!payload || typeof payload !== 'object') {
     return null;
   }
 
-  const resolvedCafeId =
-    typeof payload.cafe_id === 'string' && payload.cafe_id.trim() ? payload.cafe_id.trim() : cafeId;
-  if (resolvedCafeId !== cafeId) {
-    throw new Error(`control plane returned a mismatched cafe binding. expected ${cafeId}, got ${resolvedCafeId}`);
+  const cafeId = typeof payload.cafe_id === 'string' ? payload.cafe_id.trim() : '';
+  if (!cafeId) {
+    return null;
+  }
+
+  if (expectedCafeId && cafeId !== expectedCafeId) {
+    throw new Error(`control plane returned a mismatched cafe binding. expected ${expectedCafeId}, got ${cafeId}`);
   }
 
   const databaseKey = typeof payload.database_key === 'string' ? payload.database_key.trim() : '';
@@ -80,6 +83,16 @@ function parseCafeDatabaseBinding(
     createdAt: typeof payload.created_at === 'string' ? payload.created_at : null,
     updatedAt: typeof payload.updated_at === 'string' ? payload.updated_at : null,
   };
+}
+
+function parseCafeDatabaseBindingList(payload: unknown): CafeDatabaseBinding[] {
+  if (!Array.isArray(payload)) {
+    return [];
+  }
+
+  return payload
+    .map((row) => parseCafeDatabaseBinding(row as CafeBindingRpcRow | null))
+    .filter((row): row is CafeDatabaseBinding => row !== null);
 }
 
 async function loadCafeBySlugFromControlPlane(slug: string): Promise<ResolvedCafe | null> {
@@ -109,6 +122,13 @@ export async function resolveCafeDatabaseBinding(cafeId: string): Promise<CafeDa
 
   if (error) throw error;
   return parseCafeDatabaseBinding((data ?? null) as CafeBindingRpcRow | null, normalizedCafeId);
+}
+
+export async function listCafeDatabaseBindings(): Promise<CafeDatabaseBinding[]> {
+  const { data, error } = await controlPlaneAdmin().rpc('control_list_cafe_database_bindings');
+
+  if (error) throw error;
+  return parseCafeDatabaseBindingList(data);
 }
 
 export async function resolveCafeBindingBySlug(slug: string): Promise<ResolvedCafeBinding | null> {

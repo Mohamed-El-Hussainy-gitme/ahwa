@@ -43,6 +43,10 @@ Apply migrations in this order:
 31. `0031_archive_approval_and_post_archive_checks.sql`
 32. `0032_deferred_finance_non_archival_policy.sql`
 33. `0033_search_path_security_hardening.sql`
+34. `0034_control_plane_manual_database_selection.sql`
+35. `0035_phase8_strict_control_plane_bindings.sql`
+36. `0036_platform_response_hardening.sql`
+37. `0037_control_plane_public_binding_readers.sql`
 
 ## Migration summary
 
@@ -99,6 +103,9 @@ Deferred finance non-archival policy. Codifies that `ops.deferred_ledger_entries
 ### 0033
 Search-path security hardening for the remaining linter-reported functions. This migration pins `search_path` for `app.current_cafe_id()`, `app.current_super_admin_user_id()`, `ops.generate_session_label()`, and `public.platform_touch_support_message()` without changing their functional behavior.
 
+### 0034 - 0037
+Control-plane manual database selection, strict explicit bindings, platform response hardening, and public SECURITY DEFINER readers that keep `control.*` private while still serving PostgREST-safe admin/runtime binding lookups.
+
 ## Current canonical boundaries
 
 - Daily runtime truth lives in `ops.*`
@@ -120,4 +127,4 @@ Search-path security hardening for the remaining linter-reported functions. This
 
 ## Phase 9 application binding note
 
-Phase 9 does not introduce a new SQL migration. The bug fixed in phase 9 was application-layer request binding, not control-plane data or schema shape. Keep the strict control-plane SQL contract from `0034` and `0035`, and fix runtime database selection only by explicit `databaseKey` propagation in application code.
+Phase 9 does not introduce a new SQL migration. The bug fixed in phase 9 was application-layer request binding, not control-plane data or schema shape. Keep the strict control-plane SQL contract from `0034` through `0037`, and fix runtime database selection only by explicit `databaseKey` propagation in application code.

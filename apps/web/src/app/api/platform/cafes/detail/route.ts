@@ -1,4 +1,5 @@
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
+import { resolveCafeDatabaseBinding } from '@/lib/control-plane/cafes';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 import {
   assertPlatformEnv,
@@ -45,23 +46,22 @@ export async function POST(request: Request) {
     assertPlatformEnv();
 
     const admin = controlPlaneAdmin();
-    const [{ data, error }, bindingResult] = await Promise.all([
+    const [{ data, error }, bindingRow] = await Promise.all([
       admin.rpc('platform_get_cafe_detail', {
         p_super_admin_user_id: session.superAdminUserId,
         p_cafe_id: body.cafeId.trim(),
       }),
-      admin
-        .schema('control')
-        .from('cafe_database_bindings')
-        .select('database_key, binding_source')
-        .eq('cafe_id', body.cafeId.trim())
-        .maybeSingle(),
+      resolveCafeDatabaseBinding(body.cafeId.trim()),
     ]);
 
     if (error) throw error;
-    if (bindingResult.error) throw bindingResult.error;
 
-    const binding = toDatabaseBinding(bindingResult.data ?? null);
+    const binding = toDatabaseBinding(bindingRow
+      ? {
+          database_key: bindingRow.databaseKey,
+          binding_source: bindingRow.bindingSource,
+        }
+      : null);
     const enriched =
       data && typeof data === 'object'
         ? {

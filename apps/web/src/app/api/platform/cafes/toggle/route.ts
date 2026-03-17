@@ -1,4 +1,5 @@
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
+import { mirrorCafeToOperationalDatabase } from '@/lib/control-plane/runtime-provisioning';
 import {
   assertPlatformEnv,
   platformFail,
@@ -31,6 +32,8 @@ export async function POST(request: Request) {
     if (error) {
       throw error;
     }
+
+    await mirrorCafeToOperationalDatabase(body.cafeId.trim());
 
     return platformOk({ data });
   } catch (error) {
