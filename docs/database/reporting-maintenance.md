@@ -1,5 +1,11 @@
 # Reporting maintenance and archive automation
 
+Canonical read-path note:
+
+- closed-shift truth stays in `ops.shift_snapshots`
+- day/week/month/year summaries are performance layers, not a stronger source of truth than the closed-shift detail
+- any stale or incomplete summary row must be rejected in favor of the detail path until backfill/reconcile catches up
+
 ## Phase 4 - archive as a cleaning layer only
 
 - Archive eligibility now requires:

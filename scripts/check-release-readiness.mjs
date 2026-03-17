@@ -65,4 +65,5 @@ execSync('node ./scripts/check-ops-authz-coverage.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/check-final-1to1-lock.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/check-batch4-admin-hygiene.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-reporting-maintenance-release.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-reporting-read-path.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-archive-hardening-release.mjs', { stdio: 'inherit' });

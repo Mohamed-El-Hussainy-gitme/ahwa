@@ -1132,7 +1132,115 @@ async function loadSummarySnapshots(cafeId: string, ranges: {
   };
 }
 
-function buildSummaryBackedPeriod(input: {
+function numbersRoughlyEqual(left: number, right: number, tolerance = 0.01): boolean {
+  return Math.abs(left - right) <= tolerance;
+}
+
+function totalsCompatible(left: ReportTotals, right: ReportTotals): boolean {
+  return (
+    numbersRoughlyEqual(left.shiftCount, right.shiftCount, 0) &&
+    numbersRoughlyEqual(left.submittedQty, right.submittedQty, 0) &&
+    numbersRoughlyEqual(left.readyQty, right.readyQty, 0) &&
+    numbersRoughlyEqual(left.deliveredQty, right.deliveredQty, 0) &&
+    numbersRoughlyEqual(left.replacementDeliveredQty, right.replacementDeliveredQty, 0) &&
+    numbersRoughlyEqual(left.paidQty, right.paidQty, 0) &&
+    numbersRoughlyEqual(left.deferredQty, right.deferredQty, 0) &&
+    numbersRoughlyEqual(left.remadeQty, right.remadeQty, 0) &&
+    numbersRoughlyEqual(left.cancelledQty, right.cancelledQty, 0) &&
+    numbersRoughlyEqual(left.waivedQty, right.waivedQty, 0) &&
+    numbersRoughlyEqual(left.netSales, right.netSales) &&
+    numbersRoughlyEqual(left.itemNetSales, right.itemNetSales) &&
+    numbersRoughlyEqual(left.recognizedSales, right.recognizedSales) &&
+    numbersRoughlyEqual(left.salesReconciliationGap, right.salesReconciliationGap) &&
+    numbersRoughlyEqual(left.cashSales, right.cashSales) &&
+    numbersRoughlyEqual(left.deferredSales, right.deferredSales) &&
+    numbersRoughlyEqual(left.repaymentTotal, right.repaymentTotal) &&
+    numbersRoughlyEqual(left.complaintTotal, right.complaintTotal, 0) &&
+    numbersRoughlyEqual(left.complaintOpen, right.complaintOpen, 0) &&
+    numbersRoughlyEqual(left.complaintResolved, right.complaintResolved, 0) &&
+    numbersRoughlyEqual(left.complaintDismissed, right.complaintDismissed, 0) &&
+    numbersRoughlyEqual(left.complaintRemake, right.complaintRemake, 0) &&
+    numbersRoughlyEqual(left.complaintCancel, right.complaintCancel, 0) &&
+    numbersRoughlyEqual(left.complaintWaive, right.complaintWaive, 0) &&
+    numbersRoughlyEqual(left.itemIssueTotal, right.itemIssueTotal, 0) &&
+    numbersRoughlyEqual(left.itemIssueNote, right.itemIssueNote, 0) &&
+    numbersRoughlyEqual(left.itemIssueRemake, right.itemIssueRemake, 0) &&
+    numbersRoughlyEqual(left.itemIssueCancel, right.itemIssueCancel, 0) &&
+    numbersRoughlyEqual(left.itemIssueWaive, right.itemIssueWaive, 0) &&
+    numbersRoughlyEqual(left.openSessions, right.openSessions, 0) &&
+    numbersRoughlyEqual(left.closedSessions, right.closedSessions, 0) &&
+    numbersRoughlyEqual(left.totalSessions, right.totalSessions, 0)
+  );
+}
+
+function productCollectionsCompatible(left: ProductReportRow[], right: ProductReportRow[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightById = new Map(right.map((row) => [row.productId, row]));
+  for (const row of left) {
+    const candidate = rightById.get(row.productId);
+    if (!candidate) return false;
+    if (
+      row.productName !== candidate.productName ||
+      row.stationCode !== candidate.stationCode ||
+      !numbersRoughlyEqual(row.qtySubmitted, candidate.qtySubmitted, 0) ||
+      !numbersRoughlyEqual(row.qtyReady, candidate.qtyReady, 0) ||
+      !numbersRoughlyEqual(row.qtyDelivered, candidate.qtyDelivered, 0) ||
+      !numbersRoughlyEqual(row.qtyReplacementDelivered, candidate.qtyReplacementDelivered, 0) ||
+      !numbersRoughlyEqual(row.qtyPaid, candidate.qtyPaid, 0) ||
+      !numbersRoughlyEqual(row.qtyDeferred, candidate.qtyDeferred, 0) ||
+      !numbersRoughlyEqual(row.qtyRemade, candidate.qtyRemade, 0) ||
+      !numbersRoughlyEqual(row.qtyCancelled, candidate.qtyCancelled, 0) ||
+      !numbersRoughlyEqual(row.qtyWaived, candidate.qtyWaived, 0) ||
+      !numbersRoughlyEqual(row.grossSales, candidate.grossSales) ||
+      !numbersRoughlyEqual(row.netSales, candidate.netSales)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function staffCollectionsCompatible(left: StaffPerformanceRow[], right: StaffPerformanceRow[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightByLabel = new Map(right.map((row) => [row.actorLabel, row]));
+  for (const row of left) {
+    const candidate = rightByLabel.get(row.actorLabel);
+    if (!candidate) return false;
+    if (
+      !numbersRoughlyEqual(row.submittedQty, candidate.submittedQty, 0) ||
+      !numbersRoughlyEqual(row.readyQty, candidate.readyQty, 0) ||
+      !numbersRoughlyEqual(row.deliveredQty, candidate.deliveredQty, 0) ||
+      !numbersRoughlyEqual(row.replacementDeliveredQty, candidate.replacementDeliveredQty, 0) ||
+      !numbersRoughlyEqual(row.remadeQty, candidate.remadeQty, 0) ||
+      !numbersRoughlyEqual(row.cancelledQty, candidate.cancelledQty, 0) ||
+      !numbersRoughlyEqual(row.waivedQty, candidate.waivedQty, 0) ||
+      !numbersRoughlyEqual(row.paymentTotal, candidate.paymentTotal) ||
+      !numbersRoughlyEqual(row.cashSales, candidate.cashSales) ||
+      !numbersRoughlyEqual(row.deferredSales, candidate.deferredSales) ||
+      !numbersRoughlyEqual(row.repaymentTotal, candidate.repaymentTotal) ||
+      !numbersRoughlyEqual(row.complaintCount, candidate.complaintCount, 0) ||
+      !numbersRoughlyEqual(row.itemIssueCount, candidate.itemIssueCount, 0)
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function dayCollectionsCompatible(left: ReportBusinessDayRow[], right: ReportBusinessDayRow[]): boolean {
+  if (left.length !== right.length) return false;
+  const rightByDate = new Map(right.map((row) => [row.businessDate, row]));
+  for (const row of left) {
+    const candidate = rightByDate.get(row.businessDate);
+    if (!candidate) return false;
+    if (!totalsCompatible(row, candidate)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+function buildValidatedSummaryBackedPeriod(input: {
   detail: PeriodReport;
   summaryLike: unknown | null;
   dailyByDate: Map<string, unknown>;
@@ -1174,13 +1282,24 @@ function buildSummaryBackedPeriod(input: {
     }
   }
 
-  return {
+  const summaryBacked: PeriodReport = {
     ...base,
     totals,
     products,
     staff,
     days,
   };
+
+  if (
+    !totalsCompatible(summaryBacked.totals, base.totals) ||
+    !productCollectionsCompatible(summaryBacked.products, base.products) ||
+    !staffCollectionsCompatible(summaryBacked.staff, base.staff) ||
+    !dayCollectionsCompatible(summaryBacked.days, base.days)
+  ) {
+    return base;
+  }
+
+  return summaryBacked;
 }
 
 export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWorkspace> {
@@ -1299,7 +1418,7 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
     currentComplaints,
     currentItemIssues,
     periods: {
-      day: buildSummaryBackedPeriod({
+      day: buildValidatedSummaryBackedPeriod({
         detail: detailPeriods.day,
         summaryLike: summarySnapshots.dailyByDate.get(ranges.day.startDate) ?? null,
         dailyByDate: summarySnapshots.dailyByDate,
@@ -1307,7 +1426,7 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
         currentProducts,
         currentStaff,
       }),
-      week: buildSummaryBackedPeriod({
+      week: buildValidatedSummaryBackedPeriod({
         detail: detailPeriods.week,
         summaryLike: summarySnapshots.weeklyByStart.get(ranges.week.startDate) ?? null,
         dailyByDate: summarySnapshots.dailyByDate,
@@ -1315,7 +1434,7 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
         currentProducts,
         currentStaff,
       }),
-      month: buildSummaryBackedPeriod({
+      month: buildValidatedSummaryBackedPeriod({
         detail: detailPeriods.month,
         summaryLike: summarySnapshots.monthlyByStart.get(ranges.month.startDate) ?? null,
         dailyByDate: summarySnapshots.dailyByDate,
@@ -1323,7 +1442,7 @@ export async function buildReportsWorkspace(cafeId: string): Promise<ReportsWork
         currentProducts,
         currentStaff,
       }),
-      year: buildSummaryBackedPeriod({
+      year: buildValidatedSummaryBackedPeriod({
         detail: detailPeriods.year,
         summaryLike: summarySnapshots.yearlyByStart.get(ranges.year.startDate) ?? null,
         dailyByDate: summarySnapshots.dailyByDate,

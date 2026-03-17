@@ -104,6 +104,8 @@ Search-path security hardening for the remaining linter-reported functions. This
 - Daily runtime truth lives in `ops.*`
 - Platform admin truth lives in `platform.*`
 - Closed historical reporting must be snapshot-driven
+- Canonical report chain is `shift_snapshot -> daily -> weekly/monthly -> yearly`
+- App/report read paths must treat `ops.shift_snapshots` plus the open shift as the fallback source of truth whenever a summary row is stale or incomplete
 - No new migration should reintroduce `tables`, `table_sessions`, or `bill_accounts` as canonical runtime entities
 
 

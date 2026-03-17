@@ -29,7 +29,16 @@ The archive job moves closed historical detail rows into `archive.*` and leaves 
 - `archive.order_item_issues`
 - `archive.audit_events`
 
-`ops.shift_snapshots` remain in place and are the source for daily and weekly rollups.
+`ops.shift_snapshots` remain in place and are the canonical closed-shift history.
+
+The reporting chain stays:
+
+- `ops.daily_snapshots` from closed `ops.shift_snapshots`
+- `ops.weekly_summaries` from `ops.daily_snapshots`
+- `ops.monthly_summaries` from `ops.daily_snapshots`
+- `ops.yearly_summaries` from `ops.monthly_summaries`
+
+The app read path must validate summary-backed totals against the detail path built from `ops.shift_snapshots` plus the current open shift. If a summary row is stale or incomplete, the detail path wins.
 
 ## Rollup functions
 

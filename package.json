@@ -27,6 +27,7 @@
     "verify:release": "node ./scripts/check-release-readiness.mjs",
     "verify:batch4": "node ./scripts/check-batch4-admin-hygiene.mjs",
     "verify:reporting-maintenance": "node ./scripts/verify-reporting-maintenance-release.mjs",
+    "verify:reporting-read-path": "node ./scripts/verify-reporting-read-path.mjs",
     "smoke:reporting-maintenance": "node ./scripts/smoke-reporting-maintenance.mjs",
     "verify:archive-hardening": "node ./scripts/verify-archive-hardening-release.mjs",
     "smoke:archive-hardening": "node ./scripts/smoke-archive-hardening.mjs",

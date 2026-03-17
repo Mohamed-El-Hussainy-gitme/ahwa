@@ -74,7 +74,11 @@
 
 - الوردية المفتوحة: تقارير live
 - الوردية المغلقة: تقارير canonical من `ops.shift_snapshots`
-- اليوم/الأسبوع/الشهر/السنة: تبنى من snapshots المغلقة، مع دمج الوردية المفتوحة فقط عند الحاجة لعرض live
+- اليوم: من `ops.shift_snapshots` عبر `ops.daily_snapshots`
+- الأسبوع: من `ops.daily_snapshots`
+- الشهر: من `ops.daily_snapshots`
+- السنة: من `ops.monthly_summaries`
+- الواجهة/report API لا يجب أن تثق في أي summary row بشكل أعمى؛ لو اختلفت summary عن الـ detail المبني من `ops.shift_snapshots` والوردية المفتوحة، فالـ detail هو المرجع النهائي للعرض
 
 ## 9) السوبر أدمن والخصوصية
 
