@@ -1,4 +1,4 @@
-import { adminOps } from '@/app/api/ops/_server';
+import { adminOpsForCafeId } from '@/app/api/ops/_server';
 import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadProduct, loadSection, nextProductSortOrder, normalizeStationCode, renumberProductSortOrders } from '@/app/api/ops/menu/_utils';
 import type { StationCode } from '@/lib/ops/types';
@@ -14,11 +14,12 @@ export async function POST(request: Request) {
     if (!productId || !sectionId || !productName || !Number.isFinite(unitPrice) || unitPrice < 0) throw new Error('INVALID_INPUT');
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
+    const admin = await adminOpsForCafeId(ctx.cafeId);
     const current = await loadProduct(ctx.cafeId, productId);
     await loadSection(ctx.cafeId, sectionId);
     const nextSortOrder = String(current.section_id) === sectionId ? Number(current.sort_order ?? 0) : await nextProductSortOrder(ctx.cafeId, sectionId);
 
-    const { error } = await adminOps().from('menu_products').update({ section_id: sectionId, product_name: productName, station_code: stationCode, unit_price: unitPrice, sort_order: nextSortOrder }).eq('cafe_id', ctx.cafeId).eq('id', productId);
+    const { error } = await (await adminOpsForCafeId(ctx.cafeId)).from('menu_products').update({ section_id: sectionId, product_name: productName, station_code: stationCode, unit_price: unitPrice, sort_order: nextSortOrder }).eq('cafe_id', ctx.cafeId).eq('id', productId);
     if (error) throw error;
     if (String(current.section_id) !== sectionId) await renumberProductSortOrders(ctx.cafeId, String(current.section_id));
 

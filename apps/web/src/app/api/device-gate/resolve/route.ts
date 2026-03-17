@@ -22,6 +22,7 @@ export async function POST(request: Request) {
         tenantSlug: cafe.slug,
         tenantName: cafe.displayName,
         deviceRequired: true,
+        databaseKey: cafe.databaseKey,
       },
     });
     setGateSlugCookie(response, slug);

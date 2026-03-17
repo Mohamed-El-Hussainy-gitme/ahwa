@@ -4,7 +4,7 @@ import {
   platformAdminCookieOptions,
   PLATFORM_ADMIN_COOKIE,
 } from '@/lib/platform-auth/session';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import {
   assertPlatformEnv,
   platformFail,
@@ -57,7 +57,7 @@ export async function POST(request: Request) {
 
     assertPlatformEnv();
 
-    const admin = supabaseAdmin();
+    const admin = controlPlaneAdmin();
 
     const { data, error } = await admin.rpc('platform_verify_super_admin_login', {
       p_email: email,

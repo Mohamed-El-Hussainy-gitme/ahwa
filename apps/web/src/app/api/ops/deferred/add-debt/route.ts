@@ -1,4 +1,4 @@
-import { adminOps } from '@/app/api/ops/_server';
+import { adminOpsForCafeId } from '@/app/api/ops/_server';
 import {
   beginIdempotentMutation,
   type BegunIdempotentMutation,
@@ -27,6 +27,7 @@ export async function POST(req: Request) {
     if (!name || numericAmount <= 0) throw new Error('INVALID_INPUT');
 
     const ctx = requireDeferredAccess(await requireOpsActorContext());
+    const admin = await adminOpsForCafeId(ctx.cafeId);
     const shift = await requireOpenOpsShift(ctx.cafeId);
 
     const started = await beginIdempotentMutation(req, ctx, 'ops.deferred.add-debt', {
@@ -40,7 +41,6 @@ export async function POST(req: Request) {
     }
     mutation = started.mutation;
 
-    const admin = adminOps();
     const payload: Record<string, unknown> = {
       cafe_id: ctx.cafeId,
       shift_id: shift.id,

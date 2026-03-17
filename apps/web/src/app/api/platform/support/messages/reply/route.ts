@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { assertPlatformEnv, platformJsonError, platformOk, requirePlatformAdmin } from '@/app/api/platform/_auth';
 
 const schema = z.object({
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
     const session = await requirePlatformAdmin();
     assertPlatformEnv();
     const payload = schema.parse(await request.json());
-    const admin = supabaseAdmin();
+    const admin = controlPlaneAdmin();
 
     const { error } = await admin
       .schema('platform')

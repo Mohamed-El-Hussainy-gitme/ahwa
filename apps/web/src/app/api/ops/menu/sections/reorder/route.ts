@@ -1,4 +1,4 @@
-import { adminOps } from '@/app/api/ops/_server';
+import { adminOpsForCafeId } from '@/app/api/ops/_server';
 import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 export async function POST(request: Request) {
@@ -8,13 +8,14 @@ export async function POST(request: Request) {
     if (!sectionIds.length) throw new Error('SECTION_IDS_REQUIRED');
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    const { data, error } = await adminOps().from('menu_sections').select('id').eq('cafe_id', ctx.cafeId).in('id', sectionIds);
+    const admin = await adminOpsForCafeId(ctx.cafeId);
+    const { data, error } = await (await adminOpsForCafeId(ctx.cafeId)).from('menu_sections').select('id').eq('cafe_id', ctx.cafeId).in('id', sectionIds);
     if (error) throw error;
     const existingIds = new Set((data ?? []).map((row) => String(row.id)));
     if (existingIds.size !== sectionIds.length) throw new Error('SECTION_NOT_FOUND');
 
     for (const [index, sectionId] of sectionIds.entries()) {
-      const { error: updateError } = await adminOps().from('menu_sections').update({ sort_order: index }).eq('cafe_id', ctx.cafeId).eq('id', sectionId);
+      const { error: updateError } = await (await adminOpsForCafeId(ctx.cafeId)).from('menu_sections').update({ sort_order: index }).eq('cafe_id', ctx.cafeId).eq('id', sectionId);
       if (updateError) throw updateError;
     }
 

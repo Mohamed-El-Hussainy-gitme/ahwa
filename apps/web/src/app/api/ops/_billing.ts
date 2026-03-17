@@ -1,4 +1,4 @@
-import { adminOps } from '@/app/api/ops/_server';
+import { adminOpsForCafeId } from '@/app/api/ops/_server';
 
 type AllocationInput = {
   orderItemId: string;
@@ -49,7 +49,8 @@ export async function resolveBillingContext(
   const normalized = normalizeAllocations(allocations);
   const orderItemIds = normalized.map((allocation) => allocation.orderItemId);
 
-  const { data, error } = await adminOps()
+  const admin = await adminOpsForCafeId(cafeId);
+  const { data, error } = await admin
     .from('order_items')
     .select('id, shift_id, service_session_id, unit_price, qty_delivered, qty_paid, qty_deferred, qty_waived')
     .eq('cafe_id', cafeId)

@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getOperationalAdminOpsClientForCafeId } from '@/lib/operational-db/server';
 
 export type RuntimeAccountKind = 'owner' | 'employee';
 
@@ -22,12 +22,13 @@ type BindStaffInput = {
   fullName: string;
 };
 
-function adminOps() {
-  return supabaseAdmin().schema('ops');
+async function adminOpsForCafe(cafeId: string) {
+  const { admin } = await getOperationalAdminOpsClientForCafeId(cafeId);
+  return admin;
 }
 
 export async function bindOwnerRuntimeActor(input: BindOwnerInput): Promise<RuntimeOpsActorIdentity> {
-  const admin = adminOps();
+  const admin = await adminOpsForCafe(input.cafeId);
   const phone = input.phone.trim();
   if (!phone) {
     throw new Error('OWNER_PHONE_REQUIRED');
@@ -68,7 +69,7 @@ export async function bindOwnerRuntimeActor(input: BindOwnerInput): Promise<Runt
 }
 
 export async function bindStaffRuntimeActor(input: BindStaffInput): Promise<RuntimeOpsActorIdentity> {
-  const admin = adminOps();
+  const admin = await adminOpsForCafe(input.cafeId);
   const fullName = input.fullName.trim();
   if (!fullName) {
     throw new Error('STAFF_NAME_REQUIRED');
@@ -113,7 +114,7 @@ export async function resolveRuntimeOpsActor(input: {
   runtimeUserId: string;
   accountKind: RuntimeAccountKind;
 }): Promise<RuntimeOpsActorIdentity> {
-  const admin = adminOps();
+  const admin = await adminOpsForCafe(input.cafeId);
 
   if (input.accountKind === 'owner') {
     const { data, error } = await admin

@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import {
   assertPlatformEnv,
   platformFail,
@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
     assertPlatformEnv();
 
-    const admin = supabaseAdmin();
+    const admin = controlPlaneAdmin();
     const { data, error } = await admin.rpc('platform_create_owner_user', {
       p_super_admin_user_id: session.superAdminUserId,
       p_cafe_id: body.cafeId.trim(),

@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import {
   assertPlatformEnv,
   platformJsonError,
@@ -11,7 +11,7 @@ export async function GET() {
     await requirePlatformAdmin();
     assertPlatformEnv();
 
-    const admin = supabaseAdmin();
+    const admin = controlPlaneAdmin();
     const { data, error } = await admin.rpc('platform_list_cafes');
 
     if (error) {

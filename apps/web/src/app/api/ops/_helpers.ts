@@ -1,7 +1,8 @@
 import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getEnrichedRuntimeMeFromCookie } from '@/lib/runtime/me';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getOperationalAdminOpsClientForCafeId } from '@/lib/operational-db/server';
+import { resolveOperationalRouteFromRuntimeSession } from '@/lib/operational-db/runtime';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { resolveMessage } from '@/lib/messages/catalog';
 
@@ -10,6 +11,7 @@ export type OpsStationCode = 'barista' | 'shisha';
 
 export type OpsActorContext = {
   cafeId: string;
+  databaseKey: string;
   runtimeUserId: string;
   fullName: string;
   accountKind: 'owner' | 'employee';
@@ -64,8 +66,14 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
     throw new Error('STAFF_ACTOR_NOT_BOUND');
   }
 
+  const route = await resolveOperationalRouteFromRuntimeSession();
+  if (!route || route.cafeId !== cafeId) {
+    throw new Error('INVALID_OPERATIONAL_ROUTE');
+  }
+
   return {
     cafeId,
+    databaseKey: route.databaseKey,
     runtimeUserId,
     fullName,
     accountKind,
@@ -149,7 +157,7 @@ export function requireStationAccess(ctx: OpsActorContext, stationCode: OpsStati
 }
 
 export async function requireOpenOpsShift(cafeId: string) {
-  const admin = supabaseAdmin().schema('ops');
+  const { admin } = await getOperationalAdminOpsClientForCafeId(cafeId);
   const { data, error } = await admin
     .from('shifts')
     .select('id, shift_kind, status, opened_at')
@@ -209,7 +217,7 @@ export async function beginIdempotentMutation(
     .update(`${actionName}|${stableStringify(payload)}`)
     .digest('hex');
 
-  const admin = supabaseAdmin().schema('ops');
+  const { admin } = await getOperationalAdminOpsClientForCafeId(ctx.cafeId);
   const insertPayload = {
     cafe_id: ctx.cafeId,
     idempotency_key: key,
@@ -274,7 +282,7 @@ export async function completeIdempotentMutation(
     return;
   }
 
-  const admin = supabaseAdmin().schema('ops');
+  const { admin } = await getOperationalAdminOpsClientForCafeId(ctx.cafeId);
   const { error } = await admin
     .from('idempotency_keys')
     .update({
@@ -300,7 +308,7 @@ export async function releaseIdempotentMutation(
     return;
   }
 
-  const admin = supabaseAdmin().schema('ops');
+  const { admin } = await getOperationalAdminOpsClientForCafeId(ctx.cafeId);
   const { error } = await admin
     .from('idempotency_keys')
     .delete()

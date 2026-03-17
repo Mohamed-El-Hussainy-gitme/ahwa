@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import {
   assertBootstrapAuthorized,
   assertPlatformEnv,
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     assertPlatformEnv();
     assertBootstrapAuthorized(request, body.installToken);
 
-    const admin = supabaseAdmin();
+    const admin = controlPlaneAdmin();
     const existing = await admin
       .schema('platform')
       .from('super_admin_users')

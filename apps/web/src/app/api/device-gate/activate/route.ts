@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setDeviceTokenCookie, setGateSlugCookie } from '@/lib/auth/cookies';
+import { setOperationalDatabaseKeyCookie } from '@/lib/operational-db/cookie';
 import { encodeDeviceGateSession, DEVICE_GATE_TOKEN_MAX_AGE_SECONDS } from '@/lib/device-gate/session';
 import { resolveCafeBySlug } from '@/lib/ops/cafes';
 
@@ -50,10 +51,12 @@ export async function POST(request: Request) {
         tenantName: cafe.displayName,
         deviceLabel: parsed.data.label.trim(),
         deviceMode: parsed.data.deviceMode,
+        databaseKey: cafe.databaseKey,
       },
     });
     setDeviceTokenCookie(response, token, DEVICE_GATE_TOKEN_MAX_AGE_SECONDS);
     setGateSlugCookie(response, cafe.slug);
+    setOperationalDatabaseKeyCookie(response, cafe.databaseKey);
     return response;
   } catch (error) {
     const message = error instanceof Error ? error.message : 'DEVICE_ACTIVATION_FAILED';

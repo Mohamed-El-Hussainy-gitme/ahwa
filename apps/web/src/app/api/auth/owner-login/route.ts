@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
+import { setOperationalDatabaseKeyCookie } from '@/lib/operational-db/cookie';
 import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { resolveCafeBySlug } from '@/lib/ops/cafes';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { getOperationalAdminClientForCafeSlug } from '@/lib/operational-db/server';
 
 const Input = z.object({
   phone: z.string().min(1),
@@ -28,7 +29,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'CAFE_NOT_FOUND' }, { status: 404 });
   }
 
-  const rpc = await supabaseAdmin().rpc('ops_verify_owner_login', {
+  const { admin } = await getOperationalAdminClientForCafeSlug(slug);
+  const rpc = await admin.rpc('ops_verify_owner_login', {
     p_slug: slug,
     p_phone: parsed.data.phone.trim(),
     p_password: parsed.data.password,
@@ -68,5 +70,6 @@ export async function POST(req: NextRequest) {
   });
   setRuntimeSessionCookie(response, token, RUNTIME_SESSION_MAX_AGE_SECONDS);
   setGateSlugCookie(response, cafe.slug);
+  setOperationalDatabaseKeyCookie(response, cafe.databaseKey);
   return response;
 }

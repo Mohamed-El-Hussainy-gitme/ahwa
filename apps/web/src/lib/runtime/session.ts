@@ -72,3 +72,11 @@ export function decodeRuntimeSession(raw: string | null | undefined): RuntimeSes
     return null;
   }
 }
+
+import { getCookieValue, RUNTIME_SESSION_COOKIE } from '@/lib/auth/cookies';
+
+export async function readRuntimeSession(): Promise<RuntimeSessionPayload | null> {
+  const token = await getCookieValue(RUNTIME_SESSION_COOKIE);
+  if (!token) return null;
+  return decodeRuntimeSession(token);
+}

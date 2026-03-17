@@ -21,6 +21,32 @@ type DatabaseCapacityResponse = {
   data: DatabaseCapacityData | null;
 };
 
+
+type ControlPlaneDatabase = {
+  database_key: string;
+  display_name: string;
+  region_code: string | null;
+  status: 'active' | 'degraded' | 'maintenance' | 'disabled';
+  is_accepting_new_cafes: boolean;
+  is_default: boolean;
+  schema_version: string | null;
+  notes: string | null;
+  bound_cafe_count: number;
+  active_bound_cafe_count: number;
+  latest_bound_at: string | null;
+};
+
+type ControlPlaneOverview = {
+  default_database_key: string | null;
+  unbound_cafe_count: number;
+  operational_databases: ControlPlaneDatabase[];
+};
+
+type ControlPlaneOverviewResponse = {
+  ok: true;
+  data: ControlPlaneOverview | null;
+};
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
 }
@@ -41,10 +67,43 @@ function isDatabaseCapacityResponse(value: unknown): value is DatabaseCapacityRe
   return isRecord(value) && value.ok === true && (value.data === null || isDatabaseCapacityData(value.data));
 }
 
+
+function isControlPlaneDatabase(value: unknown): value is ControlPlaneDatabase {
+  return (
+    isRecord(value) &&
+    typeof value.database_key === 'string' &&
+    typeof value.display_name === 'string' &&
+    (typeof value.region_code === 'string' || value.region_code === null) &&
+    (value.status === 'active' || value.status === 'degraded' || value.status === 'maintenance' || value.status === 'disabled') &&
+    typeof value.is_accepting_new_cafes === 'boolean' &&
+    typeof value.is_default === 'boolean' &&
+    (typeof value.schema_version === 'string' || value.schema_version === null) &&
+    (typeof value.notes === 'string' || value.notes === null) &&
+    typeof value.bound_cafe_count === 'number' &&
+    typeof value.active_bound_cafe_count === 'number' &&
+    (typeof value.latest_bound_at === 'string' || value.latest_bound_at === null)
+  );
+}
+
+function isControlPlaneOverview(value: unknown): value is ControlPlaneOverview {
+  return (
+    isRecord(value) &&
+    (typeof value.default_database_key === 'string' || value.default_database_key === null) &&
+    typeof value.unbound_cafe_count === 'number' &&
+    Array.isArray(value.operational_databases) &&
+    value.operational_databases.every(isControlPlaneDatabase)
+  );
+}
+
+function isControlPlaneOverviewResponse(value: unknown): value is ControlPlaneOverviewResponse {
+  return isRecord(value) && value.ok === true && (value.data === null || isControlPlaneOverview(value.data));
+}
+
 export default function PlatformSettingsPageClient() {
   const [data, setData] = useState<DatabaseCapacityData | null>(null);
   const [capacityInput, setCapacityInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [controlPlane, setControlPlane] = useState<ControlPlaneOverview | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
@@ -53,17 +112,24 @@ export default function PlatformSettingsPageClient() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/platform/overview', {
-        cache: 'no-store',
-        credentials: 'include',
-      });
-      const payload: unknown = await response.json().catch(() => ({}));
-      if (!response.ok || !isPlatformApiOk(payload)) {
-        throw new Error(extractPlatformApiErrorMessage(payload, 'LOAD_DATABASE_CAPACITY_FAILED'));
+      const [overviewResponse, controlPlaneResponse] = await Promise.all([
+        fetch('/api/platform/overview', {
+          cache: 'no-store',
+          credentials: 'include',
+        }),
+        fetch('/api/platform/control-plane/overview', {
+          cache: 'no-store',
+          credentials: 'include',
+        }),
+      ]);
+
+      const overviewPayload: unknown = await overviewResponse.json().catch(() => ({}));
+      if (!overviewResponse.ok || !isPlatformApiOk(overviewPayload)) {
+        throw new Error(extractPlatformApiErrorMessage(overviewPayload, 'LOAD_DATABASE_CAPACITY_FAILED'));
       }
 
-      const envelope = payload as PlatformApiEnvelope<Record<string, unknown> | null>;
-      const overviewData = isRecord(envelope.data) ? envelope.data.database_usage : null;
+      const overviewEnvelope = overviewPayload as PlatformApiEnvelope<Record<string, unknown> | null>;
+      const overviewData = isRecord(overviewEnvelope.data) ? overviewEnvelope.data.database_usage : null;
       if (isDatabaseCapacityData(overviewData)) {
         setData(overviewData);
         setCapacityInput(typeof overviewData.capacity_bytes === 'number' ? String(overviewData.capacity_bytes) : '');
@@ -71,6 +137,14 @@ export default function PlatformSettingsPageClient() {
         setData(null);
         setCapacityInput('');
       }
+
+      const controlPlanePayload: unknown = await controlPlaneResponse.json().catch(() => ({}));
+      if (!controlPlaneResponse.ok || !isPlatformApiOk(controlPlanePayload)) {
+        throw new Error(extractPlatformApiErrorMessage(controlPlanePayload, 'LOAD_CONTROL_PLANE_FAILED'));
+      }
+
+      const controlEnvelope = controlPlanePayload as PlatformApiEnvelope<unknown>;
+      setControlPlane(isControlPlaneOverview(controlEnvelope.data) ? controlEnvelope.data : null);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'LOAD_DATABASE_CAPACITY_FAILED');
     } finally {
@@ -173,6 +247,48 @@ export default function PlatformSettingsPageClient() {
           <button disabled={busy} onClick={() => void submit()} className="mt-4 rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
             {busy ? 'جارٍ الحفظ...' : 'حفظ الحد الأقصى'}
           </button>
+        </section>
+
+        <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-sm font-semibold text-indigo-600">Control Plane</div>
+          <h2 className="mt-1 text-lg font-bold text-slate-900">ربط المقاهي بقاعدة التشغيل</h2>
+          <p className="mt-2 text-sm text-slate-500">هذه القراءة تمثل المرحلتين 1 و2: registry مركزي لقواعد التشغيل وربط كل مقهى بـ database_key واحد، مع foundation كودي لـ TenantDatabaseResolver وOperationalDbClientFactory.</p>
+
+          {controlPlane ? (
+            <div className="mt-4 space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs text-slate-500">القاعدة الافتراضية</div>
+                <div className="mt-1 text-base font-bold text-slate-900">{controlPlane.default_database_key ?? 'غير محددة'}</div>
+                <div className="mt-2 text-xs text-slate-500">مقاهي غير مربوطة: {controlPlane.unbound_cafe_count}</div>
+              </div>
+
+              <div className="space-y-3">
+                {controlPlane.operational_databases.map((database) => (
+                  <div key={database.database_key} className="rounded-2xl border border-slate-200 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="text-sm font-semibold text-slate-900">{database.display_name}</div>
+                        <div className="mt-1 text-xs text-slate-500">{database.database_key}</div>
+                      </div>
+                      <div className="text-right text-xs text-slate-500">
+                        <div>{database.is_default ? 'افتراضية' : 'ثانوية'}</div>
+                        <div className="mt-1">{database.status}</div>
+                      </div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-slate-600">
+                      <div>المقاهي المرتبطة: <strong className="text-slate-900">{database.bound_cafe_count}</strong></div>
+                      <div>النشطة: <strong className="text-slate-900">{database.active_bound_cafe_count}</strong></div>
+                      <div>استقبال جديد: <strong className="text-slate-900">{database.is_accepting_new_cafes ? 'نعم' : 'لا'}</strong></div>
+                      <div>نسخة السكيمة: <strong className="text-slate-900">{database.schema_version ?? 'غير مسجلة'}</strong></div>
+                    </div>
+                    {database.notes ? <div className="mt-3 text-xs text-slate-500">{database.notes}</div> : null}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">لا توجد قراءة متاحة من control plane حتى الآن.</div>
+          )}
         </section>
       </aside>
     </div>

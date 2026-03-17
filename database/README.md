@@ -43,6 +43,8 @@ Apply migrations in this order:
 31. `0031_archive_approval_and_post_archive_checks.sql`
 32. `0032_deferred_finance_non_archival_policy.sql`
 33. `0033_search_path_security_hardening.sql`
+34. `0034_control_plane_minimal_foundation.sql`
+35. `0035_control_plane_support_access_sessions.sql`
 
 ## Migration summary
 
@@ -99,13 +101,35 @@ Deferred finance non-archival policy. Codifies that `ops.deferred_ledger_entries
 ### 0033
 Search-path security hardening for the remaining linter-reported functions. This migration pins `search_path` for `app.current_cafe_id()`, `app.current_super_admin_user_id()`, `ops.generate_session_label()`, and `public.platform_touch_support_message()` without changing their functional behavior.
 
+### 0034
+Minimal control-plane foundation. Introduces `control.*` registry tables for operational databases, cafe-to-database bindings, migration tracking, and database health, while keeping runtime traffic on the current single operational database (`ops-db-01`).
+
+### 0035
+Explicit support-access sessions. Replaces the old always-off grant model with control-plane support requests, activation/close lifecycle, audit events, and a time-scoped support-session contract for super-admin support.
+
 ## Current canonical boundaries
 
 - Daily runtime truth lives in `ops.*`
-- Platform admin truth lives in `platform.*`
+- Platform admin truth lives in `platform.*`, while platform routing/operational-db metadata lives in `control.*`
 - Closed historical reporting must be snapshot-driven
 - Canonical report chain is `shift_snapshot -> daily -> weekly/monthly -> yearly`
 - App/report read paths must treat `ops.shift_snapshots` plus the open shift as the fallback source of truth whenever a summary row is stale or incomplete
 - No new migration should reintroduce `tables`, `table_sessions`, or `bill_accounts` as canonical runtime entities
 
 
+## Phase 2 routing foundation
+
+Control-plane minimal foundation remains migration-backed in `0034_control_plane_minimal_foundation.sql`.
+The codebase now also includes the server-side operational DB routing foundation (`TenantDatabaseResolver` + `OperationalDbClientFactory`) without changing the active single-operational-database deployment contract.
+
+
+## Phase 3 login routing
+
+The active runtime session now carries the resolved operational `database_key` through a dedicated cookie and read-only authz route. This completes the login-path propagation contract on top of the phase 2 routing foundation.
+
+
+## Control plane routing phases
+
+- Phase 4: core cafe operational routes must read and mutate through `database_key` routing.
+- Phase 5: platform admin routes must use the control-plane client boundary, not the operational admin client.
+- Phase 6: super-admin support access must be explicit, time-scoped, and audited through `control.support_access_requests` and `control.support_access_audit_events`.

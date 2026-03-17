@@ -5,7 +5,7 @@ import {
   PLATFORM_ADMIN_COOKIE,
   type PlatformAdminSession,
 } from '@/lib/platform-auth/session';
-import { getSupabaseAdminKey, getSupabaseUrl } from '@/lib/supabase/env';
+import { getControlPlaneConfig } from '@/lib/control-plane/admin';
 
 type PlatformErrorCode =
   | 'UNAUTHORIZED'
@@ -87,18 +87,12 @@ export function platformJsonError(error: unknown, fallbackStatus = 400) {
 }
 
 export function assertPlatformEnv() {
-  if (!getSupabaseUrl()) {
-    throw new PlatformApiError(
-      'MISSING_SUPABASE_URL',
-      'NEXT_PUBLIC_SUPABASE_URL is missing.',
-      500,
-    );
-  }
-
-  if (!getSupabaseAdminKey()) {
+  try {
+    getControlPlaneConfig();
+  } catch {
     throw new PlatformApiError(
       'MISSING_SUPABASE_SERVICE_ROLE_KEY',
-      'SUPABASE_SECRET_KEY or SUPABASE_SERVICE_ROLE_KEY is missing.',
+      'Control plane Supabase admin env is missing.',
       500,
     );
   }

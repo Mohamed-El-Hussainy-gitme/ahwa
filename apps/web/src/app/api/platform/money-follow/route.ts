@@ -1,4 +1,4 @@
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import {
   assertPlatformEnv,
   platformJsonError,
@@ -11,7 +11,7 @@ export async function GET() {
     const session = await requirePlatformAdmin();
     assertPlatformEnv();
 
-    const admin = supabaseAdmin();
+    const admin = controlPlaneAdmin();
     const { data, error } = await admin.rpc('platform_money_follow_overview', {
       p_super_admin_user_id: session.superAdminUserId,
     });

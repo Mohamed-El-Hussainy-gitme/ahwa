@@ -1,4 +1,4 @@
-import { adminOps } from '@/app/api/ops/_server';
+import { adminOpsForCafeId } from '@/app/api/ops/_server';
 import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 export async function POST(request: Request) {
@@ -9,13 +9,14 @@ export async function POST(request: Request) {
     if (!sectionId || !productIds.length) throw new Error('INVALID_INPUT');
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    const { data, error } = await adminOps().from('menu_products').select('id').eq('cafe_id', ctx.cafeId).eq('section_id', sectionId).in('id', productIds);
+    const admin = await adminOpsForCafeId(ctx.cafeId);
+    const { data, error } = await (await adminOpsForCafeId(ctx.cafeId)).from('menu_products').select('id').eq('cafe_id', ctx.cafeId).eq('section_id', sectionId).in('id', productIds);
     if (error) throw error;
     const existingIds = new Set((data ?? []).map((row) => String(row.id)));
     if (existingIds.size !== productIds.length) throw new Error('PRODUCT_NOT_FOUND');
 
     for (const [index, productId] of productIds.entries()) {
-      const { error: updateError } = await adminOps().from('menu_products').update({ sort_order: index }).eq('cafe_id', ctx.cafeId).eq('id', productId);
+      const { error: updateError } = await (await adminOpsForCafeId(ctx.cafeId)).from('menu_products').update({ sort_order: index }).eq('cafe_id', ctx.cafeId).eq('id', productId);
       if (updateError) throw updateError;
     }
 

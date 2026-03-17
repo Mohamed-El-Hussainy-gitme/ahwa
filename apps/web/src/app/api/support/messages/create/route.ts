@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { assertPlatformEnv, platformJsonError } from '@/app/api/platform/_auth';
 import { getCookieValue, RUNTIME_SESSION_COOKIE } from '@/lib/auth/cookies';
 import { getEnrichedRuntimeMeFromSessionToken } from '@/lib/runtime/me';
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
   try {
     assertPlatformEnv();
     const payload = schema.parse(await request.json());
-    const admin = supabaseAdmin();
+    const admin = controlPlaneAdmin();
 
     let runtimeMe = null;
     const runtimeToken = await getCookieValue(RUNTIME_SESSION_COOKIE);

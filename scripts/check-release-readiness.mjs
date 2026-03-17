@@ -67,3 +67,10 @@ execSync('node ./scripts/check-batch4-admin-hygiene.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-reporting-maintenance-release.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-reporting-read-path.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-archive-hardening-release.mjs', { stdio: 'inherit' });
+
+execSync('node ./scripts/verify-control-plane-minimal.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-operational-db-routing-foundation.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-login-routing-phase3.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-phase4-runtime-route-migration.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-phase5-control-plane-boundary.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-phase6-support-access.mjs', { stdio: 'inherit' });

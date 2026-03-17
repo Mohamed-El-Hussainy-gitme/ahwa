@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { supabaseAdmin } from '@/lib/supabase/admin';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { assertPlatformEnv, platformJsonError, platformOk, requirePlatformAdmin } from '@/app/api/platform/_auth';
 
 const querySchema = z.object({
@@ -12,7 +12,7 @@ export async function GET(request: Request) {
   try {
     await requirePlatformAdmin();
     assertPlatformEnv();
-    const admin = supabaseAdmin();
+    const admin = controlPlaneAdmin();
     const url = new URL(request.url);
     const query = querySchema.parse({
       status: url.searchParams.get('status') ?? undefined,

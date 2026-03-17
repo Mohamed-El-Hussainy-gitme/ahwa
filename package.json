@@ -30,8 +30,14 @@
     "verify:reporting-read-path": "node ./scripts/verify-reporting-read-path.mjs",
     "smoke:reporting-maintenance": "node ./scripts/smoke-reporting-maintenance.mjs",
     "verify:archive-hardening": "node ./scripts/verify-archive-hardening-release.mjs",
+    "verify:control-plane-minimal": "node ./scripts/verify-control-plane-minimal.mjs",
+    "verify:operational-db-routing": "node ./scripts/verify-operational-db-routing-foundation.mjs",
+    "verify:login-routing-phase3": "node ./scripts/verify-login-routing-phase3.mjs",
     "smoke:archive-hardening": "node ./scripts/smoke-archive-hardening.mjs",
     "archive:plan": "node ./scripts/manage-reporting-archive-approval.mjs plan",
-    "archive:execute": "node ./scripts/manage-reporting-archive-approval.mjs execute"
+    "archive:execute": "node ./scripts/manage-reporting-archive-approval.mjs execute",
+    "verify:phase4-runtime-routing": "node ./scripts/verify-phase4-runtime-route-migration.mjs",
+    "verify:phase5-control-plane": "node ./scripts/verify-phase5-control-plane-boundary.mjs",
+    "verify:phase6-support-access": "node ./scripts/verify-phase6-support-access.mjs"
   }
 }
