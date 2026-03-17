@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
 import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
-import { resolveCafeBySlug, resolveCafeDatabaseBinding } from '@/lib/ops/cafes';
+import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 
@@ -24,14 +24,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'MISSING_CAFE_SLUG' }, { status: 400 });
   }
 
-  const cafe = await resolveCafeBySlug(slug);
-  if (!cafe || !cafe.isActive) {
+  const binding = await resolveCafeBindingBySlug(slug);
+  if (!binding || !binding.isActive) {
     return NextResponse.json({ ok: false, error: 'CAFE_NOT_FOUND' }, { status: 404 });
-  }
-
-  const binding = await resolveCafeDatabaseBinding(cafe.id);
-  if (!binding) {
-    return NextResponse.json({ ok: false, error: 'CAFE_DATABASE_UNBOUND' }, { status: 409 });
   }
 
   if (!isOperationalDatabaseConfigured(binding.databaseKey)) {
@@ -57,20 +52,20 @@ export async function POST(req: NextRequest) {
   }
 
   const resolvedCafeId = String(row.cafe_id ?? '');
-  if (!resolvedCafeId || resolvedCafeId !== cafe.id) {
+  if (!resolvedCafeId || resolvedCafeId !== binding.id) {
     return NextResponse.json({ ok: false, error: 'CAFE_BINDING_MISMATCH' }, { status: 409 });
   }
 
-  const resolvedCafeSlug = String(row.cafe_slug ?? cafe.slug).trim().toLowerCase();
-  if (resolvedCafeSlug !== cafe.slug) {
+  const resolvedCafeSlug = String(row.cafe_slug ?? binding.slug).trim().toLowerCase();
+  if (resolvedCafeSlug !== binding.slug) {
     return NextResponse.json({ ok: false, error: 'CAFE_SLUG_MISMATCH' }, { status: 409 });
   }
 
   const token = encodeRuntimeSession({
     sessionVersion: 2,
     databaseKey: binding.databaseKey,
-    tenantId: cafe.id,
-    tenantSlug: cafe.slug,
+    tenantId: binding.id,
+    tenantSlug: binding.slug,
     userId: String(row.owner_user_id),
     fullName: String(row.full_name ?? ''),
     accountKind: 'owner',
@@ -83,7 +78,7 @@ export async function POST(req: NextRequest) {
 
   const response = NextResponse.json({
     ok: true,
-    tenant: { id: cafe.id, slug: cafe.slug },
+    tenant: { id: binding.id, slug: binding.slug },
     binding: {
       databaseKey: binding.databaseKey,
       bindingSource: binding.bindingSource,
@@ -96,6 +91,6 @@ export async function POST(req: NextRequest) {
     },
   });
   setRuntimeSessionCookie(response, token, RUNTIME_SESSION_MAX_AGE_SECONDS);
-  setGateSlugCookie(response, cafe.slug);
+  setGateSlugCookie(response, binding.slug);
   return response;
 }

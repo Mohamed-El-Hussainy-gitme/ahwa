@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
-import { resolveCafeBySlug, resolveCafeDatabaseBinding } from '@/lib/ops/cafes';
+import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
 import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
@@ -35,14 +35,9 @@ export async function POST(req: NextRequest) {
 
   const slug = parsed.data.cafeSlug.trim().toLowerCase();
 
-  const cafe = await resolveCafeBySlug(slug);
-  if (!cafe || !cafe.isActive) {
+  const binding = await resolveCafeBindingBySlug(slug);
+  if (!binding || !binding.isActive) {
     return fail(404, 'CAFE_NOT_FOUND');
-  }
-
-  const binding = await resolveCafeDatabaseBinding(cafe.id);
-  if (!binding) {
-    return fail(409, 'CAFE_DATABASE_UNBOUND');
   }
 
   if (!isOperationalDatabaseConfigured(binding.databaseKey)) {
@@ -66,12 +61,12 @@ export async function POST(req: NextRequest) {
   }
 
   const resolvedCafeId = String(row.cafe_id ?? '');
-  if (!resolvedCafeId || resolvedCafeId !== cafe.id) {
+  if (!resolvedCafeId || resolvedCafeId !== binding.id) {
     return fail(409, 'CAFE_BINDING_MISMATCH');
   }
 
-  const resolvedCafeSlug = String(row.cafe_slug ?? cafe.slug).trim().toLowerCase();
-  if (resolvedCafeSlug !== cafe.slug) {
+  const resolvedCafeSlug = String(row.cafe_slug ?? binding.slug).trim().toLowerCase();
+  if (resolvedCafeSlug !== binding.slug) {
     return fail(409, 'CAFE_SLUG_MISMATCH');
   }
 
@@ -92,8 +87,8 @@ export async function POST(req: NextRequest) {
   const token = encodeRuntimeSession({
     sessionVersion: 2,
     databaseKey: binding.databaseKey,
-    tenantId: cafe.id,
-    tenantSlug: cafe.slug,
+    tenantId: binding.id,
+    tenantSlug: binding.slug,
     userId: String(row.staff_member_id),
     fullName: String(row.full_name ?? ''),
     accountKind: 'employee',
@@ -105,7 +100,7 @@ export async function POST(req: NextRequest) {
 
   const response = NextResponse.json({
     ok: true,
-    tenant: { id: cafe.id, slug: cafe.slug },
+    tenant: { id: binding.id, slug: binding.slug },
     binding: {
       databaseKey: binding.databaseKey,
       bindingSource: binding.bindingSource,
@@ -120,7 +115,7 @@ export async function POST(req: NextRequest) {
   });
 
   setRuntimeSessionCookie(response, token, RUNTIME_SESSION_MAX_AGE_SECONDS);
-  setGateSlugCookie(response, cafe.slug);
+  setGateSlugCookie(response, binding.slug);
 
   return response;
 }
