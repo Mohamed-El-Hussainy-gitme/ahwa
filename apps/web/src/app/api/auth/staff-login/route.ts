@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
-import { setOperationalDatabaseKeyCookie } from '@/lib/operational-db/cookie';
 import { resolveCafeBySlug } from '@/lib/ops/cafes';
 import {
   encodeRuntimeSession,
   RUNTIME_SESSION_MAX_AGE_SECONDS,
 } from '@/lib/runtime/session';
-import { getOperationalAdminClientForCafeSlug } from '@/lib/operational-db/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 const Input = z.object({
   cafeSlug: z.string().min(1),
@@ -43,8 +42,7 @@ export async function POST(req: NextRequest) {
     return fail(404, 'CAFE_NOT_FOUND');
   }
 
-  const { admin } = await getOperationalAdminClientForCafeSlug(slug);
-  const rpc = await admin.rpc('ops_verify_staff_pin_login', {
+  const rpc = await supabaseAdmin().rpc('ops_verify_staff_pin_login', {
     p_slug: slug,
     p_identifier: parsed.data.name.trim(),
     p_pin: parsed.data.pin.trim(),
@@ -104,7 +102,6 @@ export async function POST(req: NextRequest) {
 
   setRuntimeSessionCookie(response, token, RUNTIME_SESSION_MAX_AGE_SECONDS);
   setGateSlugCookie(response, cafe.slug);
-  setOperationalDatabaseKeyCookie(response, cafe.databaseKey);
 
   return response;
 }

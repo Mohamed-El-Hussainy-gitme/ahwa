@@ -1,6 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { adminOps, adminOpsForCafeId } from '@/app/api/ops/_server';
-import { getOperationalAdminClientForCafeId } from '@/lib/operational-db/server';
+import { adminOps } from '@/app/api/ops/_server';
 import type { OpsActorContext } from '@/app/api/ops/_helpers';
 
 type JsonObject = Record<string, unknown>;
@@ -32,20 +31,6 @@ export async function callOpsRpc<T extends JsonObject>(
   return asJsonObject<T>(data, functionName);
 }
 
-export async function callOpsRpcForCafeId<T extends JsonObject>(
-  cafeId: string,
-  functionName: string,
-  args: Record<string, unknown>,
-): Promise<T> {
-  const { admin } = await getOperationalAdminClientForCafeId(cafeId);
-  const { data, error } = await admin.rpc(functionName, args);
-  if (error) {
-    throw error;
-  }
-
-  return asJsonObject<T>(data, functionName);
-}
-
 export function actorRpcParams(
   ctx: Pick<OpsActorContext, 'actorStaffId' | 'actorOwnerId'>,
   staffParamName: string,
@@ -61,7 +46,7 @@ export async function loadOrderItemMutationContext(
   cafeId: string,
   orderItemId: string,
 ): Promise<OrderItemMutationContext> {
-  const { data, error } = await (await adminOpsForCafeId(cafeId))
+  const { data, error } = await adminOps()
     .from('order_items')
     .select('id, shift_id, service_session_id, station_code')
     .eq('cafe_id', cafeId)

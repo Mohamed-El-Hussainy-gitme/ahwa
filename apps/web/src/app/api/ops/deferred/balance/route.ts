@@ -1,4 +1,4 @@
-import { adminOpsForCafeId, ensureRuntimeContract } from '@/app/api/ops/_server';
+import { adminOps, ensureRuntimeContract } from '@/app/api/ops/_server';
 import { jsonError, ok, requireDeferredAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 export async function POST(req: Request) {
   try {
@@ -6,7 +6,7 @@ export async function POST(req: Request) {
     const name = String(debtorName ?? '').trim(); if (!name) throw new Error('INVALID_INPUT');
     const ctx = requireDeferredAccess(await requireOpsActorContext());
     await ensureRuntimeContract('core');
-    const admin = await adminOpsForCafeId(ctx.cafeId);
+    const admin = adminOps();
     const rows = await admin.from('deferred_customer_balances').select('balance').eq('cafe_id', ctx.cafeId).eq('debtor_name', name).limit(1);
     if (rows.error) throw rows.error;
     const balance = Number(((rows.data ?? [])[0] as any)?.balance ?? 0);

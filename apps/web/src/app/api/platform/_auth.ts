@@ -5,7 +5,7 @@ import {
   PLATFORM_ADMIN_COOKIE,
   type PlatformAdminSession,
 } from '@/lib/platform-auth/session';
-import { getControlPlaneConfig } from '@/lib/control-plane/admin';
+import { assertControlPlaneAdminEnv } from '@/lib/supabase/env';
 
 type PlatformErrorCode =
   | 'UNAUTHORIZED'
@@ -16,8 +16,8 @@ type PlatformErrorCode =
   | 'REQUEST_FAILED'
   | 'PLATFORM_LOGIN_FAILED'
   | 'BAD_CREDENTIALS'
-  | 'MISSING_SUPABASE_URL'
-  | 'MISSING_SUPABASE_SERVICE_ROLE_KEY'
+  | 'MISSING_CONTROL_PLANE_SUPABASE_URL'
+  | 'MISSING_CONTROL_PLANE_SUPABASE_SECRET_KEY'
   | 'MISSING_SESSION_SECRET'
   | string;
 
@@ -88,11 +88,12 @@ export function platformJsonError(error: unknown, fallbackStatus = 400) {
 
 export function assertPlatformEnv() {
   try {
-    getControlPlaneConfig();
-  } catch {
+    assertControlPlaneAdminEnv('assertPlatformEnv');
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'CONTROL_PLANE_SUPABASE_URL / CONTROL_PLANE_SUPABASE_SECRET_KEY are missing.';
     throw new PlatformApiError(
-      'MISSING_SUPABASE_SERVICE_ROLE_KEY',
-      'Control plane Supabase admin env is missing.',
+      message.includes('SECRET_KEY') ? 'MISSING_CONTROL_PLANE_SUPABASE_SECRET_KEY' : 'MISSING_CONTROL_PLANE_SUPABASE_URL',
+      message,
       500,
     );
   }

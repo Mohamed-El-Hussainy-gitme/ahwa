@@ -4,10 +4,9 @@
 
 ## 1) حدود النظام
 
-- النظام SaaS متعدد المقاهي، والمرجعية الحالية ما زالت تشغِّل كل المقاهي على قاعدة تشغيل واحدة فعليًا مع تمهيد control plane للتوسع لاحقًا
-- `ops.cafes` هو حد الـ tenant داخل قاعدة التشغيل
-- `control.cafe_database_bindings` هو سجل الربط المنصّي بين كل مقهى و`database_key` التشغيلي
-- كل تشغيل يومي يجب أن يكون مربوطًا بـ `cafe_id`، وأي توسع لاحق إلى أكثر من قاعدة يجب أن يمر عبر control plane وليس عبر cross-db joins
+- النظام SaaS متعدد المقاهي داخل قاعدة بيانات واحدة
+- `ops.cafes` هو حد الـ tenant
+- كل تشغيل يومي يجب أن يكون مربوطًا بـ `cafe_id`
 
 ## 2) نمط التشغيل اليومي
 
@@ -31,7 +30,7 @@
 - shisha: تجهيز/تسليم الشيشة، ويمكن تعدد الشيشة مان داخل نفس الوردية
 
 ### على مستوى المنصة
-- super admin: إدارة المقاهي، الملاك، الاشتراكات، التفعيل، المتابعة الإدارية عالية المستوى فقط، عبر control plane، وبدون اطلاع افتراضي على بيانات tenant التشغيلية؛ وأي دخول دعم يجب أن يكون explicit support session مؤقتة ومراجعة ومربوطة بمقهى واحد
+- super admin: إدارة المقاهي، الملاك، الاشتراكات، التفعيل، المتابعة الإدارية عالية المستوى فقط، بدون support grants للوصول إلى بيانات tenant التشغيلية
 
 ## 4) المنيو
 
@@ -92,7 +91,7 @@
 - هل توجد وردية مفتوحة
 - استخدام قاعدة البيانات ومؤشرات الصحة عالية المستوى
 
-ولا يجب أن يصبح شاشة مراقبة تشغيلية مفصلة على مبيعات أو شكاوى تشغيلية أو تفاصيل ما باعته كل قهوة. كما أن support grant القديم لم يعد جزءًا من نموذج الوصول canonical، وتم استبداله بجلسات دعم صريحة ومؤقتة عبر control plane.
+ولا يجب أن يصبح شاشة مراقبة تشغيلية مفصلة على مبيعات أو شكاوى تشغيلية أو تفاصيل ما باعته كل قهوة. كما أن support grant لم يعد جزءًا من نموذج الوصول canonical.
 
 ## 10) المرجع النهائي عند أي تعارض
 
@@ -100,14 +99,4 @@
 
 1. آخر migration canonical
 2. server routes في `apps/web/src/app/api`
-3. docs المعمارية المحدثة الخاصة بـ control plane / reporting / archive
-4. domain docs المحدثة في هذا المجلد
-
-- Phase 2 adds server-side routing foundation: `TenantDatabaseResolver` and `OperationalDbClientFactory` choose the operational database by `database_key` before cafe-scoped operational RPCs execute.
-
-
-## Control plane routing phases
-
-- Phase 4: core cafe operational routes must read and mutate through `database_key` routing.
-- Phase 5: platform admin routes must use the control-plane client boundary, not the operational admin client.
-- Phase 6: super-admin support access must be explicit, time-scoped, and audited through control-plane support sessions.
+3. domain docs المحدثة في هذا المجلد

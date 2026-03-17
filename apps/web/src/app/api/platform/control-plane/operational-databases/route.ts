@@ -8,19 +8,17 @@ import {
 
 export async function GET() {
   try {
-    const session = await requirePlatformAdmin();
+    await requirePlatformAdmin();
     assertPlatformEnv();
 
     const admin = controlPlaneAdmin();
-    const { data, error } = await admin.rpc('control_platform_overview', {
-      p_super_admin_user_id: session.superAdminUserId,
-    });
+    const { data, error } = await admin.rpc('control_list_operational_databases');
 
     if (error) {
       throw error;
     }
 
-    return platformOk({ data: data ?? null });
+    return platformOk({ items: Array.isArray(data) ? data : [] });
   } catch (error) {
     return platformJsonError(error);
   }

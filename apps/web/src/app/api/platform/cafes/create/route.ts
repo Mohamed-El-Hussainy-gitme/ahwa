@@ -23,6 +23,7 @@ export async function POST(request: Request) {
       subscriptionAmountPaid?: number | string;
       subscriptionIsComplimentary?: boolean;
       subscriptionNotes?: string;
+      databaseKey?: string;
     };
 
     if (
@@ -57,6 +58,7 @@ export async function POST(request: Request) {
       p_subscription_amount_paid: subscriptionAmountPaid,
       p_subscription_is_complimentary: body.subscriptionIsComplimentary === true,
       p_subscription_notes: body.subscriptionNotes?.trim() || null,
+      p_database_key: body.databaseKey?.trim() || null,
     });
 
     if (error) {

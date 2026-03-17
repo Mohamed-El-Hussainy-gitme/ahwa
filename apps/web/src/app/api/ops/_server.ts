@@ -1,5 +1,4 @@
 import { supabaseAdmin } from '@/lib/supabase/admin';
-import { getOperationalAdminOpsClientForCafeId } from '@/lib/operational-db/server';
 import type {
   BillingSession,
   BillableItem,
@@ -30,11 +29,6 @@ export function adminOps() {
   return supabaseAdmin().schema('ops');
 }
 
-export async function adminOpsForCafeId(cafeId: string) {
-  const { admin } = await getOperationalAdminOpsClientForCafeId(cafeId);
-  return admin;
-}
-
 export function normalizeShift(row: any | null): OpsShift | null {
   if (!row) return null;
   return {
@@ -46,8 +40,7 @@ export function normalizeShift(row: any | null): OpsShift | null {
 }
 
 async function loadOpenShift(cafeId: string): Promise<OpsShift | null> {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { data, error } = await admin
+  const { data, error } = await adminOps()
     .from('shifts')
     .select('id, shift_kind, status, opened_at')
     .eq('cafe_id', cafeId)
@@ -60,8 +53,7 @@ async function loadOpenShift(cafeId: string): Promise<OpsShift | null> {
 }
 
 async function loadOpenSessions(cafeId: string, shiftId: string): Promise<any[]> {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { data, error } = await admin
+  const { data, error } = await adminOps()
     .from('service_sessions')
     .select('id, session_label, status, opened_at')
     .eq('cafe_id', cafeId)
@@ -73,7 +65,7 @@ async function loadOpenSessions(cafeId: string, shiftId: string): Promise<any[]>
 }
 
 export async function listBillableRows(cafeId: string, shiftId?: string | null, openSessionIds?: string[]): Promise<BillableItem[]> {
-  const admin = await adminOpsForCafeId(cafeId);
+  const admin = adminOps();
   if (!shiftId) return [];
   if (Array.isArray(openSessionIds) && openSessionIds.length === 0) return [];
 
@@ -112,7 +104,7 @@ export async function listBillableRows(cafeId: string, shiftId?: string | null, 
 }
 
 export async function buildMenuWorkspace(cafeId: string): Promise<MenuWorkspace> {
-  const admin = await adminOpsForCafeId(cafeId);
+  const admin = adminOps();
   const [{ data: sections, error: sectionsError }, { data: products, error: productsError }] = await Promise.all([
     admin
       .from('menu_sections')
@@ -158,7 +150,7 @@ export async function buildMenuWorkspace(cafeId: string): Promise<MenuWorkspace>
 }
 
 export async function buildWaiterWorkspace(cafeId: string): Promise<WaiterWorkspace> {
-  const admin = await adminOpsForCafeId(cafeId);
+  const admin = adminOps();
   const normalizedShift = await loadOpenShift(cafeId);
   const [sessions, sectionsResult, productsResult] = await Promise.all([
     normalizedShift ? loadOpenSessions(cafeId, normalizedShift.id) : Promise.resolve([] as any[]),
@@ -292,7 +284,7 @@ export async function buildWaiterWorkspace(cafeId: string): Promise<WaiterWorksp
 }
 
 export async function buildStationWorkspace(cafeId: string, stationCode: StationCode): Promise<StationWorkspace> {
-  const admin = await adminOpsForCafeId(cafeId);
+  const admin = adminOps();
   const normalizedShift = await loadOpenShift(cafeId);
   let rows: any[] = [];
   if (normalizedShift) {
@@ -393,7 +385,7 @@ export async function ensureRuntimeContract(scope: RuntimeContractScope): Promis
 async function loadDeferredCustomerSummaryRows(cafeId: string): Promise<DeferredCustomerSummaryRow[]> {
   await ensureRuntimeContract('core');
 
-  const admin = await adminOpsForCafeId(cafeId);
+  const admin = adminOps();
   const { data, error } = await admin
     .from('deferred_customer_balances')
     .select('debtor_name, entry_count, debt_total, repayment_total, balance, last_entry_at, last_debt_at, last_repayment_at, last_entry_kind')
@@ -544,7 +536,7 @@ export async function buildDeferredCustomerLedgerWorkspace(
 ): Promise<DeferredCustomerLedgerWorkspace> {
   await ensureRuntimeContract('core');
 
-  const admin = await adminOpsForCafeId(cafeId);
+  const admin = adminOps();
   const normalizedDebtorName = debtorName.trim();
   const [{ data: balanceRows, error: balanceError }, { data, error }] = await Promise.all([
     admin
@@ -625,7 +617,7 @@ export async function buildDeferredCustomerLedgerWorkspace(
 }
 
 export async function buildComplaintsWorkspace(cafeId: string): Promise<ComplaintsWorkspace> {
-  const admin = await adminOpsForCafeId(cafeId);
+  const admin = adminOps();
   const { data: shift } = await admin
     .from('shifts')
     .select('id, shift_kind, status, opened_at')
@@ -764,7 +756,7 @@ export async function buildComplaintsWorkspace(cafeId: string): Promise<Complain
 export async function buildDashboardWorkspace(cafeId: string): Promise<DashboardWorkspace> {
   await ensureRuntimeContract('core');
 
-  const admin = await adminOpsForCafeId(cafeId);
+  const admin = adminOps();
   const [waiter, stationBarista, stationShisha, billing] = await Promise.all([
     buildWaiterWorkspace(cafeId),
     buildStationWorkspace(cafeId, 'barista'),

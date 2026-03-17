@@ -1,4 +1,4 @@
-import { adminOpsForCafeId } from '@/app/api/ops/_server';
+import { adminOps } from '@/app/api/ops/_server';
 
 export function normalizeStationCode(value: unknown) {
   if (value === 'shisha' || value === 'service') return value;
@@ -6,8 +6,7 @@ export function normalizeStationCode(value: unknown) {
 }
 
 export async function nextSectionSortOrder(cafeId: string) {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { data, error } = await admin
+  const { data, error } = await adminOps()
     .from('menu_sections')
     .select('sort_order')
     .eq('cafe_id', cafeId)
@@ -19,8 +18,7 @@ export async function nextSectionSortOrder(cafeId: string) {
 }
 
 export async function nextProductSortOrder(cafeId: string, sectionId: string) {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { data, error } = await admin
+  const { data, error } = await adminOps()
     .from('menu_products')
     .select('sort_order')
     .eq('cafe_id', cafeId)
@@ -33,8 +31,7 @@ export async function nextProductSortOrder(cafeId: string, sectionId: string) {
 }
 
 export async function loadSection(cafeId: string, sectionId: string) {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { data, error } = await admin
+  const { data, error } = await adminOps()
     .from('menu_sections')
     .select('id, title, station_code, sort_order, is_active')
     .eq('cafe_id', cafeId)
@@ -46,8 +43,7 @@ export async function loadSection(cafeId: string, sectionId: string) {
 }
 
 export async function loadProduct(cafeId: string, productId: string) {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { data, error } = await admin
+  const { data, error } = await adminOps()
     .from('menu_products')
     .select('id, section_id, product_name, station_code, unit_price, sort_order, is_active')
     .eq('cafe_id', cafeId)
@@ -59,8 +55,7 @@ export async function loadProduct(cafeId: string, productId: string) {
 }
 
 export async function productUsageCount(cafeId: string, productId: string) {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { count, error } = await admin
+  const { count, error } = await adminOps()
     .from('order_items')
     .select('id', { count: 'exact', head: true })
     .eq('cafe_id', cafeId)
@@ -70,8 +65,7 @@ export async function productUsageCount(cafeId: string, productId: string) {
 }
 
 export async function sectionUsageCount(cafeId: string, sectionId: string) {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { data: products, error: productsError } = await admin
+  const { data: products, error: productsError } = await adminOps()
     .from('menu_products')
     .select('id')
     .eq('cafe_id', cafeId)
@@ -79,7 +73,7 @@ export async function sectionUsageCount(cafeId: string, sectionId: string) {
   if (productsError) throw productsError;
   const productIds = (products ?? []).map((row) => String(row.id)).filter(Boolean);
   if (!productIds.length) return 0;
-  const { count, error } = await admin
+  const { count, error } = await adminOps()
     .from('order_items')
     .select('id', { count: 'exact', head: true })
     .eq('cafe_id', cafeId)
@@ -89,8 +83,7 @@ export async function sectionUsageCount(cafeId: string, sectionId: string) {
 }
 
 export async function renumberSectionSortOrders(cafeId: string) {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { data, error } = await admin
+  const { data, error } = await adminOps()
     .from('menu_sections')
     .select('id')
     .eq('cafe_id', cafeId)
@@ -98,8 +91,7 @@ export async function renumberSectionSortOrders(cafeId: string) {
     .order('created_at', { ascending: true });
   if (error) throw error;
   for (const [index, row] of (data ?? []).entries()) {
-    const admin = await adminOpsForCafeId(cafeId);
-    const { error: updateError } = await admin
+    const { error: updateError } = await adminOps()
       .from('menu_sections')
       .update({ sort_order: index })
       .eq('cafe_id', cafeId)
@@ -109,8 +101,7 @@ export async function renumberSectionSortOrders(cafeId: string) {
 }
 
 export async function renumberProductSortOrders(cafeId: string, sectionId: string) {
-  const admin = await adminOpsForCafeId(cafeId);
-  const { data, error } = await admin
+  const { data, error } = await adminOps()
     .from('menu_products')
     .select('id')
     .eq('cafe_id', cafeId)
@@ -119,8 +110,7 @@ export async function renumberProductSortOrders(cafeId: string, sectionId: strin
     .order('created_at', { ascending: true });
   if (error) throw error;
   for (const [index, row] of (data ?? []).entries()) {
-    const admin = await adminOpsForCafeId(cafeId);
-    const { error: updateError } = await admin
+    const { error: updateError } = await adminOps()
       .from('menu_products')
       .update({ sort_order: index })
       .eq('cafe_id', cafeId)

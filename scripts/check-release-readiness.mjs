@@ -41,9 +41,13 @@ for (const file of exampleFiles) {
 const rootEnvExample = readFileSync('.env.example', 'utf8');
 const webEnvExample = readFileSync('apps/web/.env.example', 'utf8');
 const requiredKeys = [
-  'NEXT_PUBLIC_SUPABASE_URL',
-  'NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY',
-  'SUPABASE_SECRET_KEY',
+  'CONTROL_PLANE_SUPABASE_URL',
+  'CONTROL_PLANE_SUPABASE_PUBLISHABLE_KEY',
+  'CONTROL_PLANE_SUPABASE_SECRET_KEY',
+  'AHWA_DEFAULT_OPERATIONAL_DATABASE_KEY',
+  'AHWA_OPERATIONAL_DATABASE__OPS_DB_01__URL',
+  'AHWA_OPERATIONAL_DATABASE__OPS_DB_01__PUBLISHABLE_KEY',
+  'AHWA_OPERATIONAL_DATABASE__OPS_DB_01__SECRET_KEY',
   'AHWA_SESSION_SECRET',
   'AHWA_INSTALL_TOKEN',
   'CRON_SECRET',
@@ -68,9 +72,4 @@ execSync('node ./scripts/verify-reporting-maintenance-release.mjs', { stdio: 'in
 execSync('node ./scripts/verify-reporting-read-path.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-archive-hardening-release.mjs', { stdio: 'inherit' });
 
-execSync('node ./scripts/verify-control-plane-minimal.mjs', { stdio: 'inherit' });
-execSync('node ./scripts/verify-operational-db-routing-foundation.mjs', { stdio: 'inherit' });
-execSync('node ./scripts/verify-login-routing-phase3.mjs', { stdio: 'inherit' });
-execSync('node ./scripts/verify-phase4-runtime-route-migration.mjs', { stdio: 'inherit' });
-execSync('node ./scripts/verify-phase5-control-plane-boundary.mjs', { stdio: 'inherit' });
-execSync('node ./scripts/verify-phase6-support-access.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-control-plane-manual-db-selection.mjs', { stdio: 'inherit' });

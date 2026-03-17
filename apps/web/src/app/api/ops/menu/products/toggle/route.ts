@@ -1,4 +1,4 @@
-import { adminOpsForCafeId } from '@/app/api/ops/_server';
+import { adminOps } from '@/app/api/ops/_server';
 import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 export async function POST(request: Request) {
@@ -8,9 +8,8 @@ export async function POST(request: Request) {
     if (!productId) throw new Error('PRODUCT_ID_REQUIRED');
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    const admin = await adminOpsForCafeId(ctx.cafeId);
     const isActive = Boolean(body.isActive);
-    const { error } = await admin
+    const { error } = await adminOps()
       .from('menu_products')
       .update({ is_active: isActive })
       .eq('cafe_id', ctx.cafeId)

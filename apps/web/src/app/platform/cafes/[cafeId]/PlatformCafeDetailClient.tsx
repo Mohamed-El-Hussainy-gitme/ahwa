@@ -54,25 +54,6 @@ type SupportItem = {
   created_at: string;
 };
 
-type SupportAccessScope = 'diagnostic' | 'read_only' | 'guided_write';
-type SupportAccessStatus = 'requested' | 'active' | 'closed' | 'revoked' | 'expired';
-
-type SupportAccessItem = {
-  id: string;
-  cafe_id: string;
-  database_key: string;
-  support_message_id?: string | null;
-  scope: SupportAccessScope;
-  reason: string;
-  status: SupportAccessStatus;
-  requested_at: string;
-  activated_at: string | null;
-  expires_at: string;
-  closed_at: string | null;
-  closed_note: string | null;
-  updated_at: string;
-};
-
 type CafeDetail = {
   generated_at: string;
   cafe: {
@@ -277,13 +258,6 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
   const [resetPassword, setResetPassword] = useState({ ownerUserId: '', newPassword: '' });
   const [subscriptionForm, setSubscriptionForm] = useState({ startsAt: toDateInputValue(today), endsAt: toDateInputValue(new Date(today.getTime() + 1000 * 60 * 60 * 24 * 365)), graceDays: '0', status: 'active' as SubscriptionStatus, amountPaid: '', isComplimentary: false, notes: '' });
   const [supportItems, setSupportItems] = useState<SupportItem[]>([]);
-  const [supportAccessItems, setSupportAccessItems] = useState<SupportAccessItem[]>([]);
-  const [supportAccessCurrent, setSupportAccessCurrent] = useState<SupportAccessItem | null>(null);
-  const [supportAccessForm, setSupportAccessForm] = useState({
-    reason: 'تشخيص مشكلة تشغيلية على القهوة الحالية',
-    scope: 'diagnostic' as SupportAccessScope,
-    durationMinutes: '60',
-  });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -319,23 +293,6 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
           ? (((json as { data?: { items?: SupportItem[] } }).data?.items) ?? [])
           : [];
         if (active) setSupportItems(rows);
-      })
-      .catch(() => undefined);
-    return () => {
-      active = false;
-    };
-  }, [cafeId, busy]);
-
-  useEffect(() => {
-    let active = true;
-    fetch(`/api/platform/support/access/current?cafeId=${cafeId}&limit=8`, { cache: 'no-store' })
-      .then(async (res) => {
-        const json: unknown = await res.json().catch(() => ({}));
-        if (!res.ok || !isPlatformApiOk(json)) return;
-        const data = (json as { data?: { current?: SupportAccessItem | null; items?: SupportAccessItem[] } }).data;
-        if (!active) return;
-        setSupportAccessCurrent(data?.current ?? null);
-        setSupportAccessItems(Array.isArray(data?.items) ? data!.items! : []);
       })
       .catch(() => undefined);
     return () => {
@@ -388,12 +345,6 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
       amountPaid: isComplimentary ? '0' : value.amountPaid,
     }));
   }
-
-  async function runSupportAccessAction(url: string, body: Record<string, unknown>, successMessage: string) {
-    await runAction(url, body, successMessage);
-  }
-
-  const activeSupportRequest = supportAccessItems.find((item) => item.status === 'requested') ?? null;
 
   const cafe = data?.cafe;
   const currentSubscription = data?.subscription.current ?? null;
@@ -632,80 +583,22 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
       ) : null}
 
       {activeTab === 'support' ? (
-        <div className="space-y-6">
-          <SectionFrame title="جلسة دعم السوبر أدمن" description="الوصول التشغيلي لا يفتح تلقائيًا. يجب إنشاء طلب دعم صريح ومؤقت ثم تفعيله وإغلاقه مع تسجيل ذلك في control plane." actions={<Link href="/platform" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">فتح صندوق الدعم</Link>}>
-            <div className="grid gap-4 xl:grid-cols-[1.2fr_1fr]">
-              <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-sm font-semibold text-slate-900">طلب جلسة دعم جديدة</div>
-                <textarea className="min-h-28 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" value={supportAccessForm.reason} onChange={(e) => setSupportAccessForm((v) => ({ ...v, reason: e.target.value }))} />
-                <div className="grid gap-3 md:grid-cols-2">
-                  <select className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" value={supportAccessForm.scope} onChange={(e) => setSupportAccessForm((v) => ({ ...v, scope: e.target.value as SupportAccessScope }))}>
-                    <option value="diagnostic">diagnostic</option>
-                    <option value="read_only">read_only</option>
-                    <option value="guided_write">guided_write</option>
-                  </select>
-                  <input className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm" value={supportAccessForm.durationMinutes} onChange={(e) => setSupportAccessForm((v) => ({ ...v, durationMinutes: e.target.value }))} placeholder="مدة الجلسة بالدقائق" />
+        <SectionFrame title="سجل الدعم الفني" actions={<Link href="/platform" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">فتح صندوق الدعم</Link>}>
+          <div className="space-y-3">
+            {supportItems.map((item) => (
+              <div key={item.id} className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-semibold text-slate-900">{item.issue_type}</span>
+                  <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs">{item.status}</span>
+                  <span className="text-xs text-slate-500">{formatDateTime(item.created_at)}</span>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button type="button" disabled={busy || !supportAccessForm.reason.trim()} onClick={() => void runSupportAccessAction('/api/platform/support/access/request', { cafeId, reason: supportAccessForm.reason, scope: supportAccessForm.scope, durationMinutes: Number(supportAccessForm.durationMinutes || '60') }, 'تم إنشاء طلب جلسة الدعم.')} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">إنشاء طلب دعم</button>
-                  <button type="button" disabled={busy || !activeSupportRequest} onClick={() => activeSupportRequest ? void runSupportAccessAction('/api/platform/support/access/activate', { requestId: activeSupportRequest.id }, 'تم تفعيل جلسة الدعم الحالية.') : undefined} className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 disabled:opacity-60">تفعيل أحدث طلب</button>
-                  <button type="button" disabled={busy || !supportAccessCurrent} onClick={() => supportAccessCurrent ? void runSupportAccessAction('/api/platform/support/access/close', { requestId: supportAccessCurrent.id, closeNote: 'تم إنهاء جلسة الدعم من لوحة القهوة.' }, 'تم إنهاء جلسة الدعم.') : undefined} className="rounded-2xl border border-rose-300 bg-white px-4 py-3 text-sm font-semibold text-rose-700 disabled:opacity-60">إنهاء الجلسة الحالية</button>
-                </div>
+                <div className="mt-2 text-xs text-slate-500">{item.sender_name} — {item.sender_phone}</div>
+                <div className="mt-3 rounded-2xl bg-slate-50 p-3">{item.message}</div>
               </div>
-              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4">
-                <div className="text-sm font-semibold text-slate-900">الجلسة الحالية</div>
-                {supportAccessCurrent ? (
-                  <div className="space-y-2 text-sm text-slate-700">
-                    <div>النطاق: <strong>{supportAccessCurrent.scope}</strong></div>
-                    <div>قاعدة التشغيل: <strong>{supportAccessCurrent.database_key}</strong></div>
-                    <div>بدأت: <strong>{formatDateTime(supportAccessCurrent.activated_at)}</strong></div>
-                    <div>تنتهي: <strong>{formatDateTime(supportAccessCurrent.expires_at)}</strong></div>
-                    <div className="rounded-2xl bg-slate-50 p-3 text-slate-600">{supportAccessCurrent.reason}</div>
-                  </div>
-                ) : <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد جلسة دعم فعالة الآن لهذه القهوة.</div>}
-              </div>
-            </div>
-          </SectionFrame>
-
-          <SectionFrame title="سجل جلسات الدعم" description="كل جلسة دعم ترتبط بمقهى واحد ومدة محددة وتدخل في audit بشكل صريح.">
-            <div className="space-y-3">
-              {supportAccessItems.map((item) => (
-                <div key={item.id} className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-900">{item.scope}</span>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs">{item.status}</span>
-                    <span className="text-xs text-slate-500">طلب {formatDateTime(item.requested_at)}</span>
-                  </div>
-                  <div className="mt-2 text-xs text-slate-500">قاعدة التشغيل: {item.database_key}</div>
-                  <div className="mt-3 rounded-2xl bg-slate-50 p-3">{item.reason}</div>
-                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-slate-500">
-                    <span>التفعيل: {formatDateTime(item.activated_at)}</span>
-                    <span>الانتهاء: {formatDateTime(item.expires_at)}</span>
-                    {item.closed_at ? <span>الإغلاق: {formatDateTime(item.closed_at)}</span> : null}
-                  </div>
-                </div>
-              ))}
-              {supportAccessItems.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد جلسات دعم مرتبطة بهذه القهوة حتى الآن.</div> : null}
-            </div>
-          </SectionFrame>
-
-          <SectionFrame title="سجل رسائل الدعم الفني">
-            <div className="space-y-3">
-              {supportItems.map((item) => (
-                <div key={item.id} className="rounded-2xl border border-slate-200 p-4 text-sm text-slate-700">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="font-semibold text-slate-900">{item.issue_type}</span>
-                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-xs">{item.status}</span>
-                    <span className="text-xs text-slate-500">{formatDateTime(item.created_at)}</span>
-                  </div>
-                  <div className="mt-2 text-xs text-slate-500">{item.sender_name} — {item.sender_phone}</div>
-                  <div className="mt-3 rounded-2xl bg-slate-50 p-3">{item.message}</div>
-                </div>
-              ))}
-              {supportItems.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد رسائل دعم مرتبطة بهذه القهوة حتى الآن.</div> : null}
-            </div>
-          </SectionFrame>
-        </div>
+            ))}
+            {supportItems.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد رسائل دعم مرتبطة بهذه القهوة حتى الآن.</div> : null}
+          </div>
+        </SectionFrame>
       ) : null}
     </div>
   );

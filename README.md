@@ -56,7 +56,7 @@ The platform surface should not expose detailed per-cafe operating sales, compla
 - Do not create or depend on a root runtime `.env`
 - Copy `apps/web/.env.example` to `apps/web/.env.local` for local development only
 - Keep real secrets out of git and let Vercel manage them per environment
-- Prefer modern Supabase keys: `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` + `SUPABASE_SECRET_KEY`
+- Prefer split-scope modern Supabase keys: `CONTROL_PLANE_SUPABASE_*` for platform/control-plane traffic and `AHWA_OPERATIONAL_DATABASE__<TOKEN>__*` for operational databases. `NEXT_PUBLIC_*` fallback keys are transition-only.
 
 ## Verification helpers
 

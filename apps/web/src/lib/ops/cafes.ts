@@ -1,26 +1,30 @@
-import { resolveCafeOperationalRouteBySlug } from '@/lib/control-plane/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 export type ResolvedCafe = {
   id: string;
   slug: string;
   displayName: string;
   isActive: boolean;
-  databaseKey: string;
-  databaseStatus: string | null;
-  bindingSource: 'binding' | 'default-fallback';
 };
 
 export async function resolveCafeBySlug(slug: string): Promise<ResolvedCafe | null> {
-  const route = await resolveCafeOperationalRouteBySlug(slug);
-  if (!route) return null;
+  const normalized = slug.trim().toLowerCase();
+  if (!normalized) return null;
+
+  const { data, error } = await supabaseAdmin()
+    .schema('ops')
+    .from('cafes')
+    .select('id, slug, display_name, is_active')
+    .eq('slug', normalized)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
 
   return {
-    id: route.cafeId,
-    slug: route.cafeSlug,
-    displayName: route.cafeDisplayName,
-    isActive: route.cafeIsActive,
-    databaseKey: route.databaseKey,
-    databaseStatus: route.databaseStatus,
-    bindingSource: route.bindingSource,
+    id: String(data.id),
+    slug: String(data.slug),
+    displayName: String(data.display_name ?? data.slug),
+    isActive: !!data.is_active,
   };
 }

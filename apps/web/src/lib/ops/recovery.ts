@@ -1,4 +1,4 @@
-import { getOperationalAdminClientForCafeId, getOperationalAdminOpsClientForCafeId } from '@/lib/operational-db/server';
+import { supabaseAdmin } from '@/lib/supabase/admin';
 
 type RecoveryOrderItemRow = {
   service_session_id: string | null;
@@ -50,14 +50,8 @@ export type RecoveryState = {
   }>;
 };
 
-async function ops(cafeId: string) {
-  const { admin } = await getOperationalAdminOpsClientForCafeId(cafeId);
-  return admin;
-}
-
-async function adminForCafe(cafeId: string) {
-  const { admin } = await getOperationalAdminClientForCafeId(cafeId);
-  return admin;
+function ops() {
+  return supabaseAdmin().schema('ops');
 }
 
 function toNumber(value: number | string | null | undefined) {
@@ -103,7 +97,7 @@ function computeItemCounts(item: RecoveryOrderItemRow) {
 }
 
 async function readOpenShiftId(cafeId: string) {
-  const { data, error } = await (await ops(cafeId))
+  const { data, error } = await ops()
     .from('shifts')
     .select('id')
     .eq('cafe_id', cafeId)
@@ -117,7 +111,7 @@ async function readOpenShiftId(cafeId: string) {
 }
 
 async function readOpenSessions(cafeId: string): Promise<RecoverySessionRow[]> {
-  const { data, error } = await (await ops(cafeId))
+  const { data, error } = await ops()
     .from('service_sessions')
     .select('id, session_label, opened_at')
     .eq('cafe_id', cafeId)
@@ -136,7 +130,7 @@ async function readOpenSessions(cafeId: string): Promise<RecoverySessionRow[]> {
 async function readOrderItemsForSessions(cafeId: string, sessionIds: string[]) {
   if (sessionIds.length === 0) return [];
 
-  const { data, error } = await (await ops(cafeId))
+  const { data, error } = await ops()
     .from('order_items')
     .select('service_session_id, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled')
     .eq('cafe_id', cafeId)
@@ -161,7 +155,7 @@ async function readOrderItemsForSessions(cafeId: string, sessionIds: string[]) {
 
 async function readStaleLocks(cafeId: string, olderThanSeconds = 120): Promise<RecoveryLockRow[]> {
   const threshold = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
-  const { data, error } = await (await ops(cafeId))
+  const { data, error } = await ops()
     .from('idempotency_keys')
     .select('idempotency_key, action_name, created_at')
     .eq('cafe_id', cafeId)
@@ -249,7 +243,7 @@ export async function closeRecoverableServiceSession(input: {
     throw new Error('RECOVERY_SESSION_NOT_RECOVERABLE');
   }
 
-  const rpc = await (await adminForCafe(input.cafeId)).rpc('ops_close_service_session', {
+  const rpc = await supabaseAdmin().rpc('ops_close_service_session', {
     p_cafe_id: input.cafeId,
     p_service_session_id: input.serviceSessionId,
     p_by_owner_id: input.ownerUserId,
@@ -274,7 +268,7 @@ export async function releaseStaleIdempotencyLocks(cafeId: string, olderThanSeco
   }
 
   const threshold = new Date(Date.now() - olderThanSeconds * 1000).toISOString();
-  const { error } = await (await ops(cafeId))
+  const { error } = await ops()
     .from('idempotency_keys')
     .delete()
     .eq('cafe_id', cafeId)

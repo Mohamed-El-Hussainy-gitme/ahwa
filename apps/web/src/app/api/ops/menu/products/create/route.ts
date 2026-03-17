@@ -1,4 +1,4 @@
-import { adminOpsForCafeId } from '@/app/api/ops/_server';
+import { adminOps } from '@/app/api/ops/_server';
 import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadSection, nextProductSortOrder, normalizeStationCode } from '@/app/api/ops/menu/_utils';
 import type { StationCode } from '@/lib/ops/types';
@@ -20,10 +20,9 @@ export async function POST(request: Request) {
     }
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    const admin = await adminOpsForCafeId(ctx.cafeId);
     await loadSection(ctx.cafeId, sectionId);
     const sortOrder = await nextProductSortOrder(ctx.cafeId, sectionId);
-    const { data, error } = await admin
+    const { data, error } = await adminOps()
       .from('menu_products')
       .insert({
         cafe_id: ctx.cafeId,

@@ -1,4 +1,4 @@
-import { adminOpsForCafeId } from '@/app/api/ops/_server';
+import { adminOps } from '@/app/api/ops/_server';
 import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadSection, normalizeStationCode } from '@/app/api/ops/menu/_utils';
 import type { StationCode } from '@/lib/ops/types';
@@ -12,9 +12,8 @@ export async function POST(request: Request) {
     if (!sectionId || !title) throw new Error('INVALID_INPUT');
 
     const ctx = requireOwnerRole(await requireOpsActorContext());
-    const admin = await adminOpsForCafeId(ctx.cafeId);
     await loadSection(ctx.cafeId, sectionId);
-    const { error } = await admin
+    const { error } = await adminOps()
       .from('menu_sections')
       .update({ title, station_code: stationCode })
       .eq('cafe_id', ctx.cafeId)
