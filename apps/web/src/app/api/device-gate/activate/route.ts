@@ -1,9 +1,9 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setDeviceTokenCookie, setGateSlugCookie } from '@/lib/auth/cookies';
+import { normalizeCafeSlug } from '@/lib/cafes/slug';
 import { encodeDeviceGateSession, DEVICE_GATE_TOKEN_MAX_AGE_SECONDS } from '@/lib/device-gate/session';
 import { resolveCafeBySlug } from '@/lib/ops/cafes';
-import { normalizeCafeSlugForLookup } from '@/lib/cafes/slug';
 
 const Input = z.object({
   slug: z.string().min(1),
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: { code: 'INVALID_PAIRING_CODE', message: 'Pairing code is invalid.' } }, { status: 403 });
     }
 
-    const cafe = await resolveCafeBySlug(normalizeCafeSlugForLookup(parsed.data.slug));
+    const cafe = await resolveCafeBySlug(normalizeCafeSlug(parsed.data.slug));
     if (!cafe || !cafe.isActive) {
       return NextResponse.json({ ok: false, error: { code: 'CAFE_NOT_FOUND', message: 'Cafe not found.' } }, { status: 404 });
     }

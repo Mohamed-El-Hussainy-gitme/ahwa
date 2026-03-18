@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { normalizeCafeSlug } from '@/lib/cafes/slug';
 import BrandLogo from "@/ui/brand/BrandLogo";
-import { canonicalizeCafeSlug } from '@/lib/cafes/slug';
 
 export default function LoginLandingClient() {
   const r = useRouter();
@@ -18,14 +18,10 @@ export default function LoginLandingClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function slugify(raw: string) {
-    return canonicalizeCafeSlug(raw);
-  }
-
   function ownerHref(preferredSlug?: string) {
     const next = sp.get("next");
     const qs = new URLSearchParams();
-    const effectiveSlug = slugify(preferredSlug ?? slug);
+    const effectiveSlug = normalizeCafeSlug(preferredSlug ?? slug);
     if (effectiveSlug) qs.set("slug", effectiveSlug);
     if (next) qs.set("next", next);
     const query = qs.toString();
@@ -34,7 +30,7 @@ export default function LoginLandingClient() {
 
   async function go() {
     setErr(null);
-    const s = slugify(slug);
+    const s = normalizeCafeSlug(slug);
     if (!s) {
       setErr("INVALID_SLUG");
       return;
@@ -68,7 +64,7 @@ export default function LoginLandingClient() {
 
   async function goOwner() {
     setErr(null);
-    const s = slugify(slug) || (typeof window !== "undefined" ? slugify(localStorage.getItem("ahwa.lastCafeSlug") ?? "") : "");
+    const s = normalizeCafeSlug(slug) || (typeof window !== "undefined" ? normalizeCafeSlug(localStorage.getItem("ahwa.lastCafeSlug") ?? "") : "");
     if (!s) {
       r.push(ownerHref());
       return;

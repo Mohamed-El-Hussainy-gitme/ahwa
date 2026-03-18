@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { setGateSlugCookie } from '@/lib/auth/cookies';
+import { normalizeCafeSlug } from '@/lib/cafes/slug';
 import { resolveCafeBySlug } from '@/lib/ops/cafes';
-import { normalizeCafeSlugForLookup } from '@/lib/cafes/slug';
 
 export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-  const slug = normalizeCafeSlugForLookup(String(body.slug ?? ''));
+  const slug = normalizeCafeSlug(String(body.slug ?? ''));
   if (!slug) {
     return NextResponse.json({ ok: false, error: { code: 'INVALID_SLUG', message: 'Cafe slug is required.' } }, { status: 400 });
   }

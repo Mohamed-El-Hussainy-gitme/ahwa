@@ -1,14 +1,17 @@
-export function canonicalizeCafeSlug(raw: string | null | undefined): string {
-  return String(raw ?? '')
+export function normalizeCafeSlug(raw: string | null | undefined): string {
+  const cleaned = String(raw ?? '')
     .normalize('NFKC')
-    .trim()
-    .toLocaleLowerCase(['ar-EG', 'en-US'])
-    .replace(/\s+/gu, '-')
+    .replace(/[\u200e\u200f\u061c]/g, '')
+    .trim();
+
+  return cleaned
+    .toLocaleLowerCase()
+    .replace(/\s+/g, '-')
     .replace(/[^\p{L}\p{N}_-]/gu, '')
     .replace(/-+/g, '-')
     .replace(/^[-_]+|[-_]+$/g, '');
 }
 
-export function normalizeCafeSlugForLookup(raw: string | null | undefined): string {
-  return canonicalizeCafeSlug(raw);
+export function cafeSlugEquals(left: string | null | undefined, right: string | null | undefined): boolean {
+  return normalizeCafeSlug(left) === normalizeCafeSlug(right);
 }

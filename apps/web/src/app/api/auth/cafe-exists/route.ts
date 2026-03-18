@@ -1,11 +1,11 @@
 import { NextResponse } from 'next/server';
 import { setGateSlugCookie } from '@/lib/auth/cookies';
+import { normalizeCafeSlug } from '@/lib/cafes/slug';
 import { resolveCafeBySlug } from '@/lib/ops/cafes';
-import { normalizeCafeSlugForLookup } from '@/lib/cafes/slug';
 
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const slug = normalizeCafeSlugForLookup(url.searchParams.get('slug'));
+  const slug = normalizeCafeSlug(url.searchParams.get('slug'));
   if (!slug) {
     return NextResponse.json({ ok: false, error: 'INVALID_SLUG' }, { status: 400 });
   }

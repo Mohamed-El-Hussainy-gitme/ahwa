@@ -1,9 +1,9 @@
 import 'server-only';
 import type { PostgrestError } from '@supabase/supabase-js';
+import { normalizeCafeSlug } from '@/lib/cafes/slug';
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import type { PlatformAdminSession } from '@/lib/platform-auth/session';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
-import { canonicalizeCafeSlug } from '@/lib/cafes/slug';
 
 type CreateCafeWithOwnerInput = {
   cafeSlug: string;
@@ -32,7 +32,6 @@ type CreatedSubscriptionRow = {
 
 type RpcCreateOwnerResponse = {
   owner_user_id?: string | null;
-  owner_label?: string | null;
 };
 
 export type CreateCafeWithOwnerResult = {
@@ -47,10 +46,6 @@ const VALID_SUBSCRIPTION_STATUSES = new Set(['trial', 'active', 'expired', 'susp
 
 function normalizeText(value: string | null | undefined): string {
   return String(value ?? '').trim();
-}
-
-function normalizeSlug(slug: string): string {
-  return canonicalizeCafeSlug(slug);
 }
 
 function normalizeDatabaseKey(databaseKey: string): string {
@@ -100,9 +95,13 @@ function ensureSubscriptionInput(input: CreateCafeWithOwnerInput) {
   return true;
 }
 
-async function assertDatabaseKeyIsActive(databaseKey: string): Promise<void> {
+async function assertDatabaseKeyIsAvailable(databaseKey: string): Promise<void> {
+  if (!databaseKey) {
+    throw new Error('p_database_key is required');
+  }
+
   if (!isOperationalDatabaseConfigured(databaseKey)) {
-    throw new Error(`OPERATIONAL_DATABASE_ENV_NOT_CONFIGURED:${databaseKey}`);
+    throw new Error('operational_database_not_found');
   }
 }
 
@@ -246,7 +245,7 @@ async function writeCafeAuditEvent(
 function normalizeInput(input: CreateCafeWithOwnerInput): CreateCafeWithOwnerInput {
   return {
     ...input,
-    cafeSlug: normalizeSlug(input.cafeSlug),
+    cafeSlug: normalizeCafeSlug(input.cafeSlug),
     cafeDisplayName: normalizeText(input.cafeDisplayName),
     ownerFullName: normalizeText(input.ownerFullName),
     ownerPhone: normalizeText(input.ownerPhone),
@@ -270,7 +269,7 @@ export async function createCafeWithOwnerOnControlPlane(
   let createdCafeId = '';
 
   try {
-    await assertDatabaseKeyIsActive(input.databaseKey);
+    await assertDatabaseKeyIsAvailable(input.databaseKey);
 
     const createdCafe = await insertCafe(input.cafeSlug, input.cafeDisplayName);
     createdCafeId = createdCafe.id;

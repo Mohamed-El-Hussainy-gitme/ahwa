@@ -2,8 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
+import { normalizeCafeSlug } from '@/lib/cafes/slug';
 import BrandLogo from "@/ui/brand/BrandLogo";
-import { canonicalizeCafeSlug } from '@/lib/cafes/slug';
 
 export default function OwnerLoginClient() {
   const r = useRouter();
@@ -14,11 +14,11 @@ export default function OwnerLoginClient() {
   const [err, setErr] = useState<string | null>(null);
   const [resolvedSlug, setResolvedSlug] = useState("");
 
-  const slugFromQuery = useMemo(() => canonicalizeCafeSlug(sp.get('slug')), [sp]);
+  const slugFromQuery = useMemo(() => normalizeCafeSlug(sp.get("slug") || ""), [sp]);
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("ahwa.lastCafeSlug") : null;
-    const nextSlug = slugFromQuery || canonicalizeCafeSlug(saved);
+    const nextSlug = slugFromQuery || normalizeCafeSlug(saved ?? "");
     if (nextSlug) {
       setResolvedSlug(nextSlug);
       if (typeof window !== "undefined") {
