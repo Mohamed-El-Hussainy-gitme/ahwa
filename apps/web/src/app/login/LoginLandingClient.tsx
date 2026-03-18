@@ -3,20 +3,29 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { normalizeCafeSlug } from '@/lib/cafes/slug';
+import LoginClient from '@/app/c/[slug]/login/LoginClient';
 import BrandLogo from "@/ui/brand/BrandLogo";
 
 export default function LoginLandingClient() {
   const r = useRouter();
   const sp = useSearchParams();
+  const requestedSlug = normalizeCafeSlug(sp.get("slug") ?? "");
   const [slug, setSlug] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     const saved = typeof window !== "undefined" ? localStorage.getItem("ahwa.lastCafeSlug") : null;
+    if (requestedSlug) {
+      setSlug(requestedSlug);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("ahwa.lastCafeSlug", requestedSlug);
+      }
+      return;
+    }
     if (saved && !slug) setSlug(saved);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [requestedSlug]);
 
   function ownerHref(preferredSlug?: string) {
     const next = sp.get("next");
@@ -53,10 +62,10 @@ export default function LoginLandingClient() {
       const e = sp.get("e");
       const next = sp.get("next");
       const qs = new URLSearchParams();
+      qs.set("slug", s);
       if (e) qs.set("e", e);
       if (next) qs.set("next", next);
-      const q = qs.toString();
-      r.push(`/c/${encodeURIComponent(s)}/login` + (q ? `?${q}` : ""));
+      r.push(`/login?${qs.toString()}`);
     } finally {
       setBusy(false);
     }
@@ -83,6 +92,10 @@ export default function LoginLandingClient() {
     } finally {
       setBusy(false);
     }
+  }
+
+  if (requestedSlug) {
+    return <LoginClient cafeSlug={requestedSlug} />;
   }
 
   const e = sp.get("e");

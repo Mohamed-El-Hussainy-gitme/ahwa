@@ -34,6 +34,15 @@ type RpcCreateOwnerResponse = {
   owner_user_id?: string | null;
 };
 
+type RpcCreateCafeResponse = {
+  ok?: boolean | null;
+  cafe_id?: string | null;
+  owner_user_id?: string | null;
+  subscription_id?: string | null;
+  slug?: string | null;
+  database_key?: string | null;
+};
+
 export type CreateCafeWithOwnerResult = {
   cafeId: string;
   ownerUserId: string;
@@ -62,6 +71,55 @@ function maybeMessage(error: unknown): string {
 
 function isPostgrestError(error: unknown): error is PostgrestError {
   return !!error && typeof error === 'object' && 'message' in error && 'code' in error;
+}
+
+function isMissingCreateCafeRpc(error: unknown): boolean {
+  if (!isPostgrestError(error)) return false;
+  const message = maybeMessage(error).toLowerCase();
+  return message.includes('platform_create_cafe_with_owner') && (message.includes('not found') || message.includes('does not exist') || message.includes('could not find'));
+}
+
+async function createCafeWithOwnerViaRpc(
+  session: PlatformAdminSession,
+  input: CreateCafeWithOwnerInput,
+): Promise<CreateCafeWithOwnerResult> {
+  const { data, error } = await controlPlaneAdmin().rpc('platform_create_cafe_with_owner', {
+    p_super_admin_user_id: session.superAdminUserId,
+    p_cafe_slug: input.cafeSlug,
+    p_cafe_display_name: input.cafeDisplayName,
+    p_owner_full_name: input.ownerFullName,
+    p_owner_phone: input.ownerPhone,
+    p_owner_password: input.ownerPassword,
+    p_subscription_starts_at: input.subscriptionStartsAt,
+    p_subscription_ends_at: input.subscriptionEndsAt,
+    p_subscription_grace_days: input.subscriptionGraceDays,
+    p_subscription_status: input.subscriptionStatus,
+    p_subscription_amount_paid: input.subscriptionAmountPaid,
+    p_subscription_is_complimentary: input.subscriptionIsComplimentary,
+    p_subscription_notes: input.subscriptionNotes,
+    p_database_key: input.databaseKey,
+  });
+
+  if (error) throw error;
+
+  const payload = (data ?? null) as RpcCreateCafeResponse | null;
+  const cafeId = normalizeText(payload?.cafe_id);
+  const ownerUserId = normalizeText(payload?.owner_user_id);
+  const slug = normalizeText(payload?.slug) || input.cafeSlug;
+  const databaseKey = normalizeDatabaseKey(normalizeText(payload?.database_key) || input.databaseKey);
+  const subscriptionId = normalizeText(payload?.subscription_id) || null;
+
+  if (!cafeId || !ownerUserId || !slug || !databaseKey) {
+    throw new Error('CONTROL_PLANE_CREATE_CAFE_RESPONSE_INVALID');
+  }
+
+  return {
+    cafeId,
+    ownerUserId,
+    subscriptionId,
+    slug,
+    databaseKey,
+  };
 }
 
 function ensureSubscriptionInput(input: CreateCafeWithOwnerInput) {
@@ -270,6 +328,14 @@ export async function createCafeWithOwnerOnControlPlane(
 
   try {
     await assertDatabaseKeyIsAvailable(input.databaseKey);
+
+    try {
+      return await createCafeWithOwnerViaRpc(session, input);
+    } catch (rpcError) {
+      if (!isMissingCreateCafeRpc(rpcError)) {
+        throw rpcError;
+      }
+    }
 
     const createdCafe = await insertCafe(input.cafeSlug, input.cafeDisplayName);
     createdCafeId = createdCafe.id;

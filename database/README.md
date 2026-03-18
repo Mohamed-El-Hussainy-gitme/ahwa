@@ -47,6 +47,7 @@ Apply migrations in this order:
 35. `0035_phase8_strict_control_plane_bindings.sql`
 36. `0036_platform_response_hardening.sql`
 37. `0037_control_plane_public_binding_readers.sql`
+38. `0038_control_plane_create_flow_binding_upsert.sql`
 
 ## Migration summary
 
@@ -103,8 +104,8 @@ Deferred finance non-archival policy. Codifies that `ops.deferred_ledger_entries
 ### 0033
 Search-path security hardening for the remaining linter-reported functions. This migration pins `search_path` for `app.current_cafe_id()`, `app.current_super_admin_user_id()`, `ops.generate_session_label()`, and `public.platform_touch_support_message()` without changing their functional behavior.
 
-### 0034 - 0037
-Control-plane manual database selection, strict explicit bindings, platform response hardening, and public SECURITY DEFINER readers that keep `control.*` private while still serving PostgREST-safe admin/runtime binding lookups.
+### 0034 - 0038
+Control-plane manual database selection, strict explicit bindings, platform response hardening, public SECURITY DEFINER readers, and the canonical transactional create-cafe RPC/binding upsert flow that keep `control.*` private while still serving PostgREST-safe admin/runtime binding lookups.
 
 ## Current canonical boundaries
 
@@ -128,3 +129,18 @@ Control-plane manual database selection, strict explicit bindings, platform resp
 ## Phase 9 application binding note
 
 Phase 9 does not introduce a new SQL migration. The bug fixed in phase 9 was application-layer request binding, not control-plane data or schema shape. Keep the strict control-plane SQL contract from `0034` through `0037`, and fix runtime database selection only by explicit `databaseKey` propagation in application code.
+
+## Fresh database bootstrap bundles
+
+For new empty databases, use the generated baselines under `database/baselines/` instead of manually copy-pasting dozens of files:
+
+- `database/baselines/operational/0001_fresh_operational_baseline.sql`
+- `database/baselines/control-plane/0001_fresh_control_plane_baseline.sql`
+
+Regenerate them from the historical chain with:
+
+```bash
+npm run build:db-baselines
+```
+
+These baselines are install bundles for fresh databases only. Existing databases must continue to advance through the numbered migration history.

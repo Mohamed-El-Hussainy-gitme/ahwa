@@ -12,6 +12,7 @@
     "typecheck": "npm run typecheck:shared && npm run typecheck:web",
     "dev:web": "npm run dev --workspace @ahwa/web",
     "build:web": "npm run build --workspace @ahwa/web",
+    "build:db-baselines": "node ./scripts/build-db-baselines.mjs",
     "lint:web": "npm run lint --workspace @ahwa/web",
     "build:shared": "npm run build --workspace @ahwa/shared",
     "typecheck:web": "npm run typecheck --workspace @ahwa/web",

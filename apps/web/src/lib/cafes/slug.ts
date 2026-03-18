@@ -1,7 +1,7 @@
 export function normalizeCafeSlug(raw: string | null | undefined): string {
   const cleaned = String(raw ?? '')
     .normalize('NFKC')
-    .replace(/[\u200e\u200f\u061c]/g, '')
+    .replace(/[\u200c\u200d\u200e\u200f\u061c\u0640]/g, '')
     .trim();
 
   return cleaned

@@ -69,6 +69,8 @@ type ErrorLike = {
   message?: string | null;
 };
 
+const CAFE_SCAN_PAGE_SIZE = 500;
+
 function isControlSchemaPermissionError(error: unknown): boolean {
   if (!error || typeof error !== 'object') {
     return false;
@@ -167,21 +169,76 @@ function operationalDatabasesFromEnv(): OperationalDatabaseOption[] {
   }));
 }
 
+function ensureUniqueCafeMatch(matches: ResolvedCafe[], normalizedSlug: string, context: string): ResolvedCafe | null {
+  if (!matches.length) {
+    return null;
+  }
+
+  if (matches.length > 1) {
+    const descriptor = matches.map((row) => `${row.id}:${row.slug}`).join(',');
+    throw new Error(`AMBIGUOUS_CAFE_SLUG_NORMALIZATION:${context}:${normalizedSlug}:${descriptor}`);
+  }
+
+  return matches[0] ?? null;
+}
+
+async function findCafeByNormalizedSlugFallback(
+  loader: (from: number, to: number) => Promise<CafeRow[] | null>,
+  normalizedSlug: string,
+  context: string,
+): Promise<ResolvedCafe | null> {
+  const matches: ResolvedCafe[] = [];
+
+  for (let from = 0; ; from += CAFE_SCAN_PAGE_SIZE) {
+    const rows = await loader(from, from + CAFE_SCAN_PAGE_SIZE - 1);
+    if (!rows?.length) {
+      break;
+    }
+
+    for (const row of rows) {
+      if (normalizeCafeSlug(row.slug) === normalizedSlug) {
+        matches.push(parseCafeRow(row));
+      }
+    }
+
+    if (rows.length < CAFE_SCAN_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return ensureUniqueCafeMatch(matches, normalizedSlug, context);
+}
+
 async function loadCafeBySlugFromControlPlane(slug: string): Promise<ResolvedCafe | null> {
   const normalized = normalizeCafeSlug(slug);
   if (!normalized) return null;
 
-  const { data, error } = await controlPlaneAdmin()
+  const exact = await controlPlaneAdmin()
     .schema('ops')
     .from('cafes')
     .select('id, slug, display_name, is_active')
     .eq('slug', normalized)
     .maybeSingle<CafeRow>();
 
-  if (error) throw error;
-  if (!data) return null;
+  if (exact.error) throw exact.error;
+  if (exact.data) {
+    return parseCafeRow(exact.data);
+  }
 
-  return parseCafeRow(data);
+  return findCafeByNormalizedSlugFallback(
+    async (from, to) => {
+      const { data, error } = await controlPlaneAdmin()
+        .schema('ops')
+        .from('cafes')
+        .select('id, slug, display_name, is_active')
+        .range(from, to);
+
+      if (error) throw error;
+      return (data ?? []) as CafeRow[];
+    },
+    normalized,
+    'control_plane',
+  );
 }
 
 async function listOperationalDatabases(): Promise<OperationalDatabaseOption[]> {
@@ -218,22 +275,39 @@ async function loadCafeBySlugFromOperationalDatabase(
   if (!normalizedSlug) return null;
   if (!isOperationalDatabaseConfigured(databaseKey)) return null;
 
-  const { data, error } = await supabaseAdminForDatabase(databaseKey)
-    .schema('ops')
+  const admin = supabaseAdminForDatabase(databaseKey).schema('ops');
+
+  const exact = await admin
     .from('cafes')
     .select('id, slug, display_name, is_active')
     .eq('slug', normalizedSlug)
     .maybeSingle<CafeRow>();
 
-  if (error) {
+  if (exact.error) {
     return null;
   }
 
-  if (!data) {
-    return null;
+  if (exact.data) {
+    return parseCafeRow(exact.data);
   }
 
-  return parseCafeRow(data);
+  try {
+    return await findCafeByNormalizedSlugFallback(
+      async (from, to) => {
+        const { data, error } = await admin
+          .from('cafes')
+          .select('id, slug, display_name, is_active')
+          .range(from, to);
+
+        if (error) throw error;
+        return (data ?? []) as CafeRow[];
+      },
+      normalizedSlug,
+      `operational:${databaseKey}`,
+    );
+  } catch {
+    return null;
+  }
 }
 
 async function scanOperationalCafeBindingBySlug(

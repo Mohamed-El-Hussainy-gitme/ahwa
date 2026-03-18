@@ -1,8 +1,5 @@
-import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
-import LoginClient from './LoginClient';
 import { normalizeCafeSlug } from '@/lib/cafes/slug';
-import { resolveCafeBySlug } from '@/lib/ops/cafes';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,23 +13,9 @@ function isPromise<T>(v: unknown): v is Promise<T> {
 export default async function Page({ params }: PageProps) {
   const resolved = isPromise<ParamsObj>(params) ? await params : params;
   const slug = normalizeCafeSlug(String(resolved.slug ?? ''));
-  if (!slug) redirect('/login?e=cafe_not_found');
-
-  let cafe = null;
-
-  try {
-    cafe = await resolveCafeBySlug(slug);
-  } catch {
+  if (!slug) {
     redirect('/login?e=cafe_not_found');
   }
 
-  if (!cafe || !cafe.isActive) {
-    redirect('/login?e=cafe_not_found');
-  }
-
-  return (
-    <Suspense fallback={<div className="min-h-dvh bg-neutral-50" />}>
-      <LoginClient cafeSlug={slug} />
-    </Suspense>
-  );
+  redirect(`/login?slug=${encodeURIComponent(slug)}`);
 }
