@@ -91,6 +91,14 @@ export default function OwnerLoginClient() {
             {busy ? "..." : "دخول"}
           </button>
 
+          <button
+            type="button"
+            onClick={() => r.push(resolvedSlug ? `/owner-password?slug=${encodeURIComponent(resolvedSlug)}` : '/owner-password')}
+            className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 text-sm font-medium text-neutral-700"
+          >
+            لدي كود تفعيل أو إعادة تعيين
+          </button>
+
           {err && (
             <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {err === "BAD_CREDENTIALS"

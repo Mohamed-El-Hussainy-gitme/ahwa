@@ -100,7 +100,7 @@ type MoneyFollowResponseData = {
 };
 
 type CafeListResponse = { ok: true; items: CafeRow[] };
-type CreateCafeResponse = { ok: true; data?: { cafe_id?: string } };
+type CreateCafeResponse = { ok: true; data?: { cafe_id?: string; password_setup_code?: string | null; password_setup_expires_at?: string | null } };
 type MoneyFollowApiResponse = { ok: true; data: MoneyFollowResponseData | null };
 
 type SupportMessageStatus = 'new' | 'in_progress' | 'closed';
@@ -160,7 +160,6 @@ type CreateCafeFormState = {
   cafeDisplayName: string;
   ownerFullName: string;
   ownerPhone: string;
-  ownerPassword: string;
   startsAt: string;
   endsAt: string;
   graceDays: string;
@@ -169,6 +168,13 @@ type CreateCafeFormState = {
   isComplimentary: boolean;
   notes: string;
   databaseKey: string;
+};
+
+type PasswordSetupInvite = {
+  cafeSlug: string;
+  ownerPhone: string;
+  code: string;
+  expiresAt: string | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -256,7 +262,10 @@ function isCafeRow(value: unknown): value is CafeRow {
 function isCreateCafeResponse(value: unknown): value is CreateCafeResponse {
   if (!isRecord(value) || value.ok !== true) return false;
   if (typeof value.data === 'undefined') return true;
-  return isRecord(value.data) && (typeof value.data.cafe_id === 'undefined' || typeof value.data.cafe_id === 'string');
+  return isRecord(value.data) &&
+    (typeof value.data.cafe_id === 'undefined' || typeof value.data.cafe_id === 'string') &&
+    (typeof value.data.password_setup_code === 'undefined' || typeof value.data.password_setup_code === 'string' || value.data.password_setup_code === null) &&
+    (typeof value.data.password_setup_expires_at === 'undefined' || typeof value.data.password_setup_expires_at === 'string' || value.data.password_setup_expires_at === null);
 }
 
 function isSupportReplyRow(value: unknown): value is SupportReplyRow {
@@ -915,12 +924,12 @@ export default function PlatformDashboardClient({ session }: { session: Platform
   const [cafeStatusFilter, setCafeStatusFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'free' | 'expired' | 'none'>('all');
   const [databaseOptions, setDatabaseOptions] = useState<Array<{ database_key: string; display_name: string; is_active: boolean; is_accepting_new_cafes: boolean }>>([]);
+  const [createCafeInvite, setCreateCafeInvite] = useState<PasswordSetupInvite | null>(null);
   const [createCafe, setCreateCafe] = useState<CreateCafeFormState>({
     cafeSlug: '',
     cafeDisplayName: '',
     ownerFullName: '',
     ownerPhone: '',
-    ownerPassword: '',
     ...applyPreset(30, true, 'trial'),
     notes: '',
     databaseKey: '',
@@ -1018,6 +1027,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
   async function submitCreateCafe() {
     setBusy(true);
     setError(null);
+    setCreateCafeInvite(null);
     try {
       const res = await fetch('/api/platform/cafes/create', {
         method: 'POST',
@@ -1027,7 +1037,6 @@ export default function PlatformDashboardClient({ session }: { session: Platform
           cafeDisplayName: createCafe.cafeDisplayName,
           ownerFullName: createCafe.ownerFullName,
           ownerPhone: createCafe.ownerPhone,
-          ownerPassword: createCafe.ownerPassword,
           subscriptionStartsAt: fromDateInputValue(createCafe.startsAt),
           subscriptionEndsAt: fromDateInputValue(createCafe.endsAt),
           subscriptionGraceDays: Number(createCafe.graceDays || '0'),
@@ -1041,12 +1050,21 @@ export default function PlatformDashboardClient({ session }: { session: Platform
       const json: unknown = await res.json().catch(() => ({}));
       if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'CREATE_CAFE_FAILED');
       const createdCafeId = isCreateCafeResponse(json) && typeof json.data?.cafe_id === 'string' ? json.data.cafe_id : undefined;
+      const setupCode = isCreateCafeResponse(json) ? json.data?.password_setup_code ?? null : null;
+      const setupExpiresAt = isCreateCafeResponse(json) ? json.data?.password_setup_expires_at ?? null : null;
+      if (setupCode) {
+        setCreateCafeInvite({
+          cafeSlug: createCafe.cafeSlug,
+          ownerPhone: createCafe.ownerPhone,
+          code: setupCode,
+          expiresAt: setupExpiresAt ?? null,
+        });
+      }
       setCreateCafe({
         cafeSlug: '',
         cafeDisplayName: '',
         ownerFullName: '',
         ownerPhone: '',
-        ownerPassword: '',
         ...applyPreset(30, true, 'trial'),
         notes: '',
         databaseKey: databaseOptions[0]?.database_key ?? '',
@@ -1321,7 +1339,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                       <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم القهوة" value={createCafe.cafeDisplayName} onChange={(e) => setCreateCafe((v) => ({ ...v, cafeDisplayName: e.target.value }))} />
                       <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم المالك" value={createCafe.ownerFullName} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerFullName: e.target.value }))} />
                       <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="رقم هاتف المالك" value={createCafe.ownerPhone} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerPhone: e.target.value }))} />
-                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="باسورد المالك" type="password" value={createCafe.ownerPassword} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerPassword: e.target.value }))} />
+                      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">لن تُدخل كلمة المرور من لوحة المنصة. سيتم إصدار كود تفعيل لمرة واحدة، والمالك هو من سيحدد كلمة المرور بنفسه.</div>
                       <div className="grid gap-3 md:grid-cols-2">
                         <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={createCafe.startsAt} onChange={(e) => setCreateCafe((v) => ({ ...v, startsAt: e.target.value }))} />
                         <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={createCafe.endsAt} onChange={(e) => setCreateCafe((v) => ({ ...v, endsAt: e.target.value }))} />
@@ -1347,8 +1365,17 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                           <option key={item.database_key} value={item.database_key}>{item.display_name}</option>
                         ))}
                       </select>
+                      {createCafeInvite ? (
+                        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                          <div className="font-semibold">كود تفعيل كلمة المرور للمالك</div>
+                          <div className="mt-2">القهوة: <strong>{createCafeInvite.cafeSlug}</strong></div>
+                          <div>الهاتف: <strong>{createCafeInvite.ownerPhone}</strong></div>
+                          <div className="mt-3 rounded-2xl border border-amber-300 bg-white px-4 py-3 text-center text-lg font-bold tracking-[0.3em]">{createCafeInvite.code}</div>
+                          <div className="mt-2 text-xs text-amber-800">الصلاحية حتى {formatDateTime(createCafeInvite.expiresAt)}.</div>
+                        </div>
+                      ) : null}
                       <button disabled={busy || !createCafe.databaseKey} onClick={submitCreateCafe} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
-                        إنشاء القهوة والاشتراك الأول
+                        إنشاء القهوة وإصدار كود التفعيل
                       </button>
                     </div>
                   </section>

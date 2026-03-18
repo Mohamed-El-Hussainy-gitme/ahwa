@@ -51,6 +51,8 @@ Apply migrations in this order:
 39. `0039_control_plane_operational_database_registration.sql`
 40. `0040_ops_atomic_shift_open_with_assignments.sql`
 41. `0041_support_access_on_demand.sql`
+42. `0042_owner_password_setup_runtime_readiness.sql`
+43. `0043_control_plane_owner_password_setup_flow.sql`
 
 ## Migration summary
 
@@ -107,8 +109,8 @@ Deferred finance non-archival policy. Codifies that `ops.deferred_ledger_entries
 ### 0033
 Search-path security hardening for the remaining linter-reported functions. This migration pins `search_path` for `app.current_cafe_id()`, `app.current_super_admin_user_id()`, `ops.generate_session_label()`, and `public.platform_touch_support_message()` without changing their functional behavior.
 
-### 0034 - 0041
-Control-plane manual database selection, strict explicit bindings, platform response hardening, public SECURITY DEFINER readers, the canonical transactional create-cafe RPC/binding upsert flow, a saved control-plane operational-database registration contract, the atomic shift-open-plus-assignment runtime RPC, and on-demand temporary support access grants tied to explicit support requests.
+### 0034 - 0043
+Control-plane manual database selection, strict explicit bindings, platform response hardening, public SECURITY DEFINER readers, the canonical transactional create-cafe RPC/binding upsert flow, a saved control-plane operational-database registration contract, the atomic shift-open-plus-assignment runtime RPC, on-demand temporary support access grants tied to explicit support requests, runtime owner-password readiness for mirrored operational databases, and the control-plane one-time setup/reset code flow for owner passwords.
 
 ## Current canonical boundaries
 
@@ -126,7 +128,7 @@ Control-plane manual database selection, strict explicit bindings, platform resp
 
 - `0034` through `0039` belong to the current primary database when it acts as the control plane.
 - Fresh operational databases should be provisioned from `database/baselines/operational/0001_fresh_operational_baseline.sql`.
-- The generated operational baseline excludes the control-plane-only migrations and already includes `0040_ops_atomic_shift_open_with_assignments.sql`.
+- The generated operational baseline excludes the control-plane-only migrations and already includes the latest operational-ready owner-password migration (`0042_owner_password_setup_runtime_readiness.sql`) together with `0040_ops_atomic_shift_open_with_assignments.sql`.
 - New operational databases must then be registered in the existing control plane through `public.control_register_operational_database(...)` or `database/control-plane/register-operational-database.sql`.
 - New cafes can be assigned manually to an available operational database during platform create-cafe flow.
 

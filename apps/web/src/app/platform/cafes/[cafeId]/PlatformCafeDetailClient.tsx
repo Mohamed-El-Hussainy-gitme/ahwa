@@ -54,6 +54,14 @@ type SupportItem = {
   created_at: string;
 };
 
+type PasswordSetupInvite = {
+  ownerName: string;
+  ownerPhone: string;
+  code: string;
+  expiresAt: string | null;
+  state: string;
+};
+
 type CafeDetail = {
   generated_at: string;
   cafe: {
@@ -252,10 +260,11 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [createOwner, setCreateOwner] = useState({ fullName: '', phone: '', password: '', ownerLabel: 'partner' as OwnerLabel });
+  const [invite, setInvite] = useState<PasswordSetupInvite | null>(null);
+  const [createOwner, setCreateOwner] = useState({ fullName: '', phone: '', ownerLabel: 'partner' as OwnerLabel });
   const [selectedOwnerId, setSelectedOwnerId] = useState('');
   const [editOwner, setEditOwner] = useState({ ownerUserId: '', fullName: '', phone: '', ownerLabel: 'partner' as OwnerLabel });
-  const [resetPassword, setResetPassword] = useState({ ownerUserId: '', newPassword: '' });
+  const [resetPassword, setResetPassword] = useState({ ownerUserId: '' });
   const [subscriptionForm, setSubscriptionForm] = useState({ startsAt: toDateInputValue(today), endsAt: toDateInputValue(new Date(today.getTime() + 1000 * 60 * 60 * 24 * 365)), graceDays: '0', status: 'active' as SubscriptionStatus, amountPaid: '', isComplimentary: false, notes: '' });
   const [supportItems, setSupportItems] = useState<SupportItem[]>([]);
 
@@ -307,7 +316,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
       const nextId = data.cafe.owners.some((owner) => owner.id === current) ? current : firstOwner;
       const selected = data.cafe.owners.find((owner) => owner.id === nextId);
       setEditOwner(selected ? { ownerUserId: selected.id, fullName: selected.full_name, phone: selected.phone, ownerLabel: selected.owner_label } : { ownerUserId: '', fullName: '', phone: '', ownerLabel: 'partner' });
-      setResetPassword((value) => ({ ...value, ownerUserId: selected?.id ?? '' }));
+      setResetPassword({ ownerUserId: selected?.id ?? '' });
       return nextId;
     });
   }, [data]);
@@ -328,6 +337,79 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
       await load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'REQUEST_FAILED');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createOwnerAccount() {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setInvite(null);
+    try {
+      const res = await fetch('/api/platform/owners/create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          cafeId,
+          fullName: createOwner.fullName,
+          phone: createOwner.phone,
+          ownerLabel: createOwner.ownerLabel,
+        }),
+      });
+      const json: unknown = await res.json().catch(() => ({}));
+      if (!res.ok || !isPlatformApiOk(json)) throw new Error(extractPlatformApiErrorMessage(json, 'CREATE_OWNER_FAILED'));
+      const row = json && typeof json === 'object' && 'data' in json && json.data && typeof json.data === 'object'
+        ? json.data as { password_setup_code?: unknown; password_setup_expires_at?: unknown }
+        : null;
+      setInvite({
+        ownerName: createOwner.fullName,
+        ownerPhone: createOwner.phone,
+        code: typeof row?.password_setup_code === 'string' ? row.password_setup_code : '',
+        expiresAt: typeof row?.password_setup_expires_at === 'string' ? row.password_setup_expires_at : null,
+        state: 'setup_pending',
+      });
+      setNotice('تم إنشاء الحساب وإصدار كود تفعيل كلمة المرور.');
+      setCreateOwner({ fullName: '', phone: '', ownerLabel: 'partner' });
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'CREATE_OWNER_FAILED');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function issueOwnerResetCode(owner: OwnerRow) {
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    setInvite(null);
+    try {
+      const res = await fetch('/api/platform/owners/reset-password', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          cafeId,
+          ownerUserId: owner.id,
+        }),
+      });
+      const json: unknown = await res.json().catch(() => ({}));
+      if (!res.ok || !isPlatformApiOk(json)) throw new Error(extractPlatformApiErrorMessage(json, 'OWNER_RESET_PASSWORD_FAILED'));
+      const row = json && typeof json === 'object' && 'data' in json && json.data && typeof json.data === 'object'
+        ? json.data as { password_setup_code?: unknown; password_setup_expires_at?: unknown; password_state?: unknown }
+        : null;
+      setInvite({
+        ownerName: owner.full_name,
+        ownerPhone: owner.phone,
+        code: typeof row?.password_setup_code === 'string' ? row.password_setup_code : '',
+        expiresAt: typeof row?.password_setup_expires_at === 'string' ? row.password_setup_expires_at : null,
+        state: typeof row?.password_state === 'string' ? row.password_state : 'reset_pending',
+      });
+      setNotice('تم إصدار كود إعادة تعيين جديد لهذا الحساب.');
+      await load();
+    } catch (requestError) {
+      setError(requestError instanceof Error ? requestError.message : 'OWNER_RESET_PASSWORD_FAILED');
     } finally {
       setBusy(false);
     }
@@ -364,6 +446,15 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
     <div className="space-y-6">
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
       {notice ? <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{notice}</div> : null}
+      {invite ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <div className="font-semibold">{invite.state === 'reset_pending' ? 'كود إعادة تعيين كلمة المرور' : 'كود تفعيل كلمة المرور'}</div>
+          <div className="mt-2">الاسم: <strong>{invite.ownerName}</strong></div>
+          <div>الهاتف: <strong>{invite.ownerPhone}</strong></div>
+          <div className="mt-3 rounded-2xl border border-amber-300 bg-white px-4 py-3 text-center text-lg font-bold tracking-[0.3em]">{invite.code}</div>
+          <div className="mt-2 text-xs text-amber-800">الصلاحية حتى {formatDateTime(invite.expiresAt)}. يُسلَّم هذا الكود لصاحب الحساب ليستخدمه من شاشة "تفعيل أو إعادة تعيين كلمة المرور".</div>
+        </div>
+      ) : null}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
@@ -485,10 +576,12 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
                 </select>
                 <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="الاسم" value={createOwner.fullName} onChange={(e) => setCreateOwner((v) => ({ ...v, fullName: e.target.value }))} />
                 <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="رقم الهاتف" value={createOwner.phone} onChange={(e) => setCreateOwner((v) => ({ ...v, phone: e.target.value }))} />
-                <input className="rounded-2xl border border-slate-200 px-4 py-3" type="password" placeholder="الباسورد" value={createOwner.password} onChange={(e) => setCreateOwner((v) => ({ ...v, password: e.target.value }))} />
+                <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 md:col-span-2">
+                  لن تُدخل كلمة المرور من لوحة المنصة. بعد إنشاء الحساب سيصدر كود لمرة واحدة يختار المالك أو الشريك من خلاله كلمة المرور بنفسه.
+                </div>
               </div>
               <div className="mt-4">
-                <button type="button" disabled={busy || loading} onClick={() => void runAction('/api/platform/owners/create', { cafeId, fullName: createOwner.fullName, phone: createOwner.phone, password: createOwner.password, ownerLabel: createOwner.ownerLabel }, 'تم إنشاء حساب المالك/الشريك.').then(() => setCreateOwner({ fullName: '', phone: '', password: '', ownerLabel: 'partner' }))} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">إضافة الحساب</button>
+                <button type="button" disabled={busy || loading} onClick={() => void createOwnerAccount()} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">إضافة الحساب وإصدار كود التفعيل</button>
               </div>
             </SectionFrame>
 
@@ -507,8 +600,10 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
                     <button type="button" disabled={busy || !editOwner.ownerUserId} onClick={() => void runAction('/api/platform/owners/update', { cafeId, ownerUserId: editOwner.ownerUserId, fullName: editOwner.fullName, phone: editOwner.phone, ownerLabel: editOwner.ownerLabel }, 'تم تحديث بيانات الحساب.')} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">حفظ التعديل</button>
                   </div>
                   <div className="grid gap-3 border-t border-slate-100 pt-5 md:grid-cols-[1.2fr_auto] md:items-end">
-                    <input className="rounded-2xl border border-slate-200 px-4 py-3" type="password" placeholder="الباسورد الجديد" value={resetPassword.newPassword} onChange={(e) => setResetPassword((v) => ({ ...v, newPassword: e.target.value }))} />
-                    <button type="button" disabled={busy || !resetPassword.ownerUserId || !resetPassword.newPassword} onClick={() => void runAction('/api/platform/owners/reset-password', { cafeId, ownerUserId: resetPassword.ownerUserId, newPassword: resetPassword.newPassword }, 'تم تغيير الباسورد.').then(() => setResetPassword({ ownerUserId: selectedOwner.id, newPassword: '' }))} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">تغيير الباسورد</button>
+                    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
+                      سيُلغى الباسورد الحالي لهذا الحساب، وسيُصدر كود إعادة تعيين لمرة واحدة يختار به المالك كلمة المرور الجديدة بنفسه.
+                    </div>
+                    <button type="button" disabled={busy || !resetPassword.ownerUserId} onClick={() => selectedOwner ? void issueOwnerResetCode(selectedOwner) : undefined} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">إصدار كود إعادة التعيين</button>
                   </div>
                 </div>
               ) : (

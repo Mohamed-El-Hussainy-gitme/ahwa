@@ -31,8 +31,7 @@ export async function POST(request: Request) {
       !body.cafeSlug?.trim() ||
       !body.cafeDisplayName?.trim() ||
       !body.ownerFullName?.trim() ||
-      !body.ownerPhone?.trim() ||
-      !(body.ownerPassword ?? '').trim()
+      !body.ownerPhone?.trim()
     ) {
       return platformFail(400, 'INVALID_INPUT', 'Cafe and owner fields are required.');
     }
@@ -58,7 +57,7 @@ export async function POST(request: Request) {
       subscriptionEndsAt: body.subscriptionEndsAt?.trim() || null,
       subscriptionGraceDays: Number.isFinite(body.subscriptionGraceDays) ? Number(body.subscriptionGraceDays) : 0,
       subscriptionStatus: body.subscriptionStatus ?? 'trial',
-      subscriptionAmountPaid: subscriptionAmountPaid,
+      subscriptionAmountPaid,
       subscriptionIsComplimentary: body.subscriptionIsComplimentary === true,
       subscriptionNotes: body.subscriptionNotes?.trim() || null,
       databaseKey: body.databaseKey?.trim() || '',
@@ -74,6 +73,9 @@ export async function POST(request: Request) {
         subscription_id: created.subscriptionId,
         slug: created.slug,
         database_key: created.databaseKey,
+        password_state: created.ownerPasswordState,
+        password_setup_code: created.passwordSetupCode,
+        password_setup_expires_at: created.passwordSetupExpiresAt,
       },
     });
   } catch (error) {

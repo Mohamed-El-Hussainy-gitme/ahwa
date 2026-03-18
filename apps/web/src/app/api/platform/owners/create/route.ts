@@ -15,17 +15,11 @@ export async function POST(request: Request) {
       cafeId?: string;
       fullName?: string;
       phone?: string;
-      password?: string;
       ownerLabel?: 'owner' | 'partner';
     };
 
-    if (
-      !body.cafeId?.trim() ||
-      !body.fullName?.trim() ||
-      !body.phone?.trim() ||
-      !(body.password ?? '').trim()
-    ) {
-      return platformFail(400, 'INVALID_INPUT', 'Cafe, name, phone, and password are required.');
+    if (!body.cafeId?.trim() || !body.fullName?.trim() || !body.phone?.trim()) {
+      return platformFail(400, 'INVALID_INPUT', 'Cafe, name, and phone are required.');
     }
 
     const ownerLabel = body.ownerLabel === 'owner' ? 'owner' : 'partner';
@@ -38,7 +32,7 @@ export async function POST(request: Request) {
       p_cafe_id: body.cafeId.trim(),
       p_full_name: body.fullName.trim(),
       p_phone: body.phone.trim(),
-      p_password: body.password,
+      p_password: '',
       p_owner_label: ownerLabel,
     });
 
@@ -46,7 +40,15 @@ export async function POST(request: Request) {
       throw error;
     }
 
-    const created = data && typeof data === 'object' ? data as { owner_user_id?: string | null } : null;
+    const created = data && typeof data === 'object'
+      ? data as {
+          owner_user_id?: string | null;
+          owner_label?: string | null;
+          password_state?: string | null;
+          password_setup_code?: string | null;
+          password_setup_expires_at?: string | null;
+        }
+      : null;
     const ownerUserId = typeof created?.owner_user_id === 'string' ? created.owner_user_id.trim() : '';
 
     if (!ownerUserId) {
@@ -55,7 +57,15 @@ export async function POST(request: Request) {
 
     await mirrorOwnerToOperationalDatabase(body.cafeId.trim(), ownerUserId);
 
-    return platformOk({ data });
+    return platformOk({
+      data: {
+        owner_user_id: ownerUserId,
+        owner_label: created?.owner_label ?? ownerLabel,
+        password_state: created?.password_state ?? 'setup_pending',
+        password_setup_code: created?.password_setup_code ?? null,
+        password_setup_expires_at: created?.password_setup_expires_at ?? null,
+      },
+    });
   } catch (error) {
     return platformJsonError(error);
   }

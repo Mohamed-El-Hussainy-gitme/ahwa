@@ -10,7 +10,15 @@ import { extractCreatedCafeId, extractOperationalDatabaseOptions } from '@/lib/p
 
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'suspended';
 
-type CreateCafeResponse = { ok: true; data?: { cafe_id?: string; database_key?: string } };
+type CreateCafeResponse = {
+  ok: true;
+  data?: {
+    cafe_id?: string;
+    database_key?: string;
+    password_setup_code?: string | null;
+    password_setup_expires_at?: string | null;
+  };
+};
 
 type OperationalDatabaseOption = {
   database_key: string;
@@ -19,6 +27,13 @@ type OperationalDatabaseOption = {
   is_active: boolean;
   is_accepting_new_cafes: boolean;
   cafe_count: number;
+};
+
+type PasswordSetupInvite = {
+  cafeSlug: string;
+  ownerPhone: string;
+  code: string;
+  expiresAt: string | null;
 };
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -30,7 +45,9 @@ function isCreateCafeResponse(value: unknown): value is CreateCafeResponse {
   if (typeof value.data === 'undefined') return true;
   return isRecord(value.data) &&
     (typeof value.data.cafe_id === 'undefined' || typeof value.data.cafe_id === 'string') &&
-    (typeof value.data.database_key === 'undefined' || typeof value.data.database_key === 'string');
+    (typeof value.data.database_key === 'undefined' || typeof value.data.database_key === 'string') &&
+    (typeof value.data.password_setup_code === 'undefined' || typeof value.data.password_setup_code === 'string' || value.data.password_setup_code === null) &&
+    (typeof value.data.password_setup_expires_at === 'undefined' || typeof value.data.password_setup_expires_at === 'string' || value.data.password_setup_expires_at === null);
 }
 
 function isOperationalDatabaseOption(value: unknown): value is OperationalDatabaseOption {
@@ -62,6 +79,19 @@ function fromDateInputValue(value: string) {
   return new Date(`${value}T00:00:00`).toISOString();
 }
 
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('ar-EG', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(date);
+}
+
 function applyPreset(days: number, complimentary: boolean, status: SubscriptionStatus) {
   const start = new Date();
   const end = new Date(start.getTime() + 1000 * 60 * 60 * 24 * days);
@@ -83,12 +113,12 @@ export default function PlatformCreateCafePageClient() {
   const [databaseOptions, setDatabaseOptions] = useState<OperationalDatabaseOption[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [invite, setInvite] = useState<PasswordSetupInvite | null>(null);
   const [form, setForm] = useState({
     cafeSlug: '',
     cafeDisplayName: '',
     ownerFullName: '',
     ownerPhone: '',
-    ownerPassword: '',
     startsAt: defaults.startsAt,
     endsAt: defaults.endsAt,
     graceDays: defaults.graceDays,
@@ -110,8 +140,7 @@ export default function PlatformCreateCafePageClient() {
       if (!response.ok || !isPlatformApiOk(payload)) {
         throw new Error(extractPlatformApiErrorMessage(payload, 'LOAD_OPERATIONAL_DATABASES_FAILED'));
       }
-      const items = extractOperationalDatabaseOptions(payload)
-        .filter((item) => item.is_active && item.is_accepting_new_cafes);
+      const items = extractOperationalDatabaseOptions(payload).filter((item) => item.is_active && item.is_accepting_new_cafes);
       setDatabaseOptions(items);
       if (items.length > 0) {
         setForm((value) => ({
@@ -141,6 +170,7 @@ export default function PlatformCreateCafePageClient() {
     setBusy(true);
     setError(null);
     setSuccess(null);
+    setInvite(null);
     try {
       const response = await fetch('/api/platform/cafes/create', {
         method: 'POST',
@@ -151,7 +181,6 @@ export default function PlatformCreateCafePageClient() {
           cafeDisplayName: form.cafeDisplayName,
           ownerFullName: form.ownerFullName,
           ownerPhone: form.ownerPhone,
-          ownerPassword: form.ownerPassword,
           subscriptionStartsAt: fromDateInputValue(form.startsAt),
           subscriptionEndsAt: fromDateInputValue(form.endsAt),
           subscriptionGraceDays: Number(form.graceDays || 0),
@@ -166,14 +195,23 @@ export default function PlatformCreateCafePageClient() {
       if (!response.ok || !isPlatformApiOk(payload)) {
         throw new Error(extractPlatformApiErrorMessage(payload, 'CREATE_CAFE_FAILED'));
       }
-      const createdCafeId = extractCreatedCafeId(payload);
-      setSuccess('تم إنشاء القهوة والاشتراك الأول بنجاح.');
+      extractCreatedCafeId(payload);
+      const setupCode = isCreateCafeResponse(payload) ? payload.data?.password_setup_code ?? null : null;
+      const setupExpiresAt = isCreateCafeResponse(payload) ? payload.data?.password_setup_expires_at ?? null : null;
+      setSuccess('تم إنشاء القهوة وربطها بقاعدة التشغيل بنجاح.');
+      if (setupCode) {
+        setInvite({
+          cafeSlug: form.cafeSlug,
+          ownerPhone: form.ownerPhone,
+          code: setupCode,
+          expiresAt: setupExpiresAt ?? null,
+        });
+      }
       setForm({
         cafeSlug: '',
         cafeDisplayName: '',
         ownerFullName: '',
         ownerPhone: '',
-        ownerPassword: '',
         startsAt: defaults.startsAt,
         endsAt: defaults.endsAt,
         graceDays: defaults.graceDays,
@@ -183,10 +221,6 @@ export default function PlatformCreateCafePageClient() {
         notes: defaults.notes,
         databaseKey: databaseOptions[0]?.database_key ?? '',
       });
-      if (createdCafeId) {
-        router.replace(`/platform/cafes?selected=${encodeURIComponent(createdCafeId)}`);
-        router.refresh();
-      }
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'CREATE_CAFE_FAILED');
     } finally {
@@ -198,20 +232,8 @@ export default function PlatformCreateCafePageClient() {
     <div className="space-y-6">
       <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setForm((value) => ({ ...value, ...applyPreset(30, true, 'trial'), amountPaid: '0', notes: '' }))}
-            className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700"
-          >
-            30 يوم مجاني
-          </button>
-          <button
-            type="button"
-            onClick={() => setForm((value) => ({ ...value, ...applyPreset(30, false, 'active') }))}
-            className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700"
-          >
-            شهر مدفوع
-          </button>
+          <button type="button" onClick={() => setForm((value) => ({ ...value, ...applyPreset(30, true, 'trial'), amountPaid: '0', notes: '' }))} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700">30 يوم مجاني</button>
+          <button type="button" onClick={() => setForm((value) => ({ ...value, ...applyPreset(30, false, 'active') }))} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700">شهر مدفوع</button>
         </div>
 
         {loadingDatabases ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">جارٍ تحميل قواعد التشغيل...</div> : null}
@@ -221,20 +243,15 @@ export default function PlatformCreateCafePageClient() {
           <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم القهوة" value={form.cafeDisplayName} onChange={(e) => setForm((v) => ({ ...v, cafeDisplayName: e.target.value }))} />
           <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم المالك" value={form.ownerFullName} onChange={(e) => setForm((v) => ({ ...v, ownerFullName: e.target.value }))} />
           <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="رقم هاتف المالك" value={form.ownerPhone} onChange={(e) => setForm((v) => ({ ...v, ownerPhone: e.target.value }))} />
-          <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm md:col-span-2" placeholder="باسورد المالك" type="password" value={form.ownerPassword} onChange={(e) => setForm((v) => ({ ...v, ownerPassword: e.target.value }))} />
+          <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 md:col-span-2">
+            لن تُدخل كلمة المرور من لوحة المنصة. سيتم إصدار كود تفعيل لمرة واحدة، والمالك هو من سيختار كلمة المرور بنفسه.
+          </div>
           <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={form.startsAt} onChange={(e) => setForm((v) => ({ ...v, startsAt: e.target.value }))} />
           <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={form.endsAt} onChange={(e) => setForm((v) => ({ ...v, endsAt: e.target.value }))} />
           <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="أيام السماح" value={form.graceDays} onChange={(e) => setForm((v) => ({ ...v, graceDays: e.target.value }))} />
           <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="القيمة المدفوعة" value={form.amountPaid} onChange={(e) => setForm((v) => ({ ...v, amountPaid: e.target.value }))} />
-          <select
-            className="rounded-2xl border border-slate-200 px-4 py-3 text-sm md:col-span-2 disabled:bg-slate-100 disabled:text-slate-500"
-            value={form.databaseKey}
-            disabled={loadingDatabases || databaseOptions.length === 0}
-            onChange={(e) => setForm((v) => ({ ...v, databaseKey: e.target.value }))}
-          >
-            {databaseOptions.length === 0 ? (
-              <option value="">لا توجد قاعدة تشغيل متاحة حاليًا</option>
-            ) : databaseOptions.map((option) => (
+          <select className="rounded-2xl border border-slate-200 px-4 py-3 text-sm md:col-span-2 disabled:bg-slate-100 disabled:text-slate-500" value={form.databaseKey} disabled={loadingDatabases || databaseOptions.length === 0} onChange={(e) => setForm((v) => ({ ...v, databaseKey: e.target.value }))}>
+            {databaseOptions.length === 0 ? <option value="">لا توجد قاعدة تشغيل متاحة حاليًا</option> : databaseOptions.map((option) => (
               <option key={option.database_key} value={option.database_key}>
                 {option.display_name} — {option.database_key} ({option.cafe_count})
               </option>
@@ -255,10 +272,19 @@ export default function PlatformCreateCafePageClient() {
 
         {error ? <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
         {success ? <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{success}</div> : null}
+        {invite ? (
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <div className="font-semibold">كود تفعيل كلمة المرور للمالك</div>
+            <div className="mt-2">القهوة: <strong>{invite.cafeSlug}</strong></div>
+            <div>الهاتف: <strong>{invite.ownerPhone}</strong></div>
+            <div className="mt-3 rounded-2xl border border-amber-300 bg-white px-4 py-3 text-center text-lg font-bold tracking-[0.3em]">{invite.code}</div>
+            <div className="mt-2 text-xs text-amber-800">الصلاحية حتى {formatDateTime(invite.expiresAt)}. يسلمه الدعم أو الإدارة للمالك ليختار كلمة المرور بنفسه من شاشة "تفعيل أو إعادة تعيين كلمة المرور".</div>
+          </div>
+        ) : null}
 
         <div className="mt-5 flex flex-wrap gap-2">
           <button disabled={busy || loadingDatabases || databaseOptions.length === 0 || !form.databaseKey} onClick={() => void submitCreateCafe()} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
-            {busy ? 'جارٍ الإنشاء...' : 'إنشاء القهوة والاشتراك الأول'}
+            {busy ? 'جارٍ الإنشاء...' : 'إنشاء القهوة وإصدار كود التفعيل'}
           </button>
           <button type="button" onClick={() => router.push('/platform/cafes')} className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700">
             العودة إلى سجل القهاوي

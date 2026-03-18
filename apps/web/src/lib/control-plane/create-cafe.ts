@@ -5,12 +5,12 @@ import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import type { PlatformAdminSession } from '@/lib/platform-auth/session';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 
-type CreateCafeWithOwnerInput = {
+export type CreateCafeWithOwnerInput = {
   cafeSlug: string;
   cafeDisplayName: string;
   ownerFullName: string;
   ownerPhone: string;
-  ownerPassword: string;
+  ownerPassword?: string;
   subscriptionStartsAt: string | null;
   subscriptionEndsAt: string | null;
   subscriptionGraceDays: number;
@@ -30,8 +30,17 @@ type CreatedSubscriptionRow = {
   id: string;
 };
 
+type PasswordSetupInvite = {
+  passwordSetupCode: string | null;
+  passwordSetupExpiresAt: string | null;
+  passwordState: string;
+};
+
 type RpcCreateOwnerResponse = {
   owner_user_id?: string | null;
+  password_setup_code?: string | null;
+  password_setup_expires_at?: string | null;
+  password_state?: string | null;
 };
 
 type RpcCreateCafeResponse = {
@@ -41,6 +50,9 @@ type RpcCreateCafeResponse = {
   subscription_id?: string | null;
   slug?: string | null;
   database_key?: string | null;
+  password_setup_code?: string | null;
+  password_setup_expires_at?: string | null;
+  password_state?: string | null;
 };
 
 export type CreateCafeWithOwnerResult = {
@@ -49,6 +61,9 @@ export type CreateCafeWithOwnerResult = {
   subscriptionId: string | null;
   slug: string;
   databaseKey: string;
+  passwordSetupCode: string | null;
+  passwordSetupExpiresAt: string | null;
+  ownerPasswordState: string;
 };
 
 const VALID_SUBSCRIPTION_STATUSES = new Set(['trial', 'active', 'expired', 'suspended']);
@@ -79,6 +94,14 @@ function isMissingCreateCafeRpc(error: unknown): boolean {
   return message.includes('platform_create_cafe_with_owner') && (message.includes('not found') || message.includes('does not exist') || message.includes('could not find'));
 }
 
+function normalizeInvite(payload: { password_setup_code?: string | null; password_setup_expires_at?: string | null; password_state?: string | null } | null | undefined): PasswordSetupInvite {
+  return {
+    passwordSetupCode: normalizeText(payload?.password_setup_code) || null,
+    passwordSetupExpiresAt: normalizeText(payload?.password_setup_expires_at) || null,
+    passwordState: normalizeText(payload?.password_state) || 'setup_pending',
+  };
+}
+
 async function createCafeWithOwnerViaRpc(
   session: PlatformAdminSession,
   input: CreateCafeWithOwnerInput,
@@ -89,7 +112,7 @@ async function createCafeWithOwnerViaRpc(
     p_cafe_display_name: input.cafeDisplayName,
     p_owner_full_name: input.ownerFullName,
     p_owner_phone: input.ownerPhone,
-    p_owner_password: input.ownerPassword,
+    p_owner_password: input.ownerPassword ?? '',
     p_subscription_starts_at: input.subscriptionStartsAt,
     p_subscription_ends_at: input.subscriptionEndsAt,
     p_subscription_grace_days: input.subscriptionGraceDays,
@@ -108,6 +131,7 @@ async function createCafeWithOwnerViaRpc(
   const slug = normalizeText(payload?.slug) || input.cafeSlug;
   const databaseKey = normalizeDatabaseKey(normalizeText(payload?.database_key) || input.databaseKey);
   const subscriptionId = normalizeText(payload?.subscription_id) || null;
+  const invite = normalizeInvite(payload);
 
   if (!cafeId || !ownerUserId || !slug || !databaseKey) {
     throw new Error('CONTROL_PLANE_CREATE_CAFE_RESPONSE_INVALID');
@@ -119,6 +143,9 @@ async function createCafeWithOwnerViaRpc(
     subscriptionId,
     slug,
     databaseKey,
+    passwordSetupCode: invite.passwordSetupCode,
+    passwordSetupExpiresAt: invite.passwordSetupExpiresAt,
+    ownerPasswordState: invite.passwordState,
   };
 }
 
@@ -207,24 +234,32 @@ async function assignDatabase(session: PlatformAdminSession, cafeId: string, dat
   if (error) throw error;
 }
 
-async function createOwner(session: PlatformAdminSession, cafeId: string, input: CreateCafeWithOwnerInput): Promise<string> {
+async function createOwner(
+  session: PlatformAdminSession,
+  cafeId: string,
+  input: CreateCafeWithOwnerInput,
+): Promise<{ ownerUserId: string } & PasswordSetupInvite> {
   const { data, error } = await controlPlaneAdmin().rpc('platform_create_owner_user', {
     p_super_admin_user_id: session.superAdminUserId,
     p_cafe_id: cafeId,
     p_full_name: input.ownerFullName,
     p_phone: input.ownerPhone,
-    p_password: input.ownerPassword,
+    p_password: input.ownerPassword ?? '',
     p_owner_label: 'owner',
   });
 
   if (error) throw error;
 
-  const ownerUserId = normalizeText((data as RpcCreateOwnerResponse | null)?.owner_user_id);
+  const payload = (data ?? null) as RpcCreateOwnerResponse | null;
+  const ownerUserId = normalizeText(payload?.owner_user_id);
   if (!ownerUserId) {
     throw new Error('CONTROL_PLANE_CREATE_OWNER_RESPONSE_INVALID');
   }
 
-  return ownerUserId;
+  return {
+    ownerUserId,
+    ...normalizeInvite(payload),
+  };
 }
 
 async function createSubscription(
@@ -264,12 +299,15 @@ async function writeCafeAuditEvent(
   ownerUserId: string,
   subscriptionId: string | null,
   input: CreateCafeWithOwnerInput,
+  invite: PasswordSetupInvite,
 ): Promise<void> {
   const payload = {
     owner_user_id: ownerUserId,
     owner_phone: input.ownerPhone,
     owner_label: 'owner',
     database_key: input.databaseKey,
+    password_state: invite.passwordState,
+    password_setup_expires_at: invite.passwordSetupExpiresAt,
     subscription: subscriptionId
       ? {
           subscription_id: subscriptionId,
@@ -307,7 +345,7 @@ function normalizeInput(input: CreateCafeWithOwnerInput): CreateCafeWithOwnerInp
     cafeDisplayName: normalizeText(input.cafeDisplayName),
     ownerFullName: normalizeText(input.ownerFullName),
     ownerPhone: normalizeText(input.ownerPhone),
-    ownerPassword: String(input.ownerPassword ?? ''),
+    ownerPassword: normalizeText(input.ownerPassword),
     subscriptionStartsAt: input.subscriptionStartsAt ? normalizeText(input.subscriptionStartsAt) : null,
     subscriptionEndsAt: input.subscriptionEndsAt ? normalizeText(input.subscriptionEndsAt) : null,
     subscriptionGraceDays: Number(input.subscriptionGraceDays ?? 0),
@@ -341,16 +379,19 @@ export async function createCafeWithOwnerOnControlPlane(
     createdCafeId = createdCafe.id;
 
     await assignDatabase(session, createdCafe.id, input.databaseKey);
-    const ownerUserId = await createOwner(session, createdCafe.id, input);
+    const createdOwner = await createOwner(session, createdCafe.id, input);
     const subscriptionId = await createSubscription(session, createdCafe.id, input);
-    await writeCafeAuditEvent(session, createdCafe.id, ownerUserId, subscriptionId, input);
+    await writeCafeAuditEvent(session, createdCafe.id, createdOwner.ownerUserId, subscriptionId, input, createdOwner);
 
     return {
       cafeId: createdCafe.id,
-      ownerUserId,
+      ownerUserId: createdOwner.ownerUserId,
       subscriptionId,
       slug: createdCafe.slug,
       databaseKey: input.databaseKey,
+      passwordSetupCode: createdOwner.passwordSetupCode,
+      passwordSetupExpiresAt: createdOwner.passwordSetupExpiresAt,
+      ownerPasswordState: createdOwner.passwordState,
     };
   } catch (error) {
     if (createdCafeId) {

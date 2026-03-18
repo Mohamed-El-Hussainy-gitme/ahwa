@@ -16,7 +16,8 @@ type ControlPlaneOwnerRow = {
   cafe_id: string;
   full_name: string | null;
   phone: string | null;
-  password_hash: string;
+  password_hash: string | null;
+  password_state: string | null;
   owner_label: string | null;
   is_active: boolean | null;
 };
@@ -58,7 +59,7 @@ async function loadControlPlaneOwner(cafeId: string, ownerUserId: string): Promi
   const { data, error } = await controlPlaneAdmin()
     .schema('ops')
     .from('owner_users')
-    .select('id, cafe_id, full_name, phone, password_hash, owner_label, is_active')
+    .select('id, cafe_id, full_name, phone, password_hash, password_state, owner_label, is_active')
     .eq('cafe_id', cafeId)
     .eq('id', ownerUserId)
     .maybeSingle<ControlPlaneOwnerRow>();
@@ -75,7 +76,7 @@ async function loadControlPlaneOwners(cafeId: string): Promise<ControlPlaneOwner
   const { data, error } = await controlPlaneAdmin()
     .schema('ops')
     .from('owner_users')
-    .select('id, cafe_id, full_name, phone, password_hash, owner_label, is_active')
+    .select('id, cafe_id, full_name, phone, password_hash, password_state, owner_label, is_active')
     .eq('cafe_id', cafeId)
     .order('created_at', { ascending: true });
 
@@ -122,7 +123,8 @@ export async function mirrorOwnerToOperationalDatabase(
       cafe_id: owner.cafe_id,
       full_name: owner.full_name ?? '',
       phone: owner.phone ?? '',
-      password_hash: owner.password_hash,
+      password_hash: owner.password_hash ?? null,
+      password_state: owner.password_state ?? (owner.password_hash ? 'ready' : 'setup_pending'),
       owner_label: owner.owner_label ?? 'partner',
       is_active: owner.is_active ?? true,
     }, { onConflict: 'id' });
@@ -150,7 +152,8 @@ export async function mirrorCafeOwnersToOperationalDatabase(cafeId: string): Pro
     cafe_id: owner.cafe_id,
     full_name: owner.full_name ?? '',
     phone: owner.phone ?? '',
-    password_hash: owner.password_hash,
+    password_hash: owner.password_hash ?? null,
+    password_state: owner.password_state ?? (owner.password_hash ? 'ready' : 'setup_pending'),
     owner_label: owner.owner_label ?? 'partner',
     is_active: owner.is_active ?? true,
   }));
