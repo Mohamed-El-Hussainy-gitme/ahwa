@@ -5,6 +5,7 @@ import { useAuthz } from '@/lib/authz';
 import { subscribeOpsRealtime, useOpsRealtimeStatus } from '@/lib/ops/realtime';
 import { subscribeOpsInvalidation } from '@/lib/ops/invalidation';
 import type { OpsNavSummary } from '@/lib/ops/types';
+import { matchesWorkspaceScopes, OPS_SCOPE_NAV_SUMMARY, scopesForRealtimeEvent } from '@/lib/ops/workspaceScopes';
 
 export type OpsChromeState = {
   summary: OpsNavSummary | null;
@@ -17,6 +18,7 @@ export type OpsChromeState = {
 const OpsChromeContext = createContext<OpsChromeState | null>(null);
 const SUMMARY_STALE_TIME_MS = 15_000;
 const SUMMARY_DEBOUNCE_MS = 150;
+const SUMMARY_SCOPES = [OPS_SCOPE_NAV_SUMMARY] as const;
 
 async function loadSummary(): Promise<OpsNavSummary> {
   const res = await fetch('/api/ops/workspaces/nav-summary', {
@@ -122,11 +124,17 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
       return Date.now() - lastLoadedAtRef.current >= SUMMARY_STALE_TIME_MS;
     };
 
-    const unsubscribeRealtime = subscribeOpsRealtime(() => {
+    const unsubscribeRealtime = subscribeOpsRealtime((event) => {
+      if (!matchesWorkspaceScopes(SUMMARY_SCOPES, scopesForRealtimeEvent(event))) {
+        return;
+      }
       scheduleReload();
     });
 
-    const unsubscribeInvalidation = subscribeOpsInvalidation(() => {
+    const unsubscribeInvalidation = subscribeOpsInvalidation((payload) => {
+      if (!matchesWorkspaceScopes(SUMMARY_SCOPES, payload.scopes)) {
+        return;
+      }
       scheduleReload();
     });
 

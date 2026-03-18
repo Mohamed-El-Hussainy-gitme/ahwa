@@ -7,7 +7,7 @@ import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import type { SessionOrderItem, WaiterWorkspace } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
-import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { useOpsCommand, useOpsPendingCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
@@ -15,6 +15,13 @@ import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { useOpsChrome } from '@/lib/ops/chrome';
 import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
+import { OPS_SCOPE_WAITER } from '@/lib/ops/workspaceScopes';
+import {
+  patchWaiterDelivered,
+  patchWaiterOrderSubmitted,
+  patchWaiterRemakeRequested,
+  rebindWaiterSession,
+} from '@/lib/ops/workspacePatches';
 
 export default function OrdersPage() {
   const { can, shift } = useAuthz();
@@ -27,8 +34,9 @@ export default function OrdersPage() {
   const [remakeSelection, setRemakeSelection] = useState<Record<string, number>>({});
 
   const loader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
+  const { data, setData, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
     enabled: Boolean(shift),
+    scopes: [OPS_SCOPE_WAITER],
   });
   const { summary } = useOpsChrome();
 
@@ -56,46 +64,95 @@ export default function OrdersPage() {
       if (!nextDraftLines.length) return;
 
       const target = creatingNew || !effectiveSessionId
-        ? await opsClient.openOrResumeSession(label || undefined)
+        ? null
         : {
             sessionId: effectiveSessionId,
             label:
               data.sessions.find((session) => session.id === effectiveSessionId)?.label ?? label,
           };
 
-      setSessionId(target.sessionId);
+      const previousWorkspace = data;
+      const optimisticSessionId = target?.sessionId ?? `temp-session:${Date.now()}`;
+      const optimisticLabel = target?.label ?? (label.trim() || 'جلسة جديدة');
+      setSessionId(optimisticSessionId);
       setCreatingNew(false);
-
-      await opsClient.createOrderWithItems({
-        serviceSessionId: target.sessionId,
-        items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
-      });
-
+      setData((current) => (current
+        ? patchWaiterOrderSubmitted(current, {
+            serviceSessionId: optimisticSessionId,
+            sessionLabel: optimisticLabel,
+            items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          })
+        : current));
       setDraft({});
       setLabel('');
+
+      try {
+        if (target) {
+          await opsClient.createOrderWithItems({
+            serviceSessionId: target.sessionId,
+            items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          });
+        } else {
+          const created = await opsClient.openSessionAndCreateOrder({
+            label: label || undefined,
+            items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          });
+          setSessionId(created.sessionId);
+          setData((current) => (current ? rebindWaiterSession(current, {
+            fromSessionId: optimisticSessionId,
+            toSessionId: created.sessionId,
+            sessionLabel: created.label,
+          }) : current));
+        }
+      } catch (error) {
+        setData(previousWorkspace);
+        setDraft(Object.fromEntries(nextDraftLines));
+        if (creatingNew || !effectiveSessionId) {
+          setCreatingNew(true);
+          setSessionId('');
+          setLabel(label);
+        }
+        throw error;
+      }
     },
     { onError: setCommandError },
   );
 
-  const deliverCommand = useOpsCommand(
+  const deliverCommand = useOpsPendingCommand(
+    (orderItemId: string, _quantity: number) => orderItemId,
     async (orderItemId: string, quantity: number) => {
-      await opsClient.deliver(orderItemId, quantity);
+      const previousWorkspace = data;
+      setData((current) => (current ? patchWaiterDelivered(current, orderItemId, quantity) : current));
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
+      try {
+        await opsClient.deliver(orderItemId, quantity);
+      } catch (error) {
+        setData(previousWorkspace);
+        throw error;
+      }
     },
     { onError: setCommandError },
   );
 
-  const remakeCommand = useOpsCommand(
+  const remakeCommand = useOpsPendingCommand(
+    (item: SessionOrderItem, _quantity: number, _notes?: string) => item.orderItemId,
     async (item: SessionOrderItem, quantity: number, notes?: string) => {
-      await opsClient.createComplaint({
-        serviceSessionId: item.serviceSessionId,
-        orderItemId: item.orderItemId,
-        complaintKind: 'quality_issue',
-        quantity,
-        notes,
-        action: 'remake',
-      });
+      const previousWorkspace = data;
+      setData((current) => (current ? patchWaiterRemakeRequested(current, item.orderItemId, quantity) : current));
       setRemakeSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
+      try {
+        await opsClient.createComplaint({
+          serviceSessionId: item.serviceSessionId,
+          orderItemId: item.orderItemId,
+          complaintKind: 'quality_issue',
+          quantity,
+          notes,
+          action: 'remake',
+        });
+      } catch (error) {
+        setData(previousWorkspace);
+        throw error;
+      }
     },
     { onError: setCommandError },
   );
@@ -154,7 +211,7 @@ export default function OrdersPage() {
               disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
               className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {submitCommand.busy ? '...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
+              {submitCommand.busy ? 'جارٍ الإرسال' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
             </button>
           </div>
         </StickyActionBar>
@@ -296,7 +353,7 @@ export default function OrdersPage() {
             setReadySelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
           }}
           onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
-          busy={deliverCommand.busy}
+          isBusy={deliverCommand.isPending}
           emptyLabel="لا يوجد جاهز للتسليم"
         />
 
@@ -308,8 +365,8 @@ export default function OrdersPage() {
             onChangeQty={(orderItemId, nextQty, maxQty) => {
               setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
             }}
-            onRemake={(item, quantity) => remakeCommand.run(item, quantity)}
-            busy={remakeCommand.busy}
+            onRemake={(item, quantity, notes) => remakeCommand.run(item, quantity, notes)}
+            isBusy={remakeCommand.isPending}
             emptyLabel={effectiveSessionId ? 'لا توجد أصناف في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
           />
         ) : null}

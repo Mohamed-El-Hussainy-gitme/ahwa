@@ -7,6 +7,7 @@ import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import type { DashboardWorkspace } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
+import { OPS_SCOPE_DASHBOARD } from '@/lib/ops/workspaceScopes';
 import { useOpsChrome } from '@/lib/ops/chrome';
 import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
 import { OperationalHealthPanel } from '@/ui/ops/OperationalHealthPanel';
@@ -156,7 +157,7 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
 export default function DashboardPage() {
   const { can, shift, effectiveRole } = useAuthz();
   const loader = useCallback(() => opsClient.dashboardWorkspace(), []);
-  const { data, error } = useOpsWorkspace<DashboardWorkspace>(loader, { enabled: Boolean(shift) });
+  const { data, error } = useOpsWorkspace<DashboardWorkspace>(loader, { enabled: Boolean(shift), scopes: [OPS_SCOPE_DASHBOARD] });
   const { summary, sync, lastLoadedAt } = useOpsChrome();
 
   const role: RoleView = can.owner ? 'owner' : effectiveRole ?? 'unassigned';

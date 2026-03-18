@@ -1,13 +1,17 @@
 -- AUTO-GENERATED FILE. DO NOT EDIT DIRECTLY.
 -- Regenerate with: npm run build:db-baselines
 
+-- OPERATIONAL-ONLY BASELINE.
+-- Intended for new operational databases (db02/db03/...).
+-- Excludes control-plane/platform/super-admin objects by design.
+-- Owner activation/reset code issuance stays in control-plane db0001.
+
 -- >>> 0001_replace_old_with_runtime_v3.sql
 begin;
 
 create extension if not exists pgcrypto;
 
 drop schema if exists app cascade;
-drop schema if exists platform cascade;
 drop schema if exists ops cascade;
 
 create schema ops;
@@ -54,7 +58,7 @@ create table ops.menu_sections (
   id uuid primary key default gen_random_uuid(),
   cafe_id uuid not null references ops.cafes(id) on delete cascade,
   title text not null,
-  station_code text not null check (station_code in ('barista', 'shisha', 'service')),
+  station_code text not null check (station_code in ('barista', 'shisha')),
   sort_order integer not null default 0,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -67,7 +71,7 @@ create table ops.menu_products (
   cafe_id uuid not null references ops.cafes(id) on delete cascade,
   section_id uuid not null,
   product_name text not null,
-  station_code text not null check (station_code in ('barista', 'shisha', 'service')),
+  station_code text not null check (station_code in ('barista', 'shisha')),
   unit_price numeric(12,2) not null check (unit_price >= 0),
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -233,7 +237,7 @@ create table ops.order_items (
   service_session_id uuid not null,
   order_id uuid not null,
   menu_product_id uuid not null,
-  station_code text not null check (station_code in ('barista', 'shisha', 'service')),
+  station_code text not null check (station_code in ('barista', 'shisha')),
   unit_price numeric(12,2) not null check (unit_price >= 0),
   qty_total integer not null check (qty_total > 0),
   qty_submitted integer not null default 0 check (qty_submitted >= 0),
@@ -278,7 +282,7 @@ create table ops.fulfillment_events (
   shift_id uuid not null,
   service_session_id uuid not null,
   order_item_id uuid not null,
-  station_code text not null check (station_code in ('barista', 'shisha', 'service')),
+  station_code text not null check (station_code in ('barista', 'shisha')),
   event_code text not null check (
     event_code in (
       'submitted',
@@ -466,60 +470,6 @@ commit;
 -- <<< 0001_replace_old_with_runtime_v3.sql
 
 -- >>> 0002_phase2_bootstrap_and_ops.sql
-create extension if not exists pgcrypto;
-
-create or replace function public.ops_bootstrap_cafe_owner(
-  p_slug text,
-  p_display_name text,
-  p_owner_name text,
-  p_owner_phone text,
-  p_owner_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops
-as $$
-declare
-  v_cafe_id uuid;
-  v_owner_id uuid;
-begin
-  if coalesce(trim(p_slug), '') = '' then
-    raise exception 'slug_required';
-  end if;
-  if coalesce(trim(p_display_name), '') = '' then
-    raise exception 'display_name_required';
-  end if;
-  if coalesce(trim(p_owner_name), '') = '' then
-    raise exception 'owner_name_required';
-  end if;
-  if coalesce(trim(p_owner_phone), '') = '' then
-    raise exception 'owner_phone_required';
-  end if;
-  if coalesce(trim(p_owner_password), '') = '' then
-    raise exception 'owner_password_required';
-  end if;
-
-  insert into ops.cafes (slug, display_name)
-  values (trim(lower(p_slug)), trim(p_display_name))
-  returning id into v_cafe_id;
-
-  insert into ops.owner_users (cafe_id, full_name, phone, password_hash)
-  values (
-    v_cafe_id,
-    trim(p_owner_name),
-    trim(p_owner_phone),
-    crypt(p_owner_password, gen_salt('bf'))
-  )
-  returning id into v_owner_id;
-
-  return jsonb_build_object(
-    'cafe_id', v_cafe_id,
-    'owner_user_id', v_owner_id,
-    'slug', trim(lower(p_slug))
-  );
-end;
-$$;
 
 create or replace function public.ops_create_staff_member(
   p_cafe_id uuid,
@@ -576,7 +526,7 @@ begin
   if coalesce(trim(p_title), '') = '' then
     raise exception 'title_required';
   end if;
-  if p_station_code not in ('barista', 'shisha', 'service') then
+  if p_station_code not in ('barista', 'shisha') then
     raise exception 'invalid_station_code';
   end if;
 
@@ -612,7 +562,7 @@ begin
   if coalesce(trim(p_product_name), '') = '' then
     raise exception 'product_name_required';
   end if;
-  if p_station_code not in ('barista', 'shisha', 'service') then
+  if p_station_code not in ('barista', 'shisha') then
     raise exception 'invalid_station_code';
   end if;
   if p_unit_price is null or p_unit_price < 0 then
@@ -2717,457 +2667,8 @@ begin
 end;
 $$;
 
-create schema if not exists platform;
-
-create table if not exists platform.super_admin_users (
-  id uuid primary key default gen_random_uuid(),
-  email text not null unique,
-  display_name text not null,
-  password_hash text not null,
-  is_active boolean not null default true,
-  created_at timestamptz not null default now()
-);
-
-create table if not exists platform.support_access_grants (
-  id uuid primary key default gen_random_uuid(),
-  super_admin_user_id uuid not null references platform.super_admin_users(id) on delete cascade,
-  cafe_id uuid not null references ops.cafes(id) on delete cascade,
-  is_active boolean not null default true,
-  notes text,
-  expires_at timestamptz,
-  revoked_at timestamptz,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_platform_support_access_cafe
-  on platform.support_access_grants(cafe_id, is_active, created_at desc);
-
-create or replace function public.platform_create_super_admin_user(
-  p_email text,
-  p_display_name text,
-  p_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_email text;
-  v_id uuid;
-begin
-  v_email := lower(nullif(btrim(p_email), ''));
-
-  if v_email is null then
-    raise exception 'p_email is required';
-  end if;
-
-  if nullif(btrim(p_display_name), '') is null then
-    raise exception 'p_display_name is required';
-  end if;
-
-  if nullif(p_password, '') is null then
-    raise exception 'p_password is required';
-  end if;
-
-  insert into platform.super_admin_users (
-    email,
-    display_name,
-    password_hash
-  )
-  values (
-    v_email,
-    p_display_name,
-    crypt(p_password, gen_salt('bf'))
-  )
-  returning id into v_id;
-
-  return jsonb_build_object(
-    'ok', true,
-    'super_admin_user_id', v_id,
-    'email', v_email
-  );
-end;
-$$;
-
-create or replace function public.platform_create_cafe_with_owner(
-  p_super_admin_user_id uuid,
-  p_cafe_slug text,
-  p_cafe_display_name text,
-  p_owner_full_name text,
-  p_owner_phone text,
-  p_owner_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_cafe_id uuid;
-  v_owner_id uuid;
-  v_slug text;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  v_slug := lower(nullif(btrim(p_cafe_slug), ''));
-
-  if v_slug is null then
-    raise exception 'p_cafe_slug is required';
-  end if;
-
-  if nullif(btrim(p_cafe_display_name), '') is null then
-    raise exception 'p_cafe_display_name is required';
-  end if;
-
-  if nullif(btrim(p_owner_full_name), '') is null then
-    raise exception 'p_owner_full_name is required';
-  end if;
-
-  if nullif(btrim(p_owner_phone), '') is null then
-    raise exception 'p_owner_phone is required';
-  end if;
-
-  if nullif(p_owner_password, '') is null then
-    raise exception 'p_owner_password is required';
-  end if;
-
-  insert into ops.cafes (
-    slug,
-    display_name,
-    is_active
-  )
-  values (
-    v_slug,
-    p_cafe_display_name,
-    true
-  )
-  returning id into v_cafe_id;
-
-  insert into ops.owner_users (
-    cafe_id,
-    full_name,
-    phone,
-    password_hash,
-    is_active
-  )
-  values (
-    v_cafe_id,
-    p_owner_full_name,
-    p_owner_phone,
-    crypt(p_owner_password, gen_salt('bf')),
-    true
-  )
-  returning id into v_owner_id;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    v_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_create_cafe_with_owner',
-    'cafe',
-    v_cafe_id,
-    jsonb_build_object(
-      'owner_user_id', v_owner_id,
-      'owner_phone', p_owner_phone
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'cafe_id', v_cafe_id,
-    'owner_user_id', v_owner_id,
-    'slug', v_slug
-  );
-end;
-$$;
-
-create or replace function public.platform_reset_owner_password(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid,
-  p_owner_user_id uuid,
-  p_new_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  if nullif(p_new_password, '') is null then
-    raise exception 'p_new_password is required';
-  end if;
-
-  update ops.owner_users
-  set password_hash = crypt(p_new_password, gen_salt('bf'))
-  where cafe_id = p_cafe_id
-    and id = p_owner_user_id;
-
-  if not found then
-    raise exception 'owner user not found';
-  end if;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    p_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_reset_owner_password',
-    'owner_user',
-    p_owner_user_id,
-    '{}'::jsonb
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'owner_user_id', p_owner_user_id
-  );
-end;
-$$;
-
-create or replace function public.platform_grant_support_access(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid,
-  p_notes text default null,
-  p_expires_at timestamptz default null
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_grant_id uuid;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  insert into platform.support_access_grants (
-    super_admin_user_id,
-    cafe_id,
-    is_active,
-    notes,
-    expires_at
-  )
-  values (
-    p_super_admin_user_id,
-    p_cafe_id,
-    true,
-    p_notes,
-    p_expires_at
-  )
-  returning id into v_grant_id;
-
-  return jsonb_build_object(
-    'ok', true,
-    'support_access_grant_id', v_grant_id
-  );
-end;
-$$;
-
-create or replace function public.platform_list_cafes()
-returns jsonb
-language sql
-security definer
-set search_path = public, ops, platform
-as $$
-  select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc), '[]'::jsonb)
-  from (
-    select
-      c.id,
-      c.slug,
-      c.display_name,
-      c.is_active,
-      c.created_at,
-      (
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', ou.id,
-            'full_name', ou.full_name,
-            'phone', ou.phone,
-            'is_active', ou.is_active,
-            'created_at', ou.created_at
-          ) order by ou.created_at asc
-        )
-        from ops.owner_users ou
-        where ou.cafe_id = c.id
-      ) as owners
-    from ops.cafes c
-  ) x;
-$$;
-
 commit;
 -- <<< 0004_complete_remaining_database.sql
-
--- >>> 0005_platform_auth_and_owner_listing.sql
-begin;
-
-create or replace function public.platform_verify_super_admin_login(
-  p_email text,
-  p_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, platform
-as $$
-declare
-  v_user platform.super_admin_users%rowtype;
-  v_email text;
-begin
-  v_email := lower(nullif(btrim(p_email), ''));
-
-  if v_email is null then
-    raise exception 'p_email is required';
-  end if;
-
-  if nullif(p_password, '') is null then
-    raise exception 'p_password is required';
-  end if;
-
-  select *
-  into v_user
-  from platform.super_admin_users
-  where email = v_email
-    and is_active = true;
-
-  if not found then
-    raise exception 'BAD_CREDENTIALS';
-  end if;
-
-  if v_user.password_hash <> crypt(p_password, v_user.password_hash) then
-    raise exception 'BAD_CREDENTIALS';
-  end if;
-
-  return jsonb_build_object(
-    'ok', true,
-    'super_admin_user_id', v_user.id,
-    'email', v_user.email,
-    'display_name', v_user.display_name
-  );
-end;
-$$;
-
-create or replace function public.platform_get_super_admin(
-  p_super_admin_user_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, platform
-as $$
-declare
-  v_user platform.super_admin_users%rowtype;
-begin
-  select *
-  into v_user
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'SUPER_ADMIN_NOT_FOUND';
-  end if;
-
-  return jsonb_build_object(
-    'ok', true,
-    'super_admin_user_id', v_user.id,
-    'email', v_user.email,
-    'display_name', v_user.display_name,
-    'is_active', v_user.is_active,
-    'created_at', v_user.created_at
-  );
-end;
-$$;
-
-create or replace function public.platform_list_owner_users(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  return coalesce((
-    select jsonb_agg(
-      jsonb_build_object(
-        'owner_user_id', ou.id,
-        'cafe_id', ou.cafe_id,
-        'full_name', ou.full_name,
-        'phone', ou.phone,
-        'is_active', ou.is_active,
-        'created_at', ou.created_at
-      )
-      order by ou.created_at desc
-    )
-    from ops.owner_users ou
-    where ou.cafe_id = p_cafe_id
-  ), '[]'::jsonb);
-end;
-$$;
-
-commit;
--- <<< 0005_platform_auth_and_owner_listing.sql
 
 -- >>> 0006_ops_hardening_and_rls.sql
 begin;
@@ -3188,34 +2689,6 @@ as $$
   )::uuid
 $$;
 
-create or replace function app.current_super_admin_user_id()
-returns uuid
-language sql
-stable
-as $$
-  select nullif(current_setting('platform.current_super_admin_user_id', true), '')::uuid
-$$;
-
-create or replace function app.has_platform_support_access(
-  p_cafe_id uuid
-)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public, ops, platform, app
-as $$
-  select exists (
-    select 1
-    from platform.support_access_grants g
-    where g.super_admin_user_id = app.current_super_admin_user_id()
-      and g.cafe_id = p_cafe_id
-      and g.is_active = true
-      and g.revoked_at is null
-      and (g.expires_at is null or g.expires_at > now())
-  )
-$$;
-
 create or replace function app.can_access_cafe(
   p_cafe_id uuid
 )
@@ -3223,13 +2696,10 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public, ops, platform, app
+set search_path = public, ops, app
 as $$
   select p_cafe_id is not null
-    and (
-      app.current_cafe_id() = p_cafe_id
-      or app.has_platform_support_access(p_cafe_id)
-    )
+    and app.current_cafe_id() = p_cafe_id
 $$;
 
 do $$
@@ -3266,14 +2736,6 @@ begin
       v_table
     );
   end loop;
-
-  execute 'alter table platform.super_admin_users enable row level security';
-  execute 'drop policy if exists super_admin_self_access on platform.super_admin_users';
-  execute 'create policy super_admin_self_access on platform.super_admin_users for all using (id = app.current_super_admin_user_id()) with check (id = app.current_super_admin_user_id())';
-
-  execute 'alter table platform.support_access_grants enable row level security';
-  execute 'drop policy if exists super_admin_support_access on platform.support_access_grants';
-  execute 'create policy super_admin_support_access on platform.support_access_grants for all using (super_admin_user_id = app.current_super_admin_user_id()) with check (super_admin_user_id = app.current_super_admin_user_id())';
 end;
 $$;
 
@@ -3903,8 +3365,6 @@ create unique index if not exists uq_ops_staff_members_legacy_app_user_id
 -- >>> 0008_runtime_local_auth_and_staff_codes.sql
 begin;
 
-create extension if not exists pgcrypto;
-
 alter table ops.staff_members
   add column if not exists employee_code text;
 
@@ -4168,61 +3628,6 @@ commit;
 -- >>> 0009_pgcrypto_schema_qualification.sql
 begin;
 
-create extension if not exists pgcrypto;
-
-create or replace function public.ops_bootstrap_cafe_owner(
-  p_slug text,
-  p_display_name text,
-  p_owner_name text,
-  p_owner_phone text,
-  p_owner_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops
-as $$
-declare
-  v_cafe_id uuid;
-  v_owner_id uuid;
-begin
-  if coalesce(trim(p_slug), '') = '' then
-    raise exception 'slug_required';
-  end if;
-  if coalesce(trim(p_display_name), '') = '' then
-    raise exception 'display_name_required';
-  end if;
-  if coalesce(trim(p_owner_name), '') = '' then
-    raise exception 'owner_name_required';
-  end if;
-  if coalesce(trim(p_owner_phone), '') = '' then
-    raise exception 'owner_phone_required';
-  end if;
-  if coalesce(trim(p_owner_password), '') = '' then
-    raise exception 'owner_password_required';
-  end if;
-
-  insert into ops.cafes (slug, display_name)
-  values (trim(lower(p_slug)), trim(p_display_name))
-  returning id into v_cafe_id;
-
-  insert into ops.owner_users (cafe_id, full_name, phone, password_hash)
-  values (
-    v_cafe_id,
-    trim(p_owner_name),
-    trim(p_owner_phone),
-    extensions.crypt(p_owner_password, extensions.gen_salt('bf'))
-  )
-  returning id into v_owner_id;
-
-  return jsonb_build_object(
-    'cafe_id', v_cafe_id,
-    'owner_user_id', v_owner_id,
-    'slug', trim(lower(p_slug))
-  );
-end;
-$$;
-
 create or replace function public.ops_create_staff_member(
   p_cafe_id uuid,
   p_full_name text,
@@ -4256,254 +3661,6 @@ begin
 
   return jsonb_build_object('staff_member_id', v_staff_id);
 end;
-$$;
-
-create or replace function public.platform_create_super_admin_user(
-  p_email text,
-  p_display_name text,
-  p_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_email text;
-  v_id uuid;
-begin
-  v_email := lower(nullif(btrim(p_email), ''));
-
-  if v_email is null then
-    raise exception 'p_email is required';
-  end if;
-
-  if nullif(btrim(p_display_name), '') is null then
-    raise exception 'p_display_name is required';
-  end if;
-
-  if nullif(p_password, '') is null then
-    raise exception 'p_password is required';
-  end if;
-
-  insert into platform.super_admin_users (
-    email,
-    display_name,
-    password_hash
-  )
-  values (
-    v_email,
-    p_display_name,
-    extensions.crypt(p_password, extensions.gen_salt('bf'))
-  )
-  returning id into v_id;
-
-  return jsonb_build_object(
-    'ok', true,
-    'super_admin_user_id', v_id,
-    'email', v_email
-  );
-end;
-$$;
-
-create or replace function public.platform_create_cafe_with_owner(
-  p_super_admin_user_id uuid,
-  p_cafe_slug text,
-  p_cafe_display_name text,
-  p_owner_full_name text,
-  p_owner_phone text,
-  p_owner_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_cafe_id uuid;
-  v_owner_id uuid;
-  v_slug text;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  v_slug := lower(nullif(btrim(p_cafe_slug), ''));
-
-  if v_slug is null then
-    raise exception 'p_cafe_slug is required';
-  end if;
-
-  if nullif(btrim(p_cafe_display_name), '') is null then
-    raise exception 'p_cafe_display_name is required';
-  end if;
-
-  if nullif(btrim(p_owner_full_name), '') is null then
-    raise exception 'p_owner_full_name is required';
-  end if;
-
-  if nullif(btrim(p_owner_phone), '') is null then
-    raise exception 'p_owner_phone is required';
-  end if;
-
-  if nullif(p_owner_password, '') is null then
-    raise exception 'p_owner_password is required';
-  end if;
-
-  insert into ops.cafes (
-    slug,
-    display_name,
-    is_active
-  )
-  values (
-    v_slug,
-    p_cafe_display_name,
-    true
-  )
-  returning id into v_cafe_id;
-
-  insert into ops.owner_users (
-    cafe_id,
-    full_name,
-    phone,
-    password_hash,
-    is_active
-  )
-  values (
-    v_cafe_id,
-    p_owner_full_name,
-    p_owner_phone,
-    extensions.crypt(p_owner_password, extensions.gen_salt('bf')),
-    true
-  )
-  returning id into v_owner_id;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    v_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_create_cafe_with_owner',
-    'cafe',
-    v_cafe_id,
-    jsonb_build_object(
-      'owner_user_id', v_owner_id,
-      'owner_phone', p_owner_phone
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'cafe_id', v_cafe_id,
-    'owner_user_id', v_owner_id,
-    'slug', v_slug
-  );
-end;
-$$;
-
-create or replace function public.platform_reset_owner_password(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid,
-  p_owner_user_id uuid,
-  p_new_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  if nullif(p_new_password, '') is null then
-    raise exception 'p_new_password is required';
-  end if;
-
-  update ops.owner_users
-  set password_hash = extensions.crypt(p_new_password, extensions.gen_salt('bf'))
-  where cafe_id = p_cafe_id
-    and id = p_owner_user_id;
-
-  if not found then
-    raise exception 'owner user not found';
-  end if;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    p_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_reset_owner_password',
-    'owner_user',
-    p_owner_user_id,
-    jsonb_build_object('reset', true)
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'owner_user_id', p_owner_user_id
-  );
-end;
-$$;
-
-drop function if exists public.platform_verify_super_admin_login(text, text);
-
-create function public.platform_verify_super_admin_login(
-  p_email text,
-  p_password text
-)
-returns table (
-  super_admin_user_id uuid,
-  email text,
-  display_name text
-)
-language sql
-security definer
-set search_path = public, platform, pg_catalog
-as $$
-  select
-    u.id as super_admin_user_id,
-    u.email,
-    u.display_name
-  from platform.super_admin_users u
-  where lower(u.email) = lower(trim(p_email))
-    and u.is_active = true
-    and u.password_hash is not null
-    and u.password_hash = extensions.crypt(p_password, u.password_hash)
-  limit 1
 $$;
 
 create or replace function public.ops_create_staff_member_v2(
@@ -4763,7 +3920,7 @@ create table if not exists ops.complaints (
   shift_id uuid not null,
   service_session_id uuid not null,
   order_item_id uuid,
-  station_code text check (station_code in ('barista', 'shisha', 'service')),
+  station_code text check (station_code in ('barista', 'shisha')),
   complaint_kind text not null check (complaint_kind in ('quality_issue', 'wrong_item', 'delay', 'billing_issue', 'other')),
   status text not null default 'open' check (status in ('open', 'resolved', 'dismissed')),
   resolution_kind text check (resolution_kind in ('remake', 'cancel_undelivered', 'waive_delivered', 'dismissed')),
@@ -5690,735 +4847,6 @@ $$;
 create index if not exists idx_owner_users_cafe_owner_label
   on ops.owner_users(cafe_id, owner_label);
 
-create table if not exists platform.cafe_subscriptions (
-  id uuid primary key default gen_random_uuid(),
-  cafe_id uuid not null references ops.cafes(id) on delete cascade,
-  starts_at timestamptz not null,
-  ends_at timestamptz not null,
-  grace_days integer not null default 0 check (grace_days >= 0),
-  status text not null check (status in ('trial', 'active', 'expired', 'suspended')),
-  notes text,
-  created_by_super_admin_user_id uuid not null references platform.super_admin_users(id) on delete restrict,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_platform_cafe_subscriptions_cafe_created
-  on platform.cafe_subscriptions(cafe_id, created_at desc);
-
-create or replace function public.platform_create_cafe_with_owner(
-  p_super_admin_user_id uuid,
-  p_cafe_slug text,
-  p_cafe_display_name text,
-  p_owner_full_name text,
-  p_owner_phone text,
-  p_owner_password text
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_cafe_id uuid;
-  v_owner_id uuid;
-  v_slug text;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  v_slug := lower(nullif(btrim(p_cafe_slug), ''));
-
-  if v_slug is null then
-    raise exception 'p_cafe_slug is required';
-  end if;
-
-  if nullif(btrim(p_cafe_display_name), '') is null then
-    raise exception 'p_cafe_display_name is required';
-  end if;
-
-  if nullif(btrim(p_owner_full_name), '') is null then
-    raise exception 'p_owner_full_name is required';
-  end if;
-
-  if nullif(btrim(p_owner_phone), '') is null then
-    raise exception 'p_owner_phone is required';
-  end if;
-
-  if nullif(p_owner_password, '') is null then
-    raise exception 'p_owner_password is required';
-  end if;
-
-  insert into ops.cafes (
-    slug,
-    display_name,
-    is_active
-  )
-  values (
-    v_slug,
-    btrim(p_cafe_display_name),
-    true
-  )
-  returning id into v_cafe_id;
-
-  insert into ops.owner_users (
-    cafe_id,
-    full_name,
-    phone,
-    password_hash,
-    owner_label,
-    is_active
-  )
-  values (
-    v_cafe_id,
-    btrim(p_owner_full_name),
-    btrim(p_owner_phone),
-    extensions.crypt(p_owner_password, extensions.gen_salt('bf')),
-    'owner',
-    true
-  )
-  returning id into v_owner_id;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    v_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_create_cafe_with_owner',
-    'cafe',
-    v_cafe_id,
-    jsonb_build_object(
-      'owner_user_id', v_owner_id,
-      'owner_phone', btrim(p_owner_phone),
-      'owner_label', 'owner'
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'cafe_id', v_cafe_id,
-    'owner_user_id', v_owner_id,
-    'slug', v_slug
-  );
-end;
-$$;
-
-create or replace function public.platform_list_cafes()
-returns jsonb
-language sql
-security definer
-set search_path = public, ops, platform
-as $$
-  with latest_subscription as (
-    select distinct on (s.cafe_id)
-      s.cafe_id,
-      s.id,
-      s.starts_at,
-      s.ends_at,
-      s.grace_days,
-      s.status,
-      s.notes,
-      s.created_at,
-      s.updated_at,
-      case
-        when s.status = 'suspended' then 'suspended'
-        when now() > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-        else s.status
-      end as effective_status,
-      greatest(0, floor(extract(epoch from (s.ends_at - now()))))::bigint as countdown_seconds
-    from platform.cafe_subscriptions s
-    order by s.cafe_id, s.created_at desc, s.id desc
-  )
-  select coalesce(jsonb_agg(to_jsonb(x) order by x.created_at desc), '[]'::jsonb)
-  from (
-    select
-      c.id,
-      c.slug,
-      c.display_name,
-      c.is_active,
-      c.created_at,
-      (
-        select count(*)::integer
-        from ops.owner_users ou
-        where ou.cafe_id = c.id
-      ) as owner_count,
-      (
-        select count(*)::integer
-        from ops.owner_users ou
-        where ou.cafe_id = c.id
-          and ou.is_active = true
-      ) as active_owner_count,
-      (
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', ou.id,
-            'full_name', ou.full_name,
-            'phone', ou.phone,
-            'owner_label', ou.owner_label,
-            'is_active', ou.is_active,
-            'created_at', ou.created_at
-          ) order by ou.created_at asc
-        )
-        from ops.owner_users ou
-        where ou.cafe_id = c.id
-      ) as owners,
-      case
-        when ls.cafe_id is null then null
-        else jsonb_build_object(
-          'id', ls.id,
-          'starts_at', ls.starts_at,
-          'ends_at', ls.ends_at,
-          'grace_days', ls.grace_days,
-          'status', ls.status,
-          'effective_status', ls.effective_status,
-          'notes', ls.notes,
-          'created_at', ls.created_at,
-          'updated_at', ls.updated_at,
-          'countdown_seconds', ls.countdown_seconds
-        )
-      end as current_subscription
-    from ops.cafes c
-    left join latest_subscription ls
-      on ls.cafe_id = c.id
-  ) x;
-$$;
-
-create or replace function public.platform_list_owner_users(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  return coalesce((
-    select jsonb_agg(
-      jsonb_build_object(
-        'owner_user_id', ou.id,
-        'cafe_id', ou.cafe_id,
-        'full_name', ou.full_name,
-        'phone', ou.phone,
-        'owner_label', ou.owner_label,
-        'is_active', ou.is_active,
-        'created_at', ou.created_at
-      )
-      order by ou.created_at desc
-    )
-    from ops.owner_users ou
-    where ou.cafe_id = p_cafe_id
-  ), '[]'::jsonb);
-end;
-$$;
-
-create or replace function public.platform_create_owner_user(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid,
-  p_full_name text,
-  p_phone text,
-  p_password text,
-  p_owner_label text default 'partner'
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_cafe ops.cafes%rowtype;
-  v_owner_id uuid;
-  v_owner_label text;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  select *
-  into v_cafe
-  from ops.cafes
-  where id = p_cafe_id;
-
-  if not found then
-    raise exception 'cafe not found';
-  end if;
-
-  if nullif(btrim(p_full_name), '') is null then
-    raise exception 'p_full_name is required';
-  end if;
-
-  if nullif(btrim(p_phone), '') is null then
-    raise exception 'p_phone is required';
-  end if;
-
-  if nullif(p_password, '') is null then
-    raise exception 'p_password is required';
-  end if;
-
-  v_owner_label := lower(coalesce(nullif(btrim(p_owner_label), ''), 'partner'));
-
-  if v_owner_label not in ('owner', 'partner') then
-    raise exception 'invalid owner label';
-  end if;
-
-  insert into ops.owner_users (
-    cafe_id,
-    full_name,
-    phone,
-    password_hash,
-    owner_label,
-    is_active
-  )
-  values (
-    p_cafe_id,
-    btrim(p_full_name),
-    btrim(p_phone),
-    extensions.crypt(p_password, extensions.gen_salt('bf')),
-    v_owner_label,
-    true
-  )
-  returning id into v_owner_id;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    p_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_create_owner_user',
-    'owner_user',
-    v_owner_id,
-    jsonb_build_object(
-      'phone', btrim(p_phone),
-      'owner_label', v_owner_label
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'owner_user_id', v_owner_id,
-    'owner_label', v_owner_label
-  );
-end;
-$$;
-
-create or replace function public.platform_update_owner_user(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid,
-  p_owner_user_id uuid,
-  p_full_name text default null,
-  p_phone text default null,
-  p_owner_label text default null
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_owner ops.owner_users%rowtype;
-  v_next_full_name text;
-  v_next_phone text;
-  v_next_owner_label text;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  select *
-  into v_owner
-  from ops.owner_users
-  where cafe_id = p_cafe_id
-    and id = p_owner_user_id;
-
-  if not found then
-    raise exception 'owner user not found';
-  end if;
-
-  v_next_full_name := coalesce(nullif(btrim(p_full_name), ''), v_owner.full_name);
-  v_next_phone := coalesce(nullif(btrim(p_phone), ''), v_owner.phone);
-  v_next_owner_label := lower(coalesce(nullif(btrim(p_owner_label), ''), v_owner.owner_label));
-
-  if v_next_owner_label not in ('owner', 'partner') then
-    raise exception 'invalid owner label';
-  end if;
-
-  update ops.owner_users
-  set full_name = v_next_full_name,
-      phone = v_next_phone,
-      owner_label = v_next_owner_label
-  where cafe_id = p_cafe_id
-    and id = p_owner_user_id;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    p_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_update_owner_user',
-    'owner_user',
-    p_owner_user_id,
-    jsonb_build_object(
-      'full_name', v_next_full_name,
-      'phone', v_next_phone,
-      'owner_label', v_next_owner_label
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'owner_user_id', p_owner_user_id,
-    'owner_label', v_next_owner_label
-  );
-end;
-$$;
-
-create or replace function public.platform_set_owner_user_active(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid,
-  p_owner_user_id uuid,
-  p_is_active boolean
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_owner_label text;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  update ops.owner_users
-  set is_active = coalesce(p_is_active, false)
-  where cafe_id = p_cafe_id
-    and id = p_owner_user_id
-  returning owner_label into v_owner_label;
-
-  if not found then
-    raise exception 'owner user not found';
-  end if;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    p_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_set_owner_user_active',
-    'owner_user',
-    p_owner_user_id,
-    jsonb_build_object(
-      'is_active', coalesce(p_is_active, false),
-      'owner_label', v_owner_label
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'owner_user_id', p_owner_user_id,
-    'is_active', coalesce(p_is_active, false)
-  );
-end;
-$$;
-
-create or replace function public.platform_set_cafe_active(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid,
-  p_is_active boolean
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_slug text;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  update ops.cafes
-  set is_active = coalesce(p_is_active, false)
-  where id = p_cafe_id
-  returning slug into v_slug;
-
-  if not found then
-    raise exception 'cafe not found';
-  end if;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    p_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_set_cafe_active',
-    'cafe',
-    p_cafe_id,
-    jsonb_build_object(
-      'slug', v_slug,
-      'is_active', coalesce(p_is_active, false)
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'cafe_id', p_cafe_id,
-    'is_active', coalesce(p_is_active, false)
-  );
-end;
-$$;
-
-create or replace function public.platform_record_cafe_subscription(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid,
-  p_starts_at timestamptz,
-  p_ends_at timestamptz,
-  p_grace_days integer default 0,
-  p_status text default 'active',
-  p_notes text default null
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_subscription_id uuid;
-  v_status text;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  perform 1
-  from ops.cafes
-  where id = p_cafe_id;
-
-  if not found then
-    raise exception 'cafe not found';
-  end if;
-
-  if p_starts_at is null or p_ends_at is null then
-    raise exception 'subscription dates are required';
-  end if;
-
-  if p_ends_at <= p_starts_at then
-    raise exception 'subscription end must be after start';
-  end if;
-
-  if coalesce(p_grace_days, 0) < 0 then
-    raise exception 'grace_days must be >= 0';
-  end if;
-
-  v_status := lower(coalesce(nullif(btrim(p_status), ''), 'active'));
-
-  if v_status not in ('trial', 'active', 'expired', 'suspended') then
-    raise exception 'invalid subscription status';
-  end if;
-
-  insert into platform.cafe_subscriptions (
-    cafe_id,
-    starts_at,
-    ends_at,
-    grace_days,
-    status,
-    notes,
-    created_by_super_admin_user_id,
-    created_at,
-    updated_at
-  )
-  values (
-    p_cafe_id,
-    p_starts_at,
-    p_ends_at,
-    coalesce(p_grace_days, 0),
-    v_status,
-    nullif(btrim(coalesce(p_notes, '')), ''),
-    p_super_admin_user_id,
-    now(),
-    now()
-  )
-  returning id into v_subscription_id;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    p_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_record_cafe_subscription',
-    'cafe_subscription',
-    v_subscription_id,
-    jsonb_build_object(
-      'starts_at', p_starts_at,
-      'ends_at', p_ends_at,
-      'grace_days', coalesce(p_grace_days, 0),
-      'status', v_status,
-      'notes', nullif(btrim(coalesce(p_notes, '')), '')
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'subscription_id', v_subscription_id,
-    'status', v_status
-  );
-end;
-$$;
-
-create or replace function public.platform_list_cafe_subscriptions(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  return coalesce((
-    select jsonb_agg(
-      jsonb_build_object(
-        'id', s.id,
-        'cafe_id', s.cafe_id,
-        'starts_at', s.starts_at,
-        'ends_at', s.ends_at,
-        'grace_days', s.grace_days,
-        'status', s.status,
-        'effective_status', case
-          when s.status = 'suspended' then 'suspended'
-          when now() > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-          else s.status
-        end,
-        'notes', s.notes,
-        'created_at', s.created_at,
-        'updated_at', s.updated_at,
-        'countdown_seconds', greatest(0, floor(extract(epoch from (s.ends_at - now()))))::bigint
-      )
-      order by s.created_at desc, s.id desc
-    )
-    from platform.cafe_subscriptions s
-    where s.cafe_id = p_cafe_id
-  ), '[]'::jsonb);
-end;
-$$;
-
 create or replace function public.ops_verify_owner_login(
   p_slug text,
   p_phone text,
@@ -6991,606 +5419,6 @@ end;
 $function$;
 -- <<< 0015_session_label.sql
 
--- >>> 0016_phaseA_platform_portfolio_overview.sql
-begin;
-
-create table if not exists platform.runtime_settings (
-  setting_key text primary key,
-  setting_value_text text,
-  updated_by_super_admin_user_id uuid references platform.super_admin_users(id) on delete set null,
-  updated_at timestamptz not null default now()
-);
-
-create or replace function public.platform_set_database_capacity_bytes(
-  p_super_admin_user_id uuid,
-  p_database_capacity_bytes bigint default null
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_capacity bigint;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  if p_database_capacity_bytes is not null and p_database_capacity_bytes <= 0 then
-    raise exception 'p_database_capacity_bytes must be null or > 0';
-  end if;
-
-  v_capacity := p_database_capacity_bytes;
-
-  if v_capacity is null then
-    delete from platform.runtime_settings
-    where setting_key = 'database_capacity_bytes';
-  else
-    insert into platform.runtime_settings (
-      setting_key,
-      setting_value_text,
-      updated_by_super_admin_user_id,
-      updated_at
-    )
-    values (
-      'database_capacity_bytes',
-      v_capacity::text,
-      p_super_admin_user_id,
-      now()
-    )
-    on conflict (setting_key)
-    do update set
-      setting_value_text = excluded.setting_value_text,
-      updated_by_super_admin_user_id = excluded.updated_by_super_admin_user_id,
-      updated_at = excluded.updated_at;
-  end if;
-
-  return jsonb_build_object(
-    'database_capacity_bytes', v_capacity,
-    'database_capacity_pretty', case when v_capacity is null then null else pg_size_pretty(v_capacity) end
-  );
-end;
-$$;
-
-create or replace function public.platform_dashboard_overview(
-  p_super_admin_user_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_now timestamptz := now();
-  v_today date := timezone('Africa/Cairo', now())::date;
-  v_capacity_bytes bigint := null;
-  v_used_bytes bigint := 0;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  select case
-    when setting_value_text ~ '^[0-9]+$' then setting_value_text::bigint
-    else null
-  end
-  into v_capacity_bytes
-  from platform.runtime_settings
-  where setting_key = 'database_capacity_bytes';
-
-  v_used_bytes := pg_database_size(current_database());
-
-  return (
-    with latest_subscription as (
-      select distinct on (s.cafe_id)
-        s.cafe_id,
-        s.id,
-        s.starts_at,
-        s.ends_at,
-        s.grace_days,
-        s.status,
-        s.notes,
-        s.created_at,
-        s.updated_at,
-        case
-          when s.status = 'suspended' then 'suspended'
-          when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-          else s.status
-        end as effective_status,
-        greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint as countdown_seconds
-      from platform.cafe_subscriptions s
-      order by s.cafe_id, s.created_at desc, s.id desc
-    ),
-    owner_counts as (
-      select
-        ou.cafe_id,
-        count(*)::int as owner_count,
-        count(*) filter (where ou.is_active)::int as active_owner_count,
-        jsonb_agg(
-          jsonb_build_object(
-            'id', ou.id,
-            'full_name', ou.full_name,
-            'phone', ou.phone,
-            'owner_label', ou.owner_label,
-            'is_active', ou.is_active,
-            'created_at', ou.created_at
-          )
-          order by ou.created_at asc
-        ) as owners
-      from ops.owner_users ou
-      group by ou.cafe_id
-    ),
-    open_shift_now as (
-      select
-        s.cafe_id,
-        true as has_open_shift,
-        min(s.business_date) as open_shift_business_date,
-        max(s.opened_at) as open_shift_started_at
-      from ops.shifts s
-      where s.status = 'open'
-      group by s.cafe_id
-    ),
-    shift_days as (
-      select
-        s.cafe_id,
-        count(distinct s.business_date) filter (where s.business_date between v_today - 6 and v_today)::int as usage_days_7,
-        count(distinct s.business_date) filter (where s.business_date between v_today - 29 and v_today)::int as usage_days_30,
-        count(*) filter (where s.business_date = v_today)::int as shifts_today
-      from ops.shifts s
-      group by s.cafe_id
-    ),
-    session_metrics as (
-      select
-        s.cafe_id,
-        count(ss.id) filter (where s.business_date = v_today)::int as sessions_today
-      from ops.shifts s
-      join ops.service_sessions ss
-        on ss.cafe_id = s.cafe_id
-       and ss.shift_id = s.id
-      group by s.cafe_id
-    ),
-    item_metrics as (
-      select
-        s.cafe_id,
-        coalesce(sum((oi.qty_delivered + oi.qty_replacement_delivered)) filter (where s.business_date = v_today), 0)::int as served_qty_today,
-        coalesce(sum((oi.qty_paid + oi.qty_deferred) * oi.unit_price) filter (where s.business_date = v_today), 0)::numeric(12,2) as net_sales_today,
-        coalesce(sum(oi.qty_remade) filter (where s.business_date = v_today), 0)::int as remake_qty_today,
-        coalesce(sum(oi.qty_cancelled) filter (where s.business_date = v_today), 0)::int as cancelled_qty_today
-      from ops.shifts s
-      join ops.order_items oi
-        on oi.cafe_id = s.cafe_id
-       and oi.shift_id = s.id
-      group by s.cafe_id
-    ),
-    complaint_metrics as (
-      select
-        s.cafe_id,
-        count(c.id) filter (where s.business_date = v_today)::int as complaints_today,
-        count(c.id) filter (where c.status = 'open')::int as open_complaints_count
-      from ops.shifts s
-      join ops.complaints c
-        on c.cafe_id = s.cafe_id
-       and c.shift_id = s.id
-      group by s.cafe_id
-    ),
-    active_staff_today as (
-      select
-        s.cafe_id,
-        count(distinct coalesce(a.staff_member_id::text, 'owner:' || a.owner_user_id::text))::int as active_staff_today
-      from ops.shifts s
-      join ops.shift_role_assignments a
-        on a.cafe_id = s.cafe_id
-       and a.shift_id = s.id
-      where s.business_date = v_today
-        and a.is_active = true
-      group by s.cafe_id
-    ),
-    deferred_balances as (
-      select
-        dle.cafe_id,
-        coalesce(sum(
-          case dle.entry_kind
-            when 'debt' then dle.amount
-            when 'repayment' then -dle.amount
-            else 0
-          end
-        ), 0)::numeric(12,2) as deferred_outstanding
-      from ops.deferred_ledger_entries dle
-      group by dle.cafe_id
-    ),
-    last_activity as (
-      select
-        activity.cafe_id,
-        max(activity.activity_at) as last_activity_at
-      from (
-        select cafe_id, max(created_at) as activity_at from ops.audit_events group by cafe_id
-        union all
-        select cafe_id, max(opened_at) as activity_at from ops.shifts group by cafe_id
-        union all
-        select cafe_id, max(opened_at) as activity_at from ops.service_sessions group by cafe_id
-        union all
-        select cafe_id, max(created_at) as activity_at from ops.orders group by cafe_id
-        union all
-        select cafe_id, max(created_at) as activity_at from ops.fulfillment_events group by cafe_id
-        union all
-        select cafe_id, max(created_at) as activity_at from ops.payments group by cafe_id
-        union all
-        select cafe_id, max(created_at) as activity_at from ops.complaints group by cafe_id
-      ) activity
-      group by activity.cafe_id
-    ),
-    portfolio as (
-      select
-        c.id,
-        c.slug,
-        c.display_name,
-        c.is_active,
-        c.created_at,
-        coalesce(oc.owner_count, 0) as owner_count,
-        coalesce(oc.active_owner_count, 0) as active_owner_count,
-        coalesce(oc.owners, '[]'::jsonb) as owners,
-        ls.id as subscription_id,
-        ls.starts_at as subscription_starts_at,
-        ls.ends_at as subscription_ends_at,
-        ls.grace_days as subscription_grace_days,
-        ls.status as subscription_status,
-        ls.effective_status as subscription_effective_status,
-        ls.notes as subscription_notes,
-        ls.created_at as subscription_created_at,
-        ls.updated_at as subscription_updated_at,
-        ls.countdown_seconds as subscription_countdown_seconds,
-        coalesce(os.has_open_shift, false) as has_open_shift,
-        os.open_shift_business_date,
-        os.open_shift_started_at,
-        coalesce(sd.usage_days_7, 0) as usage_days_7,
-        coalesce(sd.usage_days_30, 0) as usage_days_30,
-        coalesce(sd.shifts_today, 0) as shifts_today,
-        coalesce(sm.sessions_today, 0) as sessions_today,
-        coalesce(im.served_qty_today, 0) as served_qty_today,
-        coalesce(im.net_sales_today, 0)::numeric(12,2) as net_sales_today,
-        coalesce(im.remake_qty_today, 0) as remake_qty_today,
-        coalesce(im.cancelled_qty_today, 0) as cancelled_qty_today,
-        coalesce(cm.complaints_today, 0) as complaints_today,
-        coalesce(cm.open_complaints_count, 0) as open_complaints_count,
-        coalesce(ast.active_staff_today, 0) as active_staff_today,
-        coalesce(db.deferred_outstanding, 0)::numeric(12,2) as deferred_outstanding,
-        la.last_activity_at,
-        case
-          when ls.cafe_id is null then 'none'
-          else ls.effective_status
-        end as subscription_state,
-        case
-          when ls.cafe_id is null then 'trial_or_free'
-          when ls.effective_status = 'active' then 'paid_current'
-          when ls.effective_status = 'expired' then 'overdue'
-          when ls.effective_status = 'suspended' then 'suspended'
-          else 'trial_or_free'
-        end as payment_state,
-        case
-          when coalesce(os.has_open_shift, false) then 'active_now'
-          when coalesce(sd.shifts_today, 0) > 0
-            or coalesce(sm.sessions_today, 0) > 0
-            or coalesce(im.served_qty_today, 0) > 0
-            or coalesce(cm.complaints_today, 0) > 0 then 'active_today'
-          when la.last_activity_at is not null and la.last_activity_at >= v_now - interval '7 days' then 'active_recently'
-          else 'inactive'
-        end as usage_state,
-        array_remove(array[
-          case when c.is_active = false then 'cafe_disabled' end,
-          case when coalesce(oc.active_owner_count, 0) = 0 then 'no_active_owner' end,
-          case when ls.cafe_id is null then 'no_subscription' end,
-          case when ls.effective_status = 'expired'
-            and (coalesce(os.has_open_shift, false) or coalesce(sd.usage_days_7, 0) > 0 or (la.last_activity_at is not null and la.last_activity_at >= v_now - interval '7 days'))
-            then 'expired_but_active' end,
-          case when ls.effective_status = 'suspended'
-            and (coalesce(os.has_open_shift, false) or (la.last_activity_at is not null and la.last_activity_at >= v_now - interval '7 days'))
-            then 'suspended_but_active' end,
-          case when coalesce(os.has_open_shift, false) and os.open_shift_started_at <= v_now - interval '18 hours' then 'open_shift_too_long' end,
-          case when coalesce(cm.open_complaints_count, 0) > 0 then 'open_complaints' end,
-          case when ls.effective_status = 'active'
-            and coalesce(sd.usage_days_7, 0) = 0
-            and c.created_at <= v_now - interval '14 days'
-            then 'paid_but_inactive' end
-        ], null::text) as attention_reasons
-      from ops.cafes c
-      left join owner_counts oc on oc.cafe_id = c.id
-      left join latest_subscription ls on ls.cafe_id = c.id
-      left join open_shift_now os on os.cafe_id = c.id
-      left join shift_days sd on sd.cafe_id = c.id
-      left join session_metrics sm on sm.cafe_id = c.id
-      left join item_metrics im on im.cafe_id = c.id
-      left join complaint_metrics cm on cm.cafe_id = c.id
-      left join active_staff_today ast on ast.cafe_id = c.id
-      left join deferred_balances db on db.cafe_id = c.id
-      left join last_activity la on la.cafe_id = c.id
-    ),
-    attention_queue as (
-      select *
-      from portfolio p
-      where cardinality(p.attention_reasons) > 0
-      order by cardinality(p.attention_reasons) desc, p.has_open_shift desc, p.last_activity_at desc nulls last, p.created_at desc
-      limit 12
-    )
-    select jsonb_build_object(
-      'generated_at', v_now,
-      'database_usage', jsonb_build_object(
-        'used_bytes', v_used_bytes,
-        'used_pretty', pg_size_pretty(v_used_bytes),
-        'capacity_bytes', v_capacity_bytes,
-        'capacity_pretty', case when v_capacity_bytes is null then null else pg_size_pretty(v_capacity_bytes) end,
-        'usage_percent', case when v_capacity_bytes is null or v_capacity_bytes <= 0 then null else round((v_used_bytes::numeric * 100) / v_capacity_bytes::numeric, 2) end,
-        'database_name', current_database()
-      ),
-      'summary', jsonb_build_object(
-        'cafes_total', count(*)::int,
-        'cafes_active', count(*) filter (where p.is_active)::int,
-        'paid_current', count(*) filter (where p.payment_state = 'paid_current')::int,
-        'trial_or_free', count(*) filter (where p.payment_state = 'trial_or_free')::int,
-        'overdue', count(*) filter (where p.payment_state = 'overdue')::int,
-        'suspended', count(*) filter (where p.payment_state = 'suspended')::int,
-        'no_subscription', count(*) filter (where p.subscription_state = 'none')::int,
-        'active_now', count(*) filter (where p.usage_state = 'active_now')::int,
-        'active_today', count(*) filter (where p.usage_state in ('active_now', 'active_today'))::int,
-        'inactive', count(*) filter (where p.usage_state = 'inactive')::int,
-        'needs_attention', count(*) filter (where cardinality(p.attention_reasons) > 0)::int,
-        'net_sales_today', coalesce(sum(p.net_sales_today), 0)::numeric(12,2),
-        'served_qty_today', coalesce(sum(p.served_qty_today), 0)::int,
-        'complaints_today', coalesce(sum(p.complaints_today), 0)::int
-      ),
-      'cafes', coalesce(
-        jsonb_agg(
-          jsonb_build_object(
-            'id', p.id,
-            'slug', p.slug,
-            'display_name', p.display_name,
-            'is_active', p.is_active,
-            'created_at', p.created_at,
-            'owner_count', p.owner_count,
-            'active_owner_count', p.active_owner_count,
-            'owners', p.owners,
-            'current_subscription', case when p.subscription_id is null then null else jsonb_build_object(
-              'id', p.subscription_id,
-              'starts_at', p.subscription_starts_at,
-              'ends_at', p.subscription_ends_at,
-              'grace_days', p.subscription_grace_days,
-              'status', p.subscription_status,
-              'effective_status', p.subscription_effective_status,
-              'notes', p.subscription_notes,
-              'created_at', p.subscription_created_at,
-              'updated_at', p.subscription_updated_at,
-              'countdown_seconds', p.subscription_countdown_seconds
-            ) end,
-            'subscription_state', p.subscription_state,
-            'payment_state', p.payment_state,
-            'usage_state', p.usage_state,
-            'last_activity_at', p.last_activity_at,
-            'has_open_shift', p.has_open_shift,
-            'open_shift_business_date', p.open_shift_business_date,
-            'open_shift_started_at', p.open_shift_started_at,
-            'usage_days_7', p.usage_days_7,
-            'usage_days_30', p.usage_days_30,
-            'shifts_today', p.shifts_today,
-            'sessions_today', p.sessions_today,
-            'served_qty_today', p.served_qty_today,
-            'net_sales_today', p.net_sales_today,
-            'remake_qty_today', p.remake_qty_today,
-            'cancelled_qty_today', p.cancelled_qty_today,
-            'complaints_today', p.complaints_today,
-            'open_complaints_count', p.open_complaints_count,
-            'active_staff_today', p.active_staff_today,
-            'deferred_outstanding', p.deferred_outstanding,
-            'attention_reasons', to_jsonb(p.attention_reasons)
-          )
-          order by p.has_open_shift desc, p.net_sales_today desc, p.created_at desc
-        ),
-        '[]'::jsonb
-      ),
-      'attention_queue', (
-        select coalesce(
-          jsonb_agg(
-            jsonb_build_object(
-              'id', aq.id,
-              'slug', aq.slug,
-              'display_name', aq.display_name,
-              'usage_state', aq.usage_state,
-              'payment_state', aq.payment_state,
-              'last_activity_at', aq.last_activity_at,
-              'attention_reasons', to_jsonb(aq.attention_reasons)
-            )
-            order by cardinality(aq.attention_reasons) desc, aq.last_activity_at desc nulls last
-          ),
-          '[]'::jsonb
-        )
-        from attention_queue aq
-      )
-    )
-    from portfolio p
-  );
-end;
-$$;
-
-commit;
--- <<< 0016_phaseA_platform_portfolio_overview.sql
-
--- >>> 0017_phaseB_platform_cafe_detail.sql
-begin;
-
-create or replace function public.platform_get_cafe_detail(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_cafe ops.cafes%rowtype;
-  v_now timestamptz := now();
-  v_today date := timezone('Africa/Cairo', now())::date;
-  v_result jsonb;
-begin
-  select * into v_admin from platform.super_admin_users where id = p_super_admin_user_id and is_active = true;
-  if not found then raise exception 'active super admin not found'; end if;
-
-  select * into v_cafe from ops.cafes where id = p_cafe_id;
-  if not found then raise exception 'cafe_not_found'; end if;
-
-  with latest_subscription as (
-    select distinct on (s.cafe_id)
-      s.cafe_id, s.id, s.starts_at, s.ends_at, s.grace_days, s.status, s.notes, s.created_at, s.updated_at,
-      case when s.status = 'suspended' then 'suspended' when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired' else s.status end as effective_status,
-      greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint as countdown_seconds
-    from platform.cafe_subscriptions s
-    where s.cafe_id = p_cafe_id
-    order by s.cafe_id, s.created_at desc, s.id desc
-  ), owner_rows as (
-    select ou.id, ou.full_name, ou.phone, ou.owner_label, ou.is_active, ou.created_at
-    from ops.owner_users ou where ou.cafe_id = p_cafe_id order by ou.created_at asc
-  ), last_activity as (
-    select max(activity_at) as last_activity_at from (
-      select max(created_at) as activity_at from ops.audit_events where cafe_id = p_cafe_id
-      union all select max(opened_at) from ops.shifts where cafe_id = p_cafe_id
-      union all select max(opened_at) from ops.service_sessions where cafe_id = p_cafe_id
-      union all select max(created_at) from ops.orders where cafe_id = p_cafe_id
-      union all select max(created_at) from ops.fulfillment_events where cafe_id = p_cafe_id
-      union all select max(created_at) from ops.payments where cafe_id = p_cafe_id
-      union all select max(created_at) from ops.complaints where cafe_id = p_cafe_id
-    ) activities
-  ), open_shift as (
-    select s.id, s.shift_kind, s.business_date, s.opened_at
-    from ops.shifts s where s.cafe_id = p_cafe_id and s.status = 'open'
-    order by s.opened_at desc nulls last limit 1
-  ), shift_today as (
-    select count(*)::int as shifts_count, max(closed_at) as last_closed_at
-    from ops.shifts s where s.cafe_id = p_cafe_id and s.business_date = v_today
-  ), metrics_today as (
-    select
-      coalesce(count(distinct ss.id), 0)::int as sessions_count,
-      coalesce(sum(oi.qty_delivered + oi.qty_replacement_delivered), 0)::int as served_qty,
-      coalesce(sum((oi.qty_paid + oi.qty_deferred) * oi.unit_price), 0)::numeric(12,2) as net_sales,
-      coalesce(sum(oi.qty_remade), 0)::int as remake_qty,
-      coalesce(sum(oi.qty_cancelled), 0)::int as cancelled_qty,
-      coalesce(count(distinct c.id), 0)::int as complaints_count,
-      coalesce(count(distinct case when c.status = 'open' then c.id end), 0)::int as open_complaints_count,
-      coalesce(count(distinct coalesce(sra.staff_member_id::text, 'owner:' || sra.owner_user_id::text)), 0)::int as active_staff_count,
-      coalesce(sum(case when p.payment_kind = 'cash' then p.total_amount else 0 end), 0)::numeric(12,2) as cash_collected,
-      coalesce(sum(case when p.payment_kind = 'deferred' then p.total_amount else 0 end), 0)::numeric(12,2) as deferred_sold,
-      coalesce(sum(case when p.payment_kind = 'repayment' then p.total_amount else 0 end), 0)::numeric(12,2) as repayments_total
-    from ops.shifts s
-    left join ops.service_sessions ss on ss.cafe_id = s.cafe_id and ss.shift_id = s.id
-    left join ops.order_items oi on oi.cafe_id = s.cafe_id and oi.shift_id = s.id
-    left join ops.complaints c on c.cafe_id = s.cafe_id and c.shift_id = s.id
-    left join ops.shift_role_assignments sra on sra.cafe_id = s.cafe_id and sra.shift_id = s.id and sra.is_active = true
-    left join ops.payments p on p.cafe_id = s.cafe_id and p.shift_id = s.id
-    where s.cafe_id = p_cafe_id and s.business_date = v_today
-  ), metrics_7d as (
-    select count(distinct s.business_date)::int as active_days, count(distinct s.id)::int as shifts_count,
-      coalesce(count(distinct ss.id),0)::int as sessions_count,
-      coalesce(sum(oi.qty_delivered + oi.qty_replacement_delivered),0)::int as served_qty,
-      coalesce(sum((oi.qty_paid + oi.qty_deferred) * oi.unit_price),0)::numeric(12,2) as net_sales,
-      coalesce(sum(oi.qty_remade),0)::int as remake_qty,
-      coalesce(sum(oi.qty_cancelled),0)::int as cancelled_qty,
-      coalesce(count(distinct c.id),0)::int as complaints_count
-    from ops.shifts s
-    left join ops.service_sessions ss on ss.cafe_id = s.cafe_id and ss.shift_id = s.id
-    left join ops.order_items oi on oi.cafe_id = s.cafe_id and oi.shift_id = s.id
-    left join ops.complaints c on c.cafe_id = s.cafe_id and c.shift_id = s.id
-    where s.cafe_id = p_cafe_id and s.business_date between v_today - 6 and v_today
-  ), metrics_30d as (
-    select count(distinct s.business_date)::int as active_days, count(distinct s.id)::int as shifts_count,
-      coalesce(count(distinct ss.id),0)::int as sessions_count,
-      coalesce(sum(oi.qty_delivered + oi.qty_replacement_delivered),0)::int as served_qty,
-      coalesce(sum((oi.qty_paid + oi.qty_deferred) * oi.unit_price),0)::numeric(12,2) as net_sales,
-      coalesce(sum(oi.qty_remade),0)::int as remake_qty,
-      coalesce(sum(oi.qty_cancelled),0)::int as cancelled_qty,
-      coalesce(count(distinct c.id),0)::int as complaints_count
-    from ops.shifts s
-    left join ops.service_sessions ss on ss.cafe_id = s.cafe_id and ss.shift_id = s.id
-    left join ops.order_items oi on oi.cafe_id = s.cafe_id and oi.shift_id = s.id
-    left join ops.complaints c on c.cafe_id = s.cafe_id and c.shift_id = s.id
-    where s.cafe_id = p_cafe_id and s.business_date between v_today - 29 and v_today
-  ), deferred_balance as (
-    select coalesce(sum(case dle.entry_kind when 'debt' then dle.amount when 'repayment' then -dle.amount else 0 end),0)::numeric(12,2) as outstanding
-    from ops.deferred_ledger_entries dle where dle.cafe_id = p_cafe_id
-  ), open_sessions as (
-    select count(*)::int as count from ops.service_sessions ss where ss.cafe_id = p_cafe_id and ss.status = 'open'
-  ), active_staff_all as (
-    select count(*)::int as count from ops.staff_members sm where sm.cafe_id = p_cafe_id and sm.is_active = true
-  ), attention as (
-    select array_remove(array[
-      case when v_cafe.is_active = false then 'cafe_disabled' end,
-      case when (select count(*) from owner_rows where is_active = true) = 0 then 'no_active_owner' end,
-      case when (select count(*) from latest_subscription) = 0 then 'no_subscription' end,
-      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'expired') and ((select id from open_shift) is not null or (select active_days from metrics_7d) > 0) then 'expired_but_active' end,
-      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'suspended') and ((select id from open_shift) is not null or (select active_days from metrics_7d) > 0) then 'suspended_but_active' end,
-      case when exists (select 1 from open_shift os where os.opened_at <= v_now - interval '18 hours') then 'open_shift_too_long' end,
-      case when (select open_complaints_count from metrics_today) > 0 then 'open_complaints' end,
-      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'active') and (select active_days from metrics_7d) = 0 and v_cafe.created_at <= v_now - interval '14 days' then 'paid_but_inactive' end
-    ], null::text) as reasons
-  )
-  select jsonb_build_object(
-    'generated_at', v_now,
-    'cafe', jsonb_build_object(
-      'id', v_cafe.id, 'slug', v_cafe.slug, 'display_name', v_cafe.display_name, 'is_active', v_cafe.is_active, 'created_at', v_cafe.created_at,
-      'owner_count', (select count(*)::int from owner_rows),
-      'active_owner_count', (select count(*)::int from owner_rows where is_active = true),
-      'owners', coalesce((select jsonb_agg(jsonb_build_object('id', id, 'full_name', full_name, 'phone', phone, 'owner_label', owner_label, 'is_active', is_active, 'created_at', created_at) order by created_at asc) from owner_rows), '[]'::jsonb)
-    ),
-    'subscription', jsonb_build_object(
-      'current', (select case when ls.id is null then null else jsonb_build_object('id', ls.id, 'starts_at', ls.starts_at, 'ends_at', ls.ends_at, 'grace_days', ls.grace_days, 'status', ls.status, 'effective_status', ls.effective_status, 'notes', ls.notes, 'created_at', ls.created_at, 'updated_at', ls.updated_at, 'countdown_seconds', ls.countdown_seconds) end from latest_subscription ls),
-      'history', coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'starts_at', s.starts_at, 'ends_at', s.ends_at, 'grace_days', s.grace_days, 'status', s.status, 'effective_status', case when s.status = 'suspended' then 'suspended' when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired' else s.status end, 'notes', s.notes, 'created_at', s.created_at, 'updated_at', s.updated_at, 'countdown_seconds', greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint) order by s.created_at desc, s.id desc) from (select * from platform.cafe_subscriptions s where s.cafe_id = p_cafe_id order by s.created_at desc, s.id desc limit 12) s), '[]'::jsonb)
-    ),
-    'usage', jsonb_build_object(
-      'last_activity_at', (select last_activity_at from last_activity),
-      'today', (select jsonb_build_object('business_date', v_today, 'shifts_count', shifts_count, 'sessions_count', sessions_count, 'served_qty', served_qty, 'net_sales', net_sales, 'remake_qty', remake_qty, 'cancelled_qty', cancelled_qty, 'complaints_count', complaints_count, 'open_complaints_count', open_complaints_count, 'active_staff_count', active_staff_count, 'cash_collected', cash_collected, 'deferred_sold', deferred_sold, 'repayments_total', repayments_total) from (select * from shift_today cross join metrics_today) t),
-      'trailing_7d', (select jsonb_build_object('active_days', active_days, 'shifts_count', shifts_count, 'sessions_count', sessions_count, 'served_qty', served_qty, 'net_sales', net_sales, 'remake_qty', remake_qty, 'cancelled_qty', cancelled_qty, 'complaints_count', complaints_count) from metrics_7d),
-      'trailing_30d', (select jsonb_build_object('active_days', active_days, 'shifts_count', shifts_count, 'sessions_count', sessions_count, 'served_qty', served_qty, 'net_sales', net_sales, 'remake_qty', remake_qty, 'cancelled_qty', cancelled_qty, 'complaints_count', complaints_count) from metrics_30d)
-    ),
-    'health', jsonb_build_object(
-      'has_open_shift', exists(select 1 from open_shift),
-      'open_shift', (select case when os.id is null then null else jsonb_build_object('id', os.id, 'shift_kind', os.shift_kind, 'business_date', os.business_date, 'opened_at', os.opened_at) end from open_shift os),
-      'open_sessions_count', (select count from open_sessions),
-      'open_complaints_count', (select open_complaints_count from metrics_today),
-      'deferred_outstanding', (select outstanding from deferred_balance),
-      'active_owner_count', (select count(*)::int from owner_rows where is_active = true),
-      'active_staff_count', (select count from active_staff_all),
-      'last_shift_closed_at', (select max(s.closed_at) from ops.shifts s where s.cafe_id = p_cafe_id and s.status = 'closed'),
-      'attention_reasons', to_jsonb((select reasons from attention))
-    ),
-    'support', jsonb_build_object(
-      'recent_grants', coalesce((select jsonb_agg(jsonb_build_object('id', g.id, 'is_active', g.is_active, 'notes', g.notes, 'expires_at', g.expires_at, 'revoked_at', g.revoked_at, 'created_at', g.created_at) order by g.created_at desc) from (select * from platform.support_access_grants g where g.cafe_id = p_cafe_id order by g.created_at desc limit 10) g), '[]'::jsonb)
-    ),
-    'recent', jsonb_build_object(
-      'shifts', coalesce((select jsonb_agg(jsonb_build_object('id', s.id, 'shift_kind', s.shift_kind, 'business_date', s.business_date, 'status', s.status, 'opened_at', s.opened_at, 'closed_at', s.closed_at, 'snapshot_created_at', ss.created_at, 'snapshot_summary', ss.snapshot_json -> 'summary') order by s.business_date desc, s.opened_at desc nulls last) from (select * from ops.shifts s where s.cafe_id = p_cafe_id order by s.business_date desc, s.opened_at desc nulls last limit 12) s left join ops.shift_snapshots ss on ss.cafe_id = s.cafe_id and ss.shift_id = s.id), '[]'::jsonb),
-      'complaints', coalesce((select jsonb_agg(jsonb_build_object('id', c.id, 'complaint_kind', c.complaint_kind, 'status', c.status, 'resolution_kind', c.resolution_kind, 'requested_quantity', c.requested_quantity, 'resolved_quantity', c.resolved_quantity, 'notes', c.notes, 'created_at', c.created_at, 'resolved_at', c.resolved_at, 'session_label', ss.session_label, 'product_name', mp.product_name) order by c.created_at desc) from (select * from ops.complaints c where c.cafe_id = p_cafe_id order by c.created_at desc limit 12) c left join ops.service_sessions ss on ss.cafe_id = c.cafe_id and ss.id = c.service_session_id left join ops.order_items oi on oi.cafe_id = c.cafe_id and oi.id = c.order_item_id left join ops.menu_products mp on mp.cafe_id = oi.cafe_id and mp.id = oi.product_id), '[]'::jsonb),
-      'audit_events', coalesce((select jsonb_agg(jsonb_build_object('id', a.id, 'actor_type', a.actor_type, 'actor_label', a.actor_label, 'event_code', a.event_code, 'entity_type', a.entity_type, 'entity_id', a.entity_id, 'payload', a.payload, 'created_at', a.created_at) order by a.created_at desc) from (select * from ops.audit_events a where a.cafe_id = p_cafe_id order by a.created_at desc limit 20) a), '[]'::jsonb)
-    )
-  ) into v_result;
-
-  return v_result;
-end;
-$$;
-
-commit;
--- <<< 0017_phaseB_platform_cafe_detail.sql
-
 -- >>> 0018_reconcile_multi_shisha_shift_roles.sql
 begin;
 
@@ -7739,7 +5567,7 @@ create table if not exists ops.order_item_issues (
   service_session_id uuid not null,
   order_item_id uuid not null,
   source_complaint_id uuid,
-  station_code text check (station_code in ('barista', 'shisha', 'service')),
+  station_code text check (station_code in ('barista', 'shisha')),
   issue_kind text not null check (issue_kind in ('quality_issue', 'wrong_item', 'delay', 'billing_issue', 'other')),
   action_kind text not null check (action_kind in ('note', 'remake', 'cancel_undelivered', 'waive_delivered')),
   status text not null default 'logged' check (status in ('logged', 'applied', 'dismissed')),
@@ -8661,1456 +6489,6 @@ $$;
 commit;
 -- <<< 0020_canonical_shift_snapshots_and_time_reports.sql
 
--- >>> 0021_platform_privacy_refactor_and_admin_views.sql
-begin;
-
-create or replace function public.platform_dashboard_overview(
-  p_super_admin_user_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_now timestamptz := now();
-  v_capacity_bytes bigint := null;
-  v_used_bytes bigint := 0;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  select case
-    when setting_value_text ~ '^[0-9]+$' then setting_value_text::bigint
-    else null
-  end
-  into v_capacity_bytes
-  from platform.runtime_settings
-  where setting_key = 'database_capacity_bytes';
-
-  v_used_bytes := pg_database_size(current_database());
-
-  return (
-    with latest_subscription as (
-      select distinct on (s.cafe_id)
-        s.cafe_id,
-        s.id,
-        s.starts_at,
-        s.ends_at,
-        s.grace_days,
-        s.status,
-        s.notes,
-        s.created_at,
-        s.updated_at,
-        case
-          when s.status = 'suspended' then 'suspended'
-          when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-          else s.status
-        end as effective_status,
-        greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint as countdown_seconds
-      from platform.cafe_subscriptions s
-      order by s.cafe_id, s.created_at desc, s.id desc
-    ),
-    owner_counts as (
-      select
-        ou.cafe_id,
-        count(*)::int as owner_count,
-        count(*) filter (where ou.is_active)::int as active_owner_count
-      from ops.owner_users ou
-      group by ou.cafe_id
-    ),
-    open_shift_now as (
-      select
-        s.cafe_id,
-        true as has_open_shift,
-        min(s.business_date) as open_shift_business_date,
-        max(s.opened_at) as open_shift_started_at
-      from ops.shifts s
-      where s.status = 'open'
-      group by s.cafe_id
-    ),
-    last_activity as (
-      select
-        activity.cafe_id,
-        max(activity.activity_at) as last_activity_at
-      from (
-        select cafe_id, max(created_at) as activity_at from ops.audit_events group by cafe_id
-        union all
-        select cafe_id, max(opened_at) as activity_at from ops.shifts group by cafe_id
-        union all
-        select cafe_id, max(opened_at) as activity_at from ops.service_sessions group by cafe_id
-        union all
-        select cafe_id, max(created_at) as activity_at from ops.orders group by cafe_id
-        union all
-        select cafe_id, max(created_at) as activity_at from ops.payments group by cafe_id
-        union all
-        select cafe_id, max(created_at) as activity_at from ops.complaints group by cafe_id
-        union all
-        select cafe_id, max(created_at) as activity_at from ops.order_item_issues group by cafe_id
-      ) activity
-      group by activity.cafe_id
-    ),
-    portfolio as (
-      select
-        c.id,
-        c.slug,
-        c.display_name,
-        c.is_active,
-        c.created_at,
-        coalesce(oc.owner_count, 0) as owner_count,
-        coalesce(oc.active_owner_count, 0) as active_owner_count,
-        ls.id as subscription_id,
-        ls.starts_at as subscription_starts_at,
-        ls.ends_at as subscription_ends_at,
-        ls.grace_days as subscription_grace_days,
-        ls.status as subscription_status,
-        ls.effective_status as subscription_effective_status,
-        ls.notes as subscription_notes,
-        ls.created_at as subscription_created_at,
-        ls.updated_at as subscription_updated_at,
-        ls.countdown_seconds as subscription_countdown_seconds,
-        case
-          when ls.id is null then 'none'
-          else ls.effective_status
-        end as subscription_state,
-        case
-          when ls.id is null then 'trial_or_free'
-          when ls.effective_status = 'suspended' then 'suspended'
-          when ls.effective_status = 'expired' then 'overdue'
-          when ls.effective_status = 'trial' then 'trial_or_free'
-          else 'paid_current'
-        end as payment_state,
-        case
-          when coalesce(os.has_open_shift, false) then 'active_now'
-          when la.last_activity_at is not null and la.last_activity_at >= v_now - interval '24 hours' then 'active_today'
-          when la.last_activity_at is not null and la.last_activity_at >= v_now - interval '7 days' then 'active_recently'
-          else 'inactive'
-        end as usage_state,
-        la.last_activity_at,
-        coalesce(os.has_open_shift, false) as has_open_shift,
-        os.open_shift_business_date,
-        os.open_shift_started_at,
-        array_remove(array[
-          case when c.is_active = false then 'cafe_disabled' end,
-          case when coalesce(oc.active_owner_count, 0) = 0 then 'no_active_owner' end,
-          case when ls.id is null then 'no_subscription' end,
-          case when ls.effective_status = 'expired'
-            and (coalesce(os.has_open_shift, false) or (la.last_activity_at is not null and la.last_activity_at >= v_now - interval '7 days'))
-            then 'expired_but_active'
-          end,
-          case when ls.effective_status = 'suspended'
-            and (coalesce(os.has_open_shift, false) or (la.last_activity_at is not null and la.last_activity_at >= v_now - interval '7 days'))
-            then 'suspended_but_active'
-          end,
-          case when coalesce(os.has_open_shift, false) and os.open_shift_started_at <= v_now - interval '18 hours' then 'open_shift_too_long' end,
-          case when ls.effective_status = 'active'
-            and coalesce(os.has_open_shift, false) = false
-            and (la.last_activity_at is null or la.last_activity_at < v_now - interval '14 days')
-            and c.created_at <= v_now - interval '14 days'
-            then 'paid_but_inactive'
-          end
-        ], null::text) as attention_reasons
-      from ops.cafes c
-      left join owner_counts oc
-        on oc.cafe_id = c.id
-      left join latest_subscription ls
-        on ls.cafe_id = c.id
-      left join open_shift_now os
-        on os.cafe_id = c.id
-      left join last_activity la
-        on la.cafe_id = c.id
-    )
-    select jsonb_build_object(
-      'generated_at', v_now,
-      'database_usage', jsonb_build_object(
-        'used_bytes', v_used_bytes,
-        'used_pretty', pg_size_pretty(v_used_bytes),
-        'capacity_bytes', v_capacity_bytes,
-        'capacity_pretty', case when v_capacity_bytes is null then null else pg_size_pretty(v_capacity_bytes) end,
-        'usage_percent', case when v_capacity_bytes is null or v_capacity_bytes = 0 then null else round((v_used_bytes::numeric / v_capacity_bytes::numeric) * 100, 2) end,
-        'database_name', current_database()
-      ),
-      'summary', jsonb_build_object(
-        'cafes_total', (select count(*)::int from portfolio),
-        'cafes_active', (select count(*)::int from portfolio where is_active),
-        'paid_current', (select count(*)::int from portfolio where payment_state = 'paid_current'),
-        'trial_or_free', (select count(*)::int from portfolio where payment_state = 'trial_or_free'),
-        'overdue', (select count(*)::int from portfolio where payment_state = 'overdue'),
-        'suspended', (select count(*)::int from portfolio where payment_state = 'suspended'),
-        'no_subscription', (select count(*)::int from portfolio where subscription_state = 'none'),
-        'active_now', (select count(*)::int from portfolio where usage_state = 'active_now'),
-        'active_today', (select count(*)::int from portfolio where usage_state = 'active_today'),
-        'inactive', (select count(*)::int from portfolio where usage_state = 'inactive'),
-        'needs_attention', (select count(*)::int from portfolio where coalesce(array_length(attention_reasons, 1), 0) > 0),
-        'open_shifts_now', (select count(*)::int from portfolio where has_open_shift)
-      ),
-      'cafes', coalesce((
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', p.id,
-            'slug', p.slug,
-            'display_name', p.display_name,
-            'is_active', p.is_active,
-            'created_at', p.created_at,
-            'owner_count', p.owner_count,
-            'active_owner_count', p.active_owner_count,
-            'current_subscription', case
-              when p.subscription_id is null then null
-              else jsonb_build_object(
-                'id', p.subscription_id,
-                'starts_at', p.subscription_starts_at,
-                'ends_at', p.subscription_ends_at,
-                'grace_days', p.subscription_grace_days,
-                'status', p.subscription_status,
-                'effective_status', p.subscription_effective_status,
-                'notes', p.subscription_notes,
-                'created_at', p.subscription_created_at,
-                'updated_at', p.subscription_updated_at,
-                'countdown_seconds', p.subscription_countdown_seconds
-              )
-            end,
-            'subscription_state', p.subscription_state,
-            'payment_state', p.payment_state,
-            'usage_state', p.usage_state,
-            'last_activity_at', p.last_activity_at,
-            'has_open_shift', p.has_open_shift,
-            'open_shift_business_date', p.open_shift_business_date,
-            'open_shift_started_at', p.open_shift_started_at,
-            'attention_reasons', to_jsonb(p.attention_reasons)
-          )
-          order by p.last_activity_at desc nulls last, p.created_at desc
-        )
-        from portfolio p
-      ), '[]'::jsonb),
-      'attention_queue', coalesce((
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', p.id,
-            'slug', p.slug,
-            'display_name', p.display_name,
-            'usage_state', p.usage_state,
-            'payment_state', p.payment_state,
-            'last_activity_at', p.last_activity_at,
-            'attention_reasons', to_jsonb(p.attention_reasons)
-          )
-          order by p.last_activity_at desc nulls last, p.created_at desc
-        )
-        from portfolio p
-        where coalesce(array_length(p.attention_reasons, 1), 0) > 0
-      ), '[]'::jsonb)
-    )
-  );
-end;
-$$;
-
-create or replace function public.platform_get_cafe_detail(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_cafe ops.cafes%rowtype;
-  v_now timestamptz := now();
-  v_result jsonb;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  select *
-  into v_cafe
-  from ops.cafes
-  where id = p_cafe_id;
-
-  if not found then
-    raise exception 'cafe_not_found';
-  end if;
-
-  with latest_subscription as (
-    select distinct on (s.cafe_id)
-      s.cafe_id,
-      s.id,
-      s.starts_at,
-      s.ends_at,
-      s.grace_days,
-      s.status,
-      s.notes,
-      s.created_at,
-      s.updated_at,
-      case
-        when s.status = 'suspended' then 'suspended'
-        when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-        else s.status
-      end as effective_status,
-      greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint as countdown_seconds
-    from platform.cafe_subscriptions s
-    where s.cafe_id = p_cafe_id
-    order by s.cafe_id, s.created_at desc, s.id desc
-  ),
-  owner_rows as (
-    select
-      ou.id,
-      ou.full_name,
-      ou.phone,
-      ou.owner_label,
-      ou.is_active,
-      ou.created_at
-    from ops.owner_users ou
-    where ou.cafe_id = p_cafe_id
-    order by ou.created_at asc
-  ),
-  last_activity as (
-    select max(activity_at) as last_activity_at
-    from (
-      select max(created_at) as activity_at from ops.audit_events where cafe_id = p_cafe_id
-      union all
-      select max(opened_at) as activity_at from ops.shifts where cafe_id = p_cafe_id
-      union all
-      select max(opened_at) as activity_at from ops.service_sessions where cafe_id = p_cafe_id
-      union all
-      select max(created_at) as activity_at from ops.orders where cafe_id = p_cafe_id
-      union all
-      select max(created_at) as activity_at from ops.payments where cafe_id = p_cafe_id
-      union all
-      select max(created_at) as activity_at from ops.complaints where cafe_id = p_cafe_id
-      union all
-      select max(created_at) as activity_at from ops.order_item_issues where cafe_id = p_cafe_id
-    ) activity
-  ),
-  open_shift as (
-    select
-      s.id,
-      s.shift_kind,
-      s.business_date,
-      s.opened_at
-    from ops.shifts s
-    where s.cafe_id = p_cafe_id
-      and s.status = 'open'
-    order by s.business_date desc, s.opened_at desc nulls last
-    limit 1
-  ),
-  usage_state as (
-    select case
-      when exists(select 1 from open_shift) then 'active_now'
-      when (select last_activity_at from last_activity) is not null and (select last_activity_at from last_activity) >= v_now - interval '24 hours' then 'active_today'
-      when (select last_activity_at from last_activity) is not null and (select last_activity_at from last_activity) >= v_now - interval '7 days' then 'active_recently'
-      else 'inactive'
-    end as value
-  ),
-  attention as (
-    select array_remove(array[
-      case when v_cafe.is_active = false then 'cafe_disabled' end,
-      case when (select count(*) from owner_rows where is_active = true) = 0 then 'no_active_owner' end,
-      case when (select count(*) from latest_subscription) = 0 then 'no_subscription' end,
-      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'expired')
-        and (exists (select 1 from open_shift) or ((select last_activity_at from last_activity) is not null and (select last_activity_at from last_activity) >= v_now - interval '7 days'))
-        then 'expired_but_active'
-      end,
-      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'suspended')
-        and (exists (select 1 from open_shift) or ((select last_activity_at from last_activity) is not null and (select last_activity_at from last_activity) >= v_now - interval '7 days'))
-        then 'suspended_but_active'
-      end,
-      case when exists (select 1 from open_shift os where os.opened_at <= v_now - interval '18 hours') then 'open_shift_too_long' end,
-      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'active')
-        and not exists (select 1 from open_shift)
-        and ((select last_activity_at from last_activity) is null or (select last_activity_at from last_activity) < v_now - interval '14 days')
-        and v_cafe.created_at <= v_now - interval '14 days'
-        then 'paid_but_inactive'
-      end
-    ], null::text) as reasons
-  )
-  select jsonb_build_object(
-    'generated_at', v_now,
-    'cafe', jsonb_build_object(
-      'id', v_cafe.id,
-      'slug', v_cafe.slug,
-      'display_name', v_cafe.display_name,
-      'is_active', v_cafe.is_active,
-      'created_at', v_cafe.created_at,
-      'owner_count', (select count(*)::int from owner_rows),
-      'active_owner_count', (select count(*)::int from owner_rows where is_active = true),
-      'owners', coalesce((
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', r.id,
-            'full_name', r.full_name,
-            'phone', r.phone,
-            'owner_label', r.owner_label,
-            'is_active', r.is_active,
-            'created_at', r.created_at
-          )
-          order by r.created_at asc
-        )
-        from owner_rows r
-      ), '[]'::jsonb)
-    ),
-    'subscription', jsonb_build_object(
-      'current', (
-        select case
-          when ls.id is null then null
-          else jsonb_build_object(
-            'id', ls.id,
-            'starts_at', ls.starts_at,
-            'ends_at', ls.ends_at,
-            'grace_days', ls.grace_days,
-            'status', ls.status,
-            'effective_status', ls.effective_status,
-            'notes', ls.notes,
-            'created_at', ls.created_at,
-            'updated_at', ls.updated_at,
-            'countdown_seconds', ls.countdown_seconds
-          )
-        end
-        from latest_subscription ls
-      ),
-      'history', coalesce((
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', s.id,
-            'starts_at', s.starts_at,
-            'ends_at', s.ends_at,
-            'grace_days', s.grace_days,
-            'status', s.status,
-            'effective_status', case
-              when s.status = 'suspended' then 'suspended'
-              when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-              else s.status
-            end,
-            'notes', s.notes,
-            'created_at', s.created_at,
-            'updated_at', s.updated_at,
-            'countdown_seconds', greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint
-          )
-          order by s.created_at desc, s.id desc
-        )
-        from (
-          select *
-          from platform.cafe_subscriptions s
-          where s.cafe_id = p_cafe_id
-          order by s.created_at desc, s.id desc
-          limit 12
-        ) s
-      ), '[]'::jsonb)
-    ),
-    'activity', jsonb_build_object(
-      'last_activity_at', (select last_activity_at from last_activity),
-      'usage_state', (select value from usage_state),
-      'has_open_shift', exists(select 1 from open_shift),
-      'open_shift', (
-        select case
-          when os.id is null then null
-          else jsonb_build_object(
-            'id', os.id,
-            'shift_kind', os.shift_kind,
-            'business_date', os.business_date,
-            'opened_at', os.opened_at
-          )
-        end
-        from open_shift os
-      ),
-      'last_shift_closed_at', (
-        select max(s.closed_at)
-        from ops.shifts s
-        where s.cafe_id = p_cafe_id
-          and s.status = 'closed'
-      )
-    ),
-    'billing_follow', jsonb_build_object(
-      'payment_state', case
-        when (select count(*) from latest_subscription) = 0 then 'trial_or_free'
-        when exists (select 1 from latest_subscription ls where ls.effective_status = 'suspended') then 'suspended'
-        when exists (select 1 from latest_subscription ls where ls.effective_status = 'expired') then 'overdue'
-        when exists (select 1 from latest_subscription ls where ls.effective_status = 'trial') then 'trial_or_free'
-        else 'paid_current'
-      end,
-      'current_subscription_effective_status', (select effective_status from latest_subscription limit 1),
-      'subscription_expires_at', (select ends_at from latest_subscription limit 1)
-    ),
-    'attention', jsonb_build_object(
-      'reasons', to_jsonb((select reasons from attention)),
-      'scope', 'administrative_only'
-    )
-  ) into v_result;
-
-  return v_result;
-end;
-$$;
-
-commit;
--- <<< 0021_platform_privacy_refactor_and_admin_views.sql
-
--- >>> 0022_remove_support_grants_and_lock_final_access.sql
-begin;
-
-create or replace function app.has_platform_support_access(
-  p_cafe_id uuid
-)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public, ops, platform, app
-as $$
-  select false
-$$;
-
-create or replace function app.can_access_cafe(
-  p_cafe_id uuid
-)
-returns boolean
-language sql
-stable
-security definer
-set search_path = public, ops, platform, app
-as $$
-  select p_cafe_id is not null
-    and app.current_cafe_id() = p_cafe_id
-$$;
-
-drop function if exists public.platform_grant_support_access(uuid, uuid, text, timestamptz);
-
-comment on table platform.support_access_grants is
-  'legacy archive only after 0022; new support grants are no longer part of the canonical platform access model';
-
-commit;
--- <<< 0022_remove_support_grants_and_lock_final_access.sql
-
--- >>> 0023_platform_subscription_money_follow_and_create_flow.sql
-begin;
-
-alter table platform.cafe_subscriptions
-  add column if not exists amount_paid numeric(12,2) not null default 0;
-
-alter table platform.cafe_subscriptions
-  add column if not exists is_complimentary boolean not null default false;
-
-do $$
-begin
-  if not exists (
-    select 1
-    from pg_constraint
-    where conname = 'chk_platform_cafe_subscriptions_amount_paid_nonnegative'
-  ) then
-    alter table platform.cafe_subscriptions
-      add constraint chk_platform_cafe_subscriptions_amount_paid_nonnegative
-      check (amount_paid >= 0);
-  end if;
-end;
-$$;
-
-drop function if exists public.platform_create_cafe_with_owner(uuid, text, text, text, text, text);
-
-create or replace function public.platform_create_cafe_with_owner(
-  p_super_admin_user_id uuid,
-  p_cafe_slug text,
-  p_cafe_display_name text,
-  p_owner_full_name text,
-  p_owner_phone text,
-  p_owner_password text,
-  p_subscription_starts_at timestamptz default null,
-  p_subscription_ends_at timestamptz default null,
-  p_subscription_grace_days integer default 0,
-  p_subscription_status text default 'trial',
-  p_subscription_amount_paid numeric default 0,
-  p_subscription_is_complimentary boolean default false,
-  p_subscription_notes text default null
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_cafe_id uuid;
-  v_owner_id uuid;
-  v_slug text;
-  v_subscription_id uuid;
-  v_subscription_status text;
-  v_should_create_subscription boolean := p_subscription_starts_at is not null or p_subscription_ends_at is not null;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  v_slug := lower(nullif(btrim(p_cafe_slug), ''));
-
-  if v_slug is null then
-    raise exception 'p_cafe_slug is required';
-  end if;
-
-  if nullif(btrim(p_cafe_display_name), '') is null then
-    raise exception 'p_cafe_display_name is required';
-  end if;
-
-  if nullif(btrim(p_owner_full_name), '') is null then
-    raise exception 'p_owner_full_name is required';
-  end if;
-
-  if nullif(btrim(p_owner_phone), '') is null then
-    raise exception 'p_owner_phone is required';
-  end if;
-
-  if nullif(p_owner_password, '') is null then
-    raise exception 'p_owner_password is required';
-  end if;
-
-  if v_should_create_subscription then
-    if p_subscription_starts_at is null or p_subscription_ends_at is null then
-      raise exception 'subscription dates are required';
-    end if;
-
-    if p_subscription_ends_at <= p_subscription_starts_at then
-      raise exception 'subscription end must be after start';
-    end if;
-
-    if coalesce(p_subscription_grace_days, 0) < 0 then
-      raise exception 'subscription grace_days must be >= 0';
-    end if;
-
-    if coalesce(p_subscription_amount_paid, 0) < 0 then
-      raise exception 'subscription amount_paid must be >= 0';
-    end if;
-
-    v_subscription_status := lower(coalesce(nullif(btrim(p_subscription_status), ''), 'trial'));
-    if v_subscription_status not in ('trial', 'active', 'expired', 'suspended') then
-      raise exception 'invalid subscription status';
-    end if;
-  end if;
-
-  insert into ops.cafes (
-    slug,
-    display_name,
-    is_active
-  )
-  values (
-    v_slug,
-    btrim(p_cafe_display_name),
-    true
-  )
-  returning id into v_cafe_id;
-
-  insert into ops.owner_users (
-    cafe_id,
-    full_name,
-    phone,
-    password_hash,
-    owner_label,
-    is_active
-  )
-  values (
-    v_cafe_id,
-    btrim(p_owner_full_name),
-    btrim(p_owner_phone),
-    extensions.crypt(p_owner_password, extensions.gen_salt('bf')),
-    'owner',
-    true
-  )
-  returning id into v_owner_id;
-
-  if v_should_create_subscription then
-    insert into platform.cafe_subscriptions (
-      cafe_id,
-      starts_at,
-      ends_at,
-      grace_days,
-      status,
-      amount_paid,
-      is_complimentary,
-      notes,
-      created_by_super_admin_user_id,
-      created_at,
-      updated_at
-    )
-    values (
-      v_cafe_id,
-      p_subscription_starts_at,
-      p_subscription_ends_at,
-      coalesce(p_subscription_grace_days, 0),
-      v_subscription_status,
-      coalesce(p_subscription_amount_paid, 0),
-      coalesce(p_subscription_is_complimentary, false),
-      nullif(btrim(coalesce(p_subscription_notes, '')), ''),
-      p_super_admin_user_id,
-      now(),
-      now()
-    )
-    returning id into v_subscription_id;
-  end if;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    v_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_create_cafe_with_owner',
-    'cafe',
-    v_cafe_id,
-    jsonb_build_object(
-      'owner_user_id', v_owner_id,
-      'owner_phone', btrim(p_owner_phone),
-      'owner_label', 'owner',
-      'subscription', case
-        when v_subscription_id is null then null
-        else jsonb_build_object(
-          'subscription_id', v_subscription_id,
-          'starts_at', p_subscription_starts_at,
-          'ends_at', p_subscription_ends_at,
-          'grace_days', coalesce(p_subscription_grace_days, 0),
-          'status', v_subscription_status,
-          'amount_paid', coalesce(p_subscription_amount_paid, 0),
-          'is_complimentary', coalesce(p_subscription_is_complimentary, false),
-          'notes', nullif(btrim(coalesce(p_subscription_notes, '')), '')
-        )
-      end
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'cafe_id', v_cafe_id,
-    'owner_user_id', v_owner_id,
-    'subscription_id', v_subscription_id,
-    'slug', v_slug
-  );
-end;
-$$;
-
-create or replace function public.platform_record_cafe_subscription(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid,
-  p_starts_at timestamptz,
-  p_ends_at timestamptz,
-  p_grace_days integer default 0,
-  p_status text default 'active',
-  p_amount_paid numeric default 0,
-  p_is_complimentary boolean default false,
-  p_notes text default null
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_subscription_id uuid;
-  v_status text;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  perform 1
-  from ops.cafes
-  where id = p_cafe_id;
-
-  if not found then
-    raise exception 'cafe not found';
-  end if;
-
-  if p_starts_at is null or p_ends_at is null then
-    raise exception 'subscription dates are required';
-  end if;
-
-  if p_ends_at <= p_starts_at then
-    raise exception 'subscription end must be after start';
-  end if;
-
-  if coalesce(p_grace_days, 0) < 0 then
-    raise exception 'grace_days must be >= 0';
-  end if;
-
-  if coalesce(p_amount_paid, 0) < 0 then
-    raise exception 'amount_paid must be >= 0';
-  end if;
-
-  v_status := lower(coalesce(nullif(btrim(p_status), ''), 'active'));
-
-  if v_status not in ('trial', 'active', 'expired', 'suspended') then
-    raise exception 'invalid subscription status';
-  end if;
-
-  insert into platform.cafe_subscriptions (
-    cafe_id,
-    starts_at,
-    ends_at,
-    grace_days,
-    status,
-    amount_paid,
-    is_complimentary,
-    notes,
-    created_by_super_admin_user_id,
-    created_at,
-    updated_at
-  )
-  values (
-    p_cafe_id,
-    p_starts_at,
-    p_ends_at,
-    coalesce(p_grace_days, 0),
-    v_status,
-    coalesce(p_amount_paid, 0),
-    coalesce(p_is_complimentary, false),
-    nullif(btrim(coalesce(p_notes, '')), ''),
-    p_super_admin_user_id,
-    now(),
-    now()
-  )
-  returning id into v_subscription_id;
-
-  insert into ops.audit_events (
-    cafe_id,
-    actor_type,
-    actor_label,
-    event_code,
-    entity_type,
-    entity_id,
-    payload
-  )
-  values (
-    p_cafe_id,
-    'super_admin',
-    v_admin.email,
-    'platform_record_cafe_subscription',
-    'cafe_subscription',
-    v_subscription_id,
-    jsonb_build_object(
-      'starts_at', p_starts_at,
-      'ends_at', p_ends_at,
-      'grace_days', coalesce(p_grace_days, 0),
-      'status', v_status,
-      'amount_paid', coalesce(p_amount_paid, 0),
-      'is_complimentary', coalesce(p_is_complimentary, false),
-      'notes', nullif(btrim(coalesce(p_notes, '')), '')
-    )
-  );
-
-  return jsonb_build_object(
-    'ok', true,
-    'subscription_id', v_subscription_id,
-    'status', v_status
-  );
-end;
-$$;
-
-create or replace function public.platform_list_cafes()
-returns jsonb
-language sql
-security definer
-set search_path = public, ops, platform
-as $$
-  with latest_subscription as (
-    select distinct on (s.cafe_id)
-      s.cafe_id,
-      s.id,
-      s.starts_at,
-      s.ends_at,
-      s.grace_days,
-      s.status,
-      s.amount_paid,
-      s.is_complimentary,
-      s.notes,
-      s.created_at,
-      s.updated_at,
-      case
-        when s.status = 'suspended' then 'suspended'
-        when now() > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-        else s.status
-      end as effective_status,
-      greatest(0, floor(extract(epoch from (s.ends_at - now()))))::bigint as countdown_seconds
-    from platform.cafe_subscriptions s
-    order by s.cafe_id, s.created_at desc, s.id desc
-  ),
-  last_activity as (
-    select
-      activity.cafe_id,
-      max(activity.activity_at) as last_activity_at
-    from (
-      select cafe_id, max(created_at) as activity_at from ops.audit_events group by cafe_id
-      union all
-      select cafe_id, max(opened_at) as activity_at from ops.shifts group by cafe_id
-      union all
-      select cafe_id, max(opened_at) as activity_at from ops.service_sessions group by cafe_id
-      union all
-      select cafe_id, max(created_at) as activity_at from ops.orders group by cafe_id
-      union all
-      select cafe_id, max(created_at) as activity_at from ops.payments group by cafe_id
-      union all
-      select cafe_id, max(created_at) as activity_at from ops.complaints group by cafe_id
-      union all
-      select cafe_id, max(created_at) as activity_at from ops.order_item_issues group by cafe_id
-    ) activity
-    group by activity.cafe_id
-  )
-  select coalesce(jsonb_agg(to_jsonb(x) order by x.last_activity_at desc nulls last, x.created_at desc), '[]'::jsonb)
-  from (
-    select
-      c.id,
-      c.slug,
-      c.display_name,
-      c.is_active,
-      c.created_at,
-      la.last_activity_at,
-      (
-        select count(*)::integer
-        from ops.owner_users ou
-        where ou.cafe_id = c.id
-      ) as owner_count,
-      (
-        select count(*)::integer
-        from ops.owner_users ou
-        where ou.cafe_id = c.id
-          and ou.is_active = true
-      ) as active_owner_count,
-      (
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', ou.id,
-            'full_name', ou.full_name,
-            'phone', ou.phone,
-            'owner_label', ou.owner_label,
-            'is_active', ou.is_active,
-            'created_at', ou.created_at
-          ) order by ou.created_at asc
-        )
-        from ops.owner_users ou
-        where ou.cafe_id = c.id
-      ) as owners,
-      case
-        when ls.cafe_id is null then null
-        else jsonb_build_object(
-          'id', ls.id,
-          'starts_at', ls.starts_at,
-          'ends_at', ls.ends_at,
-          'grace_days', ls.grace_days,
-          'status', ls.status,
-          'effective_status', ls.effective_status,
-          'amount_paid', ls.amount_paid,
-          'is_complimentary', ls.is_complimentary,
-          'notes', ls.notes,
-          'created_at', ls.created_at,
-          'updated_at', ls.updated_at,
-          'countdown_seconds', ls.countdown_seconds
-        )
-      end as current_subscription
-    from ops.cafes c
-    left join latest_subscription ls
-      on ls.cafe_id = c.id
-    left join last_activity la
-      on la.cafe_id = c.id
-  ) x;
-$$;
-
-create or replace function public.platform_list_cafe_subscriptions(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  return coalesce((
-    select jsonb_agg(
-      jsonb_build_object(
-        'id', s.id,
-        'cafe_id', s.cafe_id,
-        'starts_at', s.starts_at,
-        'ends_at', s.ends_at,
-        'grace_days', s.grace_days,
-        'status', s.status,
-        'effective_status', case
-          when s.status = 'suspended' then 'suspended'
-          when now() > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-          else s.status
-        end,
-        'amount_paid', s.amount_paid,
-        'is_complimentary', s.is_complimentary,
-        'notes', s.notes,
-        'created_at', s.created_at,
-        'updated_at', s.updated_at,
-        'countdown_seconds', greatest(0, floor(extract(epoch from (s.ends_at - now()))))::bigint
-      )
-      order by s.created_at desc, s.id desc
-    )
-    from platform.cafe_subscriptions s
-    where s.cafe_id = p_cafe_id
-  ), '[]'::jsonb);
-end;
-$$;
-
-create or replace function public.platform_get_cafe_detail(
-  p_super_admin_user_id uuid,
-  p_cafe_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_cafe ops.cafes%rowtype;
-  v_now timestamptz := now();
-  v_result jsonb;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  select *
-  into v_cafe
-  from ops.cafes
-  where id = p_cafe_id;
-
-  if not found then
-    raise exception 'cafe_not_found';
-  end if;
-
-  with latest_subscription as (
-    select distinct on (s.cafe_id)
-      s.cafe_id,
-      s.id,
-      s.starts_at,
-      s.ends_at,
-      s.grace_days,
-      s.status,
-      s.amount_paid,
-      s.is_complimentary,
-      s.notes,
-      s.created_at,
-      s.updated_at,
-      case
-        when s.status = 'suspended' then 'suspended'
-        when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-        else s.status
-      end as effective_status,
-      greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint as countdown_seconds
-    from platform.cafe_subscriptions s
-    where s.cafe_id = p_cafe_id
-    order by s.cafe_id, s.created_at desc, s.id desc
-  ),
-  owner_rows as (
-    select
-      ou.id,
-      ou.full_name,
-      ou.phone,
-      ou.owner_label,
-      ou.is_active,
-      ou.created_at
-    from ops.owner_users ou
-    where ou.cafe_id = p_cafe_id
-    order by ou.created_at asc
-  ),
-  last_activity as (
-    select max(activity_at) as last_activity_at
-    from (
-      select max(created_at) as activity_at from ops.audit_events where cafe_id = p_cafe_id
-      union all
-      select max(opened_at) as activity_at from ops.shifts where cafe_id = p_cafe_id
-      union all
-      select max(opened_at) as activity_at from ops.service_sessions where cafe_id = p_cafe_id
-      union all
-      select max(created_at) as activity_at from ops.orders where cafe_id = p_cafe_id
-      union all
-      select max(created_at) as activity_at from ops.payments where cafe_id = p_cafe_id
-      union all
-      select max(created_at) as activity_at from ops.complaints where cafe_id = p_cafe_id
-      union all
-      select max(created_at) as activity_at from ops.order_item_issues where cafe_id = p_cafe_id
-    ) activity
-  ),
-  open_shift as (
-    select
-      s.id,
-      s.shift_kind,
-      s.business_date,
-      s.opened_at
-    from ops.shifts s
-    where s.cafe_id = p_cafe_id
-      and s.status = 'open'
-    order by s.business_date desc, s.opened_at desc nulls last
-    limit 1
-  ),
-  usage_state as (
-    select case
-      when exists(select 1 from open_shift) then 'active_now'
-      when (select last_activity_at from last_activity) is not null and (select last_activity_at from last_activity) >= v_now - interval '24 hours' then 'active_today'
-      when (select last_activity_at from last_activity) is not null and (select last_activity_at from last_activity) >= v_now - interval '7 days' then 'active_recently'
-      else 'inactive'
-    end as value
-  ),
-  attention as (
-    select array_remove(array[
-      case when v_cafe.is_active = false then 'cafe_disabled' end,
-      case when (select count(*) from owner_rows where is_active = true) = 0 then 'no_active_owner' end,
-      case when (select count(*) from latest_subscription) = 0 then 'no_subscription' end,
-      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'expired')
-        and (exists (select 1 from open_shift) or ((select last_activity_at from last_activity) is not null and (select last_activity_at from last_activity) >= v_now - interval '7 days'))
-        then 'expired_but_active'
-      end,
-      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'suspended')
-        and (exists (select 1 from open_shift) or ((select last_activity_at from last_activity) is not null and (select last_activity_at from last_activity) >= v_now - interval '7 days'))
-        then 'suspended_but_active'
-      end,
-      case when exists (select 1 from open_shift os where os.opened_at <= v_now - interval '18 hours') then 'open_shift_too_long' end,
-      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'active')
-        and not exists (select 1 from open_shift)
-        and ((select last_activity_at from last_activity) is null or (select last_activity_at from last_activity) < v_now - interval '14 days')
-        and v_cafe.created_at <= v_now - interval '14 days'
-        then 'paid_but_inactive'
-      end
-    ], null::text) as reasons
-  )
-  select jsonb_build_object(
-    'generated_at', v_now,
-    'cafe', jsonb_build_object(
-      'id', v_cafe.id,
-      'slug', v_cafe.slug,
-      'display_name', v_cafe.display_name,
-      'is_active', v_cafe.is_active,
-      'created_at', v_cafe.created_at,
-      'owner_count', (select count(*)::int from owner_rows),
-      'active_owner_count', (select count(*)::int from owner_rows where is_active = true),
-      'owners', coalesce((
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', r.id,
-            'full_name', r.full_name,
-            'phone', r.phone,
-            'owner_label', r.owner_label,
-            'is_active', r.is_active,
-            'created_at', r.created_at
-          )
-          order by r.created_at asc
-        )
-        from owner_rows r
-      ), '[]'::jsonb)
-    ),
-    'subscription', jsonb_build_object(
-      'current', (
-        select case
-          when ls.id is null then null
-          else jsonb_build_object(
-            'id', ls.id,
-            'starts_at', ls.starts_at,
-            'ends_at', ls.ends_at,
-            'grace_days', ls.grace_days,
-            'status', ls.status,
-            'effective_status', ls.effective_status,
-            'amount_paid', ls.amount_paid,
-            'is_complimentary', ls.is_complimentary,
-            'notes', ls.notes,
-            'created_at', ls.created_at,
-            'updated_at', ls.updated_at,
-            'countdown_seconds', ls.countdown_seconds
-          )
-        end
-        from latest_subscription ls
-      ),
-      'history', coalesce((
-        select jsonb_agg(
-          jsonb_build_object(
-            'id', s.id,
-            'starts_at', s.starts_at,
-            'ends_at', s.ends_at,
-            'grace_days', s.grace_days,
-            'status', s.status,
-            'effective_status', case
-              when s.status = 'suspended' then 'suspended'
-              when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-              else s.status
-            end,
-            'amount_paid', s.amount_paid,
-            'is_complimentary', s.is_complimentary,
-            'notes', s.notes,
-            'created_at', s.created_at,
-            'updated_at', s.updated_at,
-            'countdown_seconds', greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint
-          )
-          order by s.created_at desc, s.id desc
-        )
-        from (
-          select *
-          from platform.cafe_subscriptions s
-          where s.cafe_id = p_cafe_id
-          order by s.created_at desc, s.id desc
-          limit 12
-        ) s
-      ), '[]'::jsonb)
-    ),
-    'activity', jsonb_build_object(
-      'last_activity_at', (select last_activity_at from last_activity),
-      'usage_state', (select value from usage_state),
-      'has_open_shift', exists(select 1 from open_shift),
-      'open_shift', (
-        select case
-          when os.id is null then null
-          else jsonb_build_object(
-            'id', os.id,
-            'shift_kind', os.shift_kind,
-            'business_date', os.business_date,
-            'opened_at', os.opened_at
-          )
-        end
-        from open_shift os
-      ),
-      'last_shift_closed_at', (
-        select max(s.closed_at)
-        from ops.shifts s
-        where s.cafe_id = p_cafe_id
-          and s.status = 'closed'
-      )
-    ),
-    'billing_follow', jsonb_build_object(
-      'payment_state', case
-        when (select count(*) from latest_subscription) = 0 then 'trial_or_free'
-        when exists (select 1 from latest_subscription ls where ls.effective_status = 'suspended') then 'suspended'
-        when exists (select 1 from latest_subscription ls where ls.effective_status = 'expired') then 'overdue'
-        when exists (select 1 from latest_subscription ls where ls.effective_status = 'trial') then 'trial_or_free'
-        else 'paid_current'
-      end,
-      'current_subscription_effective_status', (select effective_status from latest_subscription limit 1),
-      'subscription_expires_at', (select ends_at from latest_subscription limit 1)
-    ),
-    'attention', jsonb_build_object(
-      'reasons', to_jsonb((select reasons from attention)),
-      'scope', 'administrative_only'
-    )
-  ) into v_result;
-
-  return v_result;
-end;
-$$;
-
-create or replace function public.platform_money_follow_overview(
-  p_super_admin_user_id uuid
-)
-returns jsonb
-language plpgsql
-security definer
-set search_path = public, ops, platform
-as $$
-declare
-  v_admin platform.super_admin_users%rowtype;
-  v_now timestamptz := now();
-  v_result jsonb;
-begin
-  select *
-  into v_admin
-  from platform.super_admin_users
-  where id = p_super_admin_user_id
-    and is_active = true;
-
-  if not found then
-    raise exception 'active super admin not found';
-  end if;
-
-  with latest_subscription as (
-    select distinct on (s.cafe_id)
-      s.cafe_id,
-      s.id,
-      s.starts_at,
-      s.ends_at,
-      s.grace_days,
-      s.status,
-      s.amount_paid,
-      s.is_complimentary,
-      s.notes,
-      s.created_at,
-      case
-        when s.status = 'suspended' then 'suspended'
-        when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-        else s.status
-      end as effective_status,
-      greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint as countdown_seconds
-    from platform.cafe_subscriptions s
-    order by s.cafe_id, s.created_at desc, s.id desc
-  ),
-  last_activity as (
-    select
-      activity.cafe_id,
-      max(activity.activity_at) as last_activity_at
-    from (
-      select cafe_id, max(created_at) as activity_at from ops.audit_events group by cafe_id
-      union all
-      select cafe_id, max(opened_at) as activity_at from ops.shifts group by cafe_id
-      union all
-      select cafe_id, max(opened_at) as activity_at from ops.service_sessions group by cafe_id
-      union all
-      select cafe_id, max(created_at) as activity_at from ops.orders group by cafe_id
-      union all
-      select cafe_id, max(created_at) as activity_at from ops.payments group by cafe_id
-    ) activity
-    group by activity.cafe_id
-  ),
-  open_shift_now as (
-    select s.cafe_id, true as has_open_shift
-    from ops.shifts s
-    where s.status = 'open'
-    group by s.cafe_id
-  ),
-  current_watchlist as (
-    select
-      c.id as cafe_id,
-      c.slug,
-      c.display_name,
-      c.is_active,
-      ls.id as subscription_id,
-      ls.starts_at,
-      ls.ends_at,
-      ls.status,
-      ls.effective_status,
-      ls.amount_paid,
-      ls.is_complimentary,
-      ls.notes,
-      ls.countdown_seconds,
-      la.last_activity_at,
-      coalesce(os.has_open_shift, false) as has_open_shift,
-      case
-        when ls.id is null then 'trial_or_free'
-        when ls.effective_status = 'suspended' then 'suspended'
-        when ls.effective_status = 'expired' then 'overdue'
-        when ls.effective_status = 'trial' then 'trial_or_free'
-        else 'paid_current'
-      end as payment_state
-    from ops.cafes c
-    left join latest_subscription ls on ls.cafe_id = c.id
-    left join last_activity la on la.cafe_id = c.id
-    left join open_shift_now os on os.cafe_id = c.id
-  )
-  select jsonb_build_object(
-    'generated_at', v_now,
-    'summary', jsonb_build_object(
-      'subscriptions_total', (select count(*)::int from platform.cafe_subscriptions),
-      'paid_entries', (select count(*)::int from platform.cafe_subscriptions where is_complimentary = false and amount_paid > 0),
-      'complimentary_entries', (select count(*)::int from platform.cafe_subscriptions where is_complimentary = true),
-      'collected_total', coalesce((select sum(amount_paid) from platform.cafe_subscriptions where is_complimentary = false), 0)::numeric(12,2),
-      'overdue_count', (select count(*)::int from current_watchlist where payment_state = 'overdue'),
-      'due_soon_count', (select count(*)::int from current_watchlist where effective_status in ('active', 'trial') and ends_at <= v_now + interval '7 days' and ends_at >= v_now),
-      'suspended_count', (select count(*)::int from current_watchlist where payment_state = 'suspended')
-    ),
-    'watchlist', coalesce((
-      select jsonb_agg(
-        jsonb_build_object(
-          'cafe_id', w.cafe_id,
-          'slug', w.slug,
-          'display_name', w.display_name,
-          'is_active', w.is_active,
-          'payment_state', w.payment_state,
-          'effective_status', w.effective_status,
-          'ends_at', w.ends_at,
-          'countdown_seconds', w.countdown_seconds,
-          'amount_paid', w.amount_paid,
-          'is_complimentary', w.is_complimentary,
-          'last_activity_at', w.last_activity_at,
-          'has_open_shift', w.has_open_shift,
-          'notes', w.notes
-        )
-        order by w.ends_at asc nulls last, w.last_activity_at desc nulls last
-      )
-      from current_watchlist w
-      where w.payment_state in ('overdue', 'suspended')
-         or (w.effective_status in ('active', 'trial') and w.ends_at <= v_now + interval '7 days')
-    ), '[]'::jsonb),
-    'recent_entries', coalesce((
-      select jsonb_agg(
-        jsonb_build_object(
-          'subscription_id', s.id,
-          'cafe_id', c.id,
-          'slug', c.slug,
-          'display_name', c.display_name,
-          'starts_at', s.starts_at,
-          'ends_at', s.ends_at,
-          'status', s.status,
-          'effective_status', case
-            when s.status = 'suspended' then 'suspended'
-            when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
-            else s.status
-          end,
-          'amount_paid', s.amount_paid,
-          'is_complimentary', s.is_complimentary,
-          'notes', s.notes,
-          'created_at', s.created_at
-        )
-        order by s.created_at desc, s.id desc
-      )
-      from (
-        select *
-        from platform.cafe_subscriptions
-        order by created_at desc, id desc
-        limit 60
-      ) s
-      join ops.cafes c on c.id = s.cafe_id
-    ), '[]'::jsonb)
-  ) into v_result;
-
-  return v_result;
-end;
-$$;
-
-commit;
--- <<< 0023_platform_subscription_money_follow_and_create_flow.sql
-
 -- >>> 0024_staff_employment_status_lifecycle.sql
 begin;
 
@@ -10492,77 +6870,6 @@ create index if not exists idx_idempotency_keys_status
 
 commit;
 -- <<< 0025_ops_idempotency_for_sensitive_mutations.sql
-
--- >>> 0026_platform_support_inbox_and_dashboard_refactor.sql
-begin;
-
-create table if not exists platform.support_messages (
-  id uuid primary key default gen_random_uuid(),
-  cafe_id uuid null references ops.cafes(id) on delete set null,
-  cafe_slug_snapshot text null,
-  cafe_display_name_snapshot text null,
-  sender_name text not null,
-  sender_phone text not null,
-  actor_kind text null,
-  source text not null,
-  page_path text null,
-  issue_type text not null,
-  message text not null,
-  status text not null default 'new',
-  priority text not null default 'normal',
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  closed_at timestamptz null,
-  metadata jsonb not null default '{}'::jsonb,
-  constraint chk_platform_support_messages_source check (source in ('login', 'in_app')),
-  constraint chk_platform_support_messages_status check (status in ('new', 'in_progress', 'closed')),
-  constraint chk_platform_support_messages_priority check (priority in ('low', 'normal', 'high')),
-  constraint chk_platform_support_messages_actor_kind check (actor_kind is null or actor_kind in ('owner', 'partner', 'supervisor', 'waiter', 'barista', 'shisha', 'staff', 'guest'))
-);
-
-create table if not exists platform.support_message_replies (
-  id uuid primary key default gen_random_uuid(),
-  support_message_id uuid not null references platform.support_messages(id) on delete cascade,
-  author_super_admin_user_id uuid not null references platform.super_admin_users(id) on delete cascade,
-  reply_note text not null,
-  created_at timestamptz not null default now()
-);
-
-create index if not exists idx_platform_support_messages_status_created_at
-  on platform.support_messages(status, created_at desc);
-
-create index if not exists idx_platform_support_messages_cafe_id_created_at
-  on platform.support_messages(cafe_id, created_at desc);
-
-create index if not exists idx_platform_support_messages_source_created_at
-  on platform.support_messages(source, created_at desc);
-
-create index if not exists idx_platform_support_message_replies_message_id_created_at
-  on platform.support_message_replies(support_message_id, created_at asc);
-
-create or replace function public.platform_touch_support_message()
-returns trigger
-language plpgsql
-as $$
-begin
-  new.updated_at := now();
-  if new.status = 'closed' and old.status is distinct from 'closed' then
-    new.closed_at := now();
-  elsif new.status <> 'closed' then
-    new.closed_at := null;
-  end if;
-  return new;
-end;
-$$;
-
-drop trigger if exists trg_platform_support_messages_touch on platform.support_messages;
-create trigger trg_platform_support_messages_touch
-before update on platform.support_messages
-for each row
-execute function public.platform_touch_support_message();
-
-commit;
--- <<< 0026_platform_support_inbox_and_dashboard_refactor.sql
 
 -- >>> 0027_weekly_archiving_rollups.sql
 begin;
@@ -14260,37 +10567,12 @@ as $$
   )::uuid
 $$;
 
-create or replace function app.current_super_admin_user_id()
-returns uuid
-language sql
-stable
-set search_path = pg_catalog
-as $$
-  select nullif(pg_catalog.current_setting('platform.current_super_admin_user_id', true), '')::uuid
-$$;
-
 create or replace function ops.generate_session_label()
 returns text
 language sql
 set search_path = pg_catalog
 as $$
-  select 'S-' || pg_catalog.upper(pg_catalog.substr(pg_catalog.replace(public.gen_random_uuid()::text, '-', ''), 1, 6));
-$$;
-
-create or replace function public.platform_touch_support_message()
-returns trigger
-language plpgsql
-set search_path = pg_catalog
-as $$
-begin
-  new.updated_at := pg_catalog.now();
-  if new.status = 'closed' and old.status is distinct from 'closed' then
-    new.closed_at := pg_catalog.now();
-  elsif new.status <> 'closed' then
-    new.closed_at := null;
-  end if;
-  return new;
-end;
+  select 'S-' || pg_catalog.upper(pg_catalog.substr(pg_catalog.replace(gen_random_uuid()::text, '-', ''), 1, 6));
 $$;
 
 commit;
@@ -14784,3 +11066,310 @@ create unique index if not exists uq_owner_users_cafe_phone_trimmed_active
 commit;
 -- <<< 0046_owner_phone_normalization_uniqueness.sql
 
+-- >>> 0047_operational_api_grants.sql
+begin;
+
+grant usage on schema public to anon, authenticated, service_role;
+grant usage on schema app to anon, authenticated, service_role;
+grant usage on schema ops to anon, authenticated, service_role;
+
+grant select, insert, update, delete on all tables in schema ops to authenticated, service_role;
+grant usage, select on all sequences in schema ops to authenticated, service_role;
+
+grant execute on all functions in schema public to anon, authenticated, service_role;
+grant execute on all functions in schema app to anon, authenticated, service_role;
+grant execute on all functions in schema ops to anon, authenticated, service_role;
+
+alter default privileges in schema ops
+  grant select, insert, update, delete on tables to authenticated, service_role;
+
+alter default privileges in schema ops
+  grant usage, select on sequences to authenticated, service_role;
+
+alter default privileges in schema public
+  grant execute on functions to anon, authenticated, service_role;
+
+alter default privileges in schema app
+  grant execute on functions to anon, authenticated, service_role;
+
+alter default privileges in schema ops
+  grant execute on functions to anon, authenticated, service_role;
+
+commit;
+-- <<< 0047_operational_api_grants.sql
+
+
+-- >>> 0048_compound_billing_try_close.sql
+begin;
+
+create or replace function public.ops_try_close_service_session(
+  p_cafe_id uuid,
+  p_service_session_id uuid,
+  p_by_staff_id uuid default null,
+  p_by_owner_id uuid default null,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, ops
+as $$
+declare
+  v_session ops.service_sessions%rowtype;
+  v_waiting integer := 0;
+  v_ready_undelivered integer := 0;
+  v_billable integer := 0;
+begin
+  if (p_by_staff_id is null and p_by_owner_id is null)
+     or (p_by_staff_id is not null and p_by_owner_id is not null) then
+    raise exception 'Exactly one actor is required';
+  end if;
+
+  select *
+  into v_session
+  from ops.service_sessions
+  where cafe_id = p_cafe_id
+    and id = p_service_session_id
+  for update;
+
+  if not found then
+    raise exception 'service_session not found';
+  end if;
+
+  select
+    coalesce(sum(
+      greatest(qty_submitted - least(qty_ready, qty_submitted) - qty_cancelled, 0)
+      + greatest(qty_remade - greatest(qty_ready - least(qty_ready, qty_submitted), 0), 0)
+    ), 0),
+    coalesce(sum(
+      greatest(least(qty_ready, qty_total - qty_cancelled) - qty_delivered, 0)
+      + greatest(qty_ready - least(qty_ready, qty_total - qty_cancelled) - qty_replacement_delivered, 0)
+    ), 0),
+    coalesce(sum(greatest(qty_delivered - qty_paid - qty_deferred - qty_waived, 0)), 0)
+  into v_waiting, v_ready_undelivered, v_billable
+  from ops.order_items
+  where cafe_id = p_cafe_id
+    and service_session_id = p_service_session_id;
+
+  if v_session.status <> 'open' then
+    return jsonb_build_object(
+      'ok', true,
+      'closed', false,
+      'service_session_id', p_service_session_id,
+      'status', v_session.status,
+      'waiting_qty', v_waiting,
+      'ready_undelivered_qty', v_ready_undelivered,
+      'billable_qty', v_billable,
+      'reason', 'already_closed'
+    );
+  end if;
+
+  if v_waiting > 0 or v_ready_undelivered > 0 or v_billable > 0 then
+    return jsonb_build_object(
+      'ok', true,
+      'closed', false,
+      'service_session_id', p_service_session_id,
+      'status', 'open',
+      'waiting_qty', v_waiting,
+      'ready_undelivered_qty', v_ready_undelivered,
+      'billable_qty', v_billable,
+      'reason', 'blocked'
+    );
+  end if;
+
+  update ops.service_sessions
+  set status = 'closed',
+      closed_at = now(),
+      closed_by_staff_id = p_by_staff_id,
+      closed_by_owner_id = p_by_owner_id,
+      notes = coalesce(p_notes, notes)
+  where cafe_id = p_cafe_id
+    and id = p_service_session_id;
+
+  update ops.orders
+  set status = 'completed'
+  where cafe_id = p_cafe_id
+    and service_session_id = p_service_session_id
+    and status <> 'cancelled';
+
+  return jsonb_build_object(
+    'ok', true,
+    'closed', true,
+    'service_session_id', p_service_session_id,
+    'status', 'closed',
+    'waiting_qty', 0,
+    'ready_undelivered_qty', 0,
+    'billable_qty', 0
+  );
+end;
+$$;
+
+create or replace function public.ops_settle_selected_quantities_and_try_close_session(
+  p_cafe_id uuid,
+  p_shift_id uuid,
+  p_service_session_id uuid,
+  p_lines jsonb,
+  p_by_staff_id uuid default null,
+  p_by_owner_id uuid default null,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, ops
+as $$
+declare
+  v_payment jsonb;
+  v_close jsonb;
+begin
+  v_payment := public.ops_settle_selected_quantities(
+    p_cafe_id,
+    p_shift_id,
+    p_service_session_id,
+    p_lines,
+    p_by_staff_id,
+    p_by_owner_id,
+    p_notes
+  );
+
+  v_close := public.ops_try_close_service_session(
+    p_cafe_id,
+    p_service_session_id,
+    p_by_staff_id,
+    p_by_owner_id,
+    p_notes
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'payment_id', v_payment ->> 'payment_id',
+    'total_quantity', coalesce((v_payment ->> 'total_quantity')::integer, 0),
+    'total_amount', coalesce((v_payment ->> 'total_amount')::numeric(12,2), 0),
+    'service_session_id', p_service_session_id,
+    'session_closed', coalesce((v_close ->> 'closed')::boolean, false),
+    'session_status', coalesce(v_close ->> 'status', 'open'),
+    'waiting_qty', coalesce((v_close ->> 'waiting_qty')::integer, 0),
+    'ready_undelivered_qty', coalesce((v_close ->> 'ready_undelivered_qty')::integer, 0),
+    'billable_qty', coalesce((v_close ->> 'billable_qty')::integer, 0)
+  );
+end;
+$$;
+
+create or replace function public.ops_defer_selected_quantities_and_try_close_session(
+  p_cafe_id uuid,
+  p_shift_id uuid,
+  p_service_session_id uuid,
+  p_debtor_name text,
+  p_lines jsonb,
+  p_by_staff_id uuid default null,
+  p_by_owner_id uuid default null,
+  p_notes text default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, ops
+as $$
+declare
+  v_payment jsonb;
+  v_close jsonb;
+begin
+  v_payment := public.ops_defer_selected_quantities(
+    p_cafe_id,
+    p_shift_id,
+    p_service_session_id,
+    p_debtor_name,
+    p_lines,
+    p_by_staff_id,
+    p_by_owner_id,
+    p_notes
+  );
+
+  v_close := public.ops_try_close_service_session(
+    p_cafe_id,
+    p_service_session_id,
+    p_by_staff_id,
+    p_by_owner_id,
+    p_notes
+  );
+
+  return jsonb_build_object(
+    'ok', true,
+    'payment_id', v_payment ->> 'payment_id',
+    'debtor_name', coalesce(v_payment ->> 'debtor_name', p_debtor_name),
+    'total_quantity', coalesce((v_payment ->> 'total_quantity')::integer, 0),
+    'total_amount', coalesce((v_payment ->> 'total_amount')::numeric(12,2), 0),
+    'service_session_id', p_service_session_id,
+    'session_closed', coalesce((v_close ->> 'closed')::boolean, false),
+    'session_status', coalesce(v_close ->> 'status', 'open'),
+    'waiting_qty', coalesce((v_close ->> 'waiting_qty')::integer, 0),
+    'ready_undelivered_qty', coalesce((v_close ->> 'ready_undelivered_qty')::integer, 0),
+    'billable_qty', coalesce((v_close ->> 'billable_qty')::integer, 0)
+  );
+end;
+$$;
+
+commit;
+-- <<< 0048_compound_billing_try_close.sql
+
+-- >>> 0049_reporting_and_idempotency_rls.sql
+begin;
+
+alter table ops.idempotency_keys enable row level security;
+drop policy if exists cafe_access_policy on ops.idempotency_keys;
+create policy cafe_access_policy on ops.idempotency_keys
+for all
+using (app.can_access_cafe(cafe_id))
+with check (app.can_access_cafe(cafe_id));
+
+alter table ops.daily_snapshots enable row level security;
+drop policy if exists cafe_access_policy on ops.daily_snapshots;
+create policy cafe_access_policy on ops.daily_snapshots
+for all
+using (app.can_access_cafe(cafe_id))
+with check (app.can_access_cafe(cafe_id));
+
+alter table ops.weekly_summaries enable row level security;
+drop policy if exists cafe_access_policy on ops.weekly_summaries;
+create policy cafe_access_policy on ops.weekly_summaries
+for all
+using (app.can_access_cafe(cafe_id))
+with check (app.can_access_cafe(cafe_id));
+
+alter table ops.monthly_summaries enable row level security;
+drop policy if exists cafe_access_policy on ops.monthly_summaries;
+create policy cafe_access_policy on ops.monthly_summaries
+for all
+using (app.can_access_cafe(cafe_id))
+with check (app.can_access_cafe(cafe_id));
+
+alter table ops.yearly_summaries enable row level security;
+drop policy if exists cafe_access_policy on ops.yearly_summaries;
+create policy cafe_access_policy on ops.yearly_summaries
+for all
+using (app.can_access_cafe(cafe_id))
+with check (app.can_access_cafe(cafe_id));
+
+alter table ops.archive_execution_approvals enable row level security;
+drop policy if exists cafe_access_policy on ops.archive_execution_approvals;
+create policy cafe_access_policy on ops.archive_execution_approvals
+for all
+using (app.can_access_cafe(cafe_id))
+with check (app.can_access_cafe(cafe_id));
+
+alter table ops.deferred_customer_balances enable row level security;
+drop policy if exists cafe_access_policy on ops.deferred_customer_balances;
+create policy cafe_access_policy on ops.deferred_customer_balances
+for all
+using (app.can_access_cafe(cafe_id))
+with check (app.can_access_cafe(cafe_id));
+
+alter table ops.reporting_maintenance_runs enable row level security;
+drop policy if exists cafe_access_policy on ops.reporting_maintenance_runs;
+create policy cafe_access_policy on ops.reporting_maintenance_runs
+for all
+using (cafe_id is not null and app.can_access_cafe(cafe_id))
+with check (cafe_id is not null and app.can_access_cafe(cafe_id));
+
+commit;
+-- <<< 0049_reporting_and_idempotency_rls.sql

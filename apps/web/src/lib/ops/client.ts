@@ -2,10 +2,10 @@ import type {
   BillingWorkspace,
   ComplaintsWorkspace,
   DashboardWorkspace,
-  OpsNavSummary,
   DeferredCustomerLedgerWorkspace,
   DeferredCustomerSummary,
   MenuWorkspace,
+  OpsNavSummary,
   OwnerOnboardingGuide,
   ReportsWorkspace,
   StationCode,
@@ -15,15 +15,76 @@ import type {
 
 import { apiGet, apiPost } from '@/lib/http/client';
 import { invalidateOpsWorkspaces } from './invalidation';
+import {
+  OPS_SCOPE_BILLING,
+  OPS_SCOPE_COMPLAINTS,
+  OPS_SCOPE_DASHBOARD,
+  OPS_SCOPE_DEFERRED_CUSTOMERS,
+  OPS_SCOPE_DEFERRED_LEDGER,
+  OPS_SCOPE_MENU,
+  OPS_SCOPE_NAV_SUMMARY,
+  OPS_SCOPE_STATION_BARISTA,
+  OPS_SCOPE_STATION_SHISHA,
+  OPS_SCOPE_WAITER,
+  type OpsWorkspaceScope,
+} from './workspaceScopes';
 
 const post = apiPost;
 const get = apiGet;
 
-async function mutate<T>(request: Promise<T>): Promise<T> {
+type MutationOptions = {
+  scopes?: OpsWorkspaceScope[];
+  reason?: string;
+};
+
+type SubmitOrderInput = {
+  serviceSessionId?: string;
+  label?: string;
+  items: Array<{ productId: string; quantity: number }>;
+};
+
+type SubmitOrderResult = {
+  ok: true;
+  orderId: string;
+  sessionId: string;
+  label: string;
+  itemsCount: number;
+};
+
+type BillingMutationResult = {
+  ok: true;
+  paymentId: string;
+  sessionId: string;
+  totalAmount: number;
+  totalQuantity: number;
+  sessionClosed: boolean;
+  sessionStatus: string;
+  waitingQty: number;
+  readyUndeliveredQty: number;
+  billableQty: number;
+};
+
+type DeferredBillingMutationResult = BillingMutationResult & {
+  debtorName: string;
+};
+
+async function mutate<T>(request: Promise<T>, options: MutationOptions = {}): Promise<T> {
   const result = await request;
-  invalidateOpsWorkspaces();
+  if (options.scopes?.length) {
+    invalidateOpsWorkspaces(options.scopes, options.reason);
+  }
   return result;
 }
+
+const WAITER_MENU_SCOPES: OpsWorkspaceScope[] = [OPS_SCOPE_WAITER, OPS_SCOPE_MENU];
+const STATION_SCOPES: OpsWorkspaceScope[] = [OPS_SCOPE_STATION_BARISTA, OPS_SCOPE_STATION_SHISHA];
+const LIVE_RUNTIME_SCOPES: OpsWorkspaceScope[] = [
+  OPS_SCOPE_WAITER,
+  OPS_SCOPE_BILLING,
+  OPS_SCOPE_COMPLAINTS,
+  OPS_SCOPE_DASHBOARD,
+  OPS_SCOPE_NAV_SUMMARY,
+];
 
 export const opsClient = {
   waiterWorkspace: () => post<WaiterWorkspace>('/api/ops/workspaces/waiter'),
@@ -43,27 +104,48 @@ export const opsClient = {
   ownerOnboardingGuide: () => get<OwnerOnboardingGuide>('/api/owner/onboarding/guide'),
 
   openOrResumeSession: (label?: string) =>
-    mutate(post<{ sessionId: string; label: string }>('/api/ops/sessions/open-or-resume', { label })),
+    post<{ sessionId: string; label: string }>('/api/ops/sessions/open-or-resume', { label }),
 
   createOrderWithItems: (input: {
     serviceSessionId: string;
     items: Array<{ productId: string; quantity: number }>;
-  }) => mutate(post<{ ok: true }>('/api/ops/orders/create-with-items', input)),
+  }) => mutate(post<SubmitOrderResult>('/api/ops/orders/create-with-items', input, {
+    idempotency: { scope: 'ops.orders.create-with-items' },
+  }), {
+    scopes: [...WAITER_MENU_SCOPES, ...STATION_SCOPES, OPS_SCOPE_COMPLAINTS, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+    reason: 'order.submitted',
+  }),
+
+  openSessionAndCreateOrder: (input: SubmitOrderInput) => mutate(post<SubmitOrderResult>('/api/ops/orders/open-and-create', input, {
+    idempotency: { scope: 'ops.orders.open-and-create' },
+  }), {
+    scopes: [...WAITER_MENU_SCOPES, ...STATION_SCOPES, OPS_SCOPE_COMPLAINTS, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+    reason: 'order.submitted',
+  }),
 
   markPartialReady: (orderItemId: string, quantity: number) =>
     mutate(post<{ ok: true }>('/api/ops/fulfillment/partial-ready', { orderItemId, quantity }, {
       idempotency: { scope: 'ops.fulfillment.partial-ready' },
-    })),
+    }), {
+      scopes: [...STATION_SCOPES, OPS_SCOPE_WAITER, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+      reason: 'station.partial_ready',
+    }),
 
   markReady: (orderItemId: string, quantity: number) =>
     mutate(post<{ ok: true }>('/api/ops/fulfillment/ready', { orderItemId, quantity }, {
       idempotency: { scope: 'ops.fulfillment.ready' },
-    })),
+    }), {
+      scopes: [...STATION_SCOPES, OPS_SCOPE_WAITER, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+      reason: 'station.ready',
+    }),
 
   requestRemake: (orderItemId: string, quantity: number) =>
     mutate(post<{ ok: true }>('/api/ops/fulfillment/remake', { orderItemId, quantity }, {
       idempotency: { scope: 'ops.fulfillment.remake' },
-    })),
+    }), {
+      scopes: [...STATION_SCOPES, OPS_SCOPE_WAITER, OPS_SCOPE_COMPLAINTS, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+      reason: 'station.remake_requested',
+    }),
 
   createComplaint: (input: {
     mode?: 'general' | 'item';
@@ -73,71 +155,116 @@ export const opsClient = {
     quantity?: number;
     notes?: string;
     action?: 'none' | 'remake' | 'cancel_undelivered' | 'waive_delivered';
-  }) => mutate(post<{ ok: true; complaintId?: string; itemIssueId?: string }>('/api/ops/complaints/create', input)),
+  }) => mutate(post<{ ok: true; complaintId?: string; itemIssueId?: string }>('/api/ops/complaints/create', input), {
+    scopes: [OPS_SCOPE_COMPLAINTS, OPS_SCOPE_WAITER, OPS_SCOPE_BILLING, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+    reason: 'complaint.created',
+  }),
 
   resolveComplaint: (input: {
     complaintId: string;
     resolutionKind: 'resolved' | 'dismissed';
     notes?: string;
-  }) => mutate(post<{ ok: true }>('/api/ops/complaints/resolve', input)),
+  }) => mutate(post<{ ok: true }>('/api/ops/complaints/resolve', input), {
+    scopes: [OPS_SCOPE_COMPLAINTS, OPS_SCOPE_WAITER, OPS_SCOPE_BILLING, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+    reason: 'complaint.updated',
+  }),
 
   deliver: (orderItemId: string, quantity: number) =>
     mutate(post<{ ok: true }>('/api/ops/delivery/deliver', { orderItemId, quantity }, {
       idempotency: { scope: 'ops.delivery.deliver' },
-    })),
+    }), {
+      scopes: [OPS_SCOPE_WAITER, OPS_SCOPE_BILLING, OPS_SCOPE_COMPLAINTS, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+      reason: 'delivery.delivered',
+    }),
 
   settle: (allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    mutate(post<{ ok: true }>('/api/ops/billing/settle', { allocations }, {
-      idempotency: { scope: 'ops.billing.settle' },
-    })),
+    mutate(post<BillingMutationResult>('/api/ops/billing/settle-and-close', { allocations }, {
+      idempotency: { scope: 'ops.billing.settle-and-close' },
+    }), {
+      scopes: LIVE_RUNTIME_SCOPES,
+      reason: 'billing.settled',
+    }),
 
   defer: (debtorName: string, allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    mutate(post<{ ok: true }>('/api/ops/billing/defer', { debtorName, allocations }, {
-      idempotency: { scope: 'ops.billing.defer' },
-    })),
+    mutate(post<DeferredBillingMutationResult>('/api/ops/billing/defer-and-close', { debtorName, allocations }, {
+      idempotency: { scope: 'ops.billing.defer-and-close' },
+    }), {
+      scopes: [...LIVE_RUNTIME_SCOPES, OPS_SCOPE_DEFERRED_CUSTOMERS, OPS_SCOPE_DEFERRED_LEDGER],
+      reason: 'billing.deferred',
+    }),
 
   repay: (debtorName: string, amount: number, notes?: string) =>
     mutate(post<{ ok: true }>('/api/ops/deferred/repay', { debtorName, amount, notes }, {
       idempotency: { scope: 'ops.deferred.repay' },
-    })),
+    }), {
+      scopes: [OPS_SCOPE_DEFERRED_CUSTOMERS, OPS_SCOPE_DEFERRED_LEDGER, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+      reason: 'deferred.repaid',
+    }),
 
   addDeferredDebt: (debtorName: string, amount: number, notes?: string) =>
     mutate(post<{ ok: true }>('/api/ops/deferred/add-debt', { debtorName, amount, notes }, {
       idempotency: { scope: 'ops.deferred.add-debt' },
-    })),
+    }), {
+      scopes: [OPS_SCOPE_DEFERRED_CUSTOMERS, OPS_SCOPE_DEFERRED_LEDGER, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+      reason: 'deferred.debt_added',
+    }),
 
   closeSession: (serviceSessionId: string) =>
-    mutate(post<{ ok: true }>('/api/ops/sessions/close', { serviceSessionId })),
+    mutate(post<{ ok: true }>('/api/ops/sessions/close', { serviceSessionId }), {
+      scopes: [OPS_SCOPE_WAITER, OPS_SCOPE_BILLING, OPS_SCOPE_COMPLAINTS, OPS_SCOPE_DASHBOARD, OPS_SCOPE_NAV_SUMMARY],
+      reason: 'session.closed',
+    }),
 
   createMenuSection: (input: {
     title: string;
     stationCode: StationCode;
-  }) => mutate(post<{ sectionId: string }>('/api/ops/menu/sections/create', input)),
+  }) => mutate(post<{ sectionId: string }>('/api/ops/menu/sections/create', input), {
+    scopes: WAITER_MENU_SCOPES,
+    reason: 'menu.section_created',
+  }),
 
   toggleMenuSection: (sectionId: string, isActive: boolean) =>
-    mutate(post<{ ok: true }>('/api/ops/menu/sections/toggle', { sectionId, isActive })),
+    mutate(post<{ ok: true }>('/api/ops/menu/sections/toggle', { sectionId, isActive }), {
+      scopes: WAITER_MENU_SCOPES,
+      reason: 'menu.section_toggled',
+    }),
 
   updateMenuSection: (input: {
     sectionId: string;
     title: string;
     stationCode: StationCode;
-  }) => mutate(post<{ ok: true }>('/api/ops/menu/sections/update', input)),
+  }) => mutate(post<{ ok: true }>('/api/ops/menu/sections/update', input), {
+    scopes: WAITER_MENU_SCOPES,
+    reason: 'menu.section_updated',
+  }),
 
   reorderMenuSections: (sectionIds: string[]) =>
-    mutate(post<{ ok: true }>('/api/ops/menu/sections/reorder', { sectionIds })),
+    mutate(post<{ ok: true }>('/api/ops/menu/sections/reorder', { sectionIds }), {
+      scopes: WAITER_MENU_SCOPES,
+      reason: 'menu.sections_reordered',
+    }),
 
   deleteMenuSection: (sectionId: string) =>
-    mutate(post<{ ok: true; mode: 'deleted' | 'archived' }>('/api/ops/menu/sections/delete', { sectionId })),
+    mutate(post<{ ok: true; mode: 'deleted' | 'archived' }>('/api/ops/menu/sections/delete', { sectionId }), {
+      scopes: WAITER_MENU_SCOPES,
+      reason: 'menu.section_deleted',
+    }),
 
   createMenuProduct: (input: {
     sectionId: string;
     productName: string;
     stationCode: StationCode;
     unitPrice: number;
-  }) => mutate(post<{ productId: string }>('/api/ops/menu/products/create', input)),
+  }) => mutate(post<{ productId: string }>('/api/ops/menu/products/create', input), {
+    scopes: WAITER_MENU_SCOPES,
+    reason: 'menu.product_created',
+  }),
 
   toggleMenuProduct: (productId: string, isActive: boolean) =>
-    mutate(post<{ ok: true }>('/api/ops/menu/products/toggle', { productId, isActive })),
+    mutate(post<{ ok: true }>('/api/ops/menu/products/toggle', { productId, isActive }), {
+      scopes: WAITER_MENU_SCOPES,
+      reason: 'menu.product_toggled',
+    }),
 
   updateMenuProduct: (input: {
     productId: string;
@@ -145,11 +272,20 @@ export const opsClient = {
     productName: string;
     stationCode: StationCode;
     unitPrice: number;
-  }) => mutate(post<{ ok: true }>('/api/ops/menu/products/update', input)),
+  }) => mutate(post<{ ok: true }>('/api/ops/menu/products/update', input), {
+    scopes: WAITER_MENU_SCOPES,
+    reason: 'menu.product_updated',
+  }),
 
   reorderMenuProducts: (sectionId: string, productIds: string[]) =>
-    mutate(post<{ ok: true }>('/api/ops/menu/products/reorder', { sectionId, productIds })),
+    mutate(post<{ ok: true }>('/api/ops/menu/products/reorder', { sectionId, productIds }), {
+      scopes: WAITER_MENU_SCOPES,
+      reason: 'menu.products_reordered',
+    }),
 
   deleteMenuProduct: (productId: string) =>
-    mutate(post<{ ok: true; mode: 'deleted' | 'archived' }>('/api/ops/menu/products/delete', { productId })),
+    mutate(post<{ ok: true; mode: 'deleted' | 'archived' }>('/api/ops/menu/products/delete', { productId }), {
+      scopes: WAITER_MENU_SCOPES,
+      reason: 'menu.product_deleted',
+    }),
 };

@@ -26,8 +26,9 @@ import {
 } from '@/lib/ops/workspaceScopes';
 import { normalizeNullableStationCode } from '@/lib/ops/stations';
 
-type CreateOrderRequestBody = {
+type OpenAndCreateOrderRequestBody = {
   serviceSessionId?: string;
+  label?: string;
   items?: Array<{ productId?: string; quantity?: number }>;
 };
 
@@ -58,9 +59,11 @@ export async function POST(req: Request) {
   let mutation: BegunIdempotentMutation | null = null;
 
   try {
-    const body = (await req.json().catch(() => ({}))) as CreateOrderRequestBody;
+    const body = (await req.json().catch(() => ({}))) as OpenAndCreateOrderRequestBody;
+    const normalizedServiceSessionId = String(body.serviceSessionId ?? '').trim();
+    const normalizedLabel = String(body.label ?? '').trim();
 
-    if (!body.serviceSessionId || !Array.isArray(body.items) || body.items.length === 0) {
+    if (!Array.isArray(body.items) || body.items.length === 0) {
       throw new Error('INVALID_INPUT');
     }
 
@@ -102,9 +105,10 @@ export async function POST(req: Request) {
 
     requireScopedOrderSelectionAccess(ctx, stationCodes);
 
-    const started = await beginIdempotentMutation(req, ctx, 'ops.orders.create-with-items', {
+    const started = await beginIdempotentMutation(req, ctx, 'ops.orders.open-and-create', {
       shiftId: String(shift.id),
-      serviceSessionId: String(body.serviceSessionId),
+      serviceSessionId: normalizedServiceSessionId || null,
+      label: normalizedLabel || null,
       items,
     });
     if (started.replayResponse) {
@@ -115,16 +119,17 @@ export async function POST(req: Request) {
     const rpc = await callOpsRpc<CreateOrderRpcResult>('ops_create_order_with_items', {
       p_cafe_id: ctx.cafeId,
       p_shift_id: shift.id,
-      p_service_session_id: String(body.serviceSessionId),
+      p_service_session_id: normalizedServiceSessionId || null,
+      p_session_label: normalizedServiceSessionId ? null : normalizedLabel || null,
       p_items: items,
       ...actorRpcParams(ctx, 'p_created_by_staff_id', 'p_created_by_owner_id'),
     }, ctx.databaseKey);
 
     const orderId = String(rpc.order_id ?? '').trim();
-    const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();
-    const sessionLabel = String(rpc.session_label ?? '').trim();
+    const serviceSessionId = String(rpc.service_session_id ?? normalizedServiceSessionId).trim();
+    const sessionLabel = String(rpc.session_label ?? normalizedLabel).trim();
     const itemsCount = Number(rpc.items_count ?? items.length);
-    if (!orderId || !serviceSessionId) {
+    if (!orderId || !serviceSessionId || !sessionLabel) {
       throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
     }
 

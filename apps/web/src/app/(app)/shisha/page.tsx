@@ -7,7 +7,7 @@ import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import type { SessionOrderItem, StationWorkspace, WaiterWorkspace } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
-import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { useOpsCommand, useOpsPendingCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
@@ -15,6 +15,16 @@ import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { useOpsChrome } from '@/lib/ops/chrome';
 import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
+import { OPS_SCOPE_STATION_SHISHA, OPS_SCOPE_WAITER } from '@/lib/ops/workspaceScopes';
+import {
+  patchStationReady,
+  patchStationRemakeRequested,
+  patchWaiterDelivered,
+  patchWaiterOrderSubmitted,
+  patchWaiterReady,
+  patchWaiterRemakeRequested,
+  rebindWaiterSession,
+} from '@/lib/ops/workspacePatches';
 
 export default function ShishaPage() {
   const { can, shift, effectiveRole } = useAuthz();
@@ -30,11 +40,13 @@ export default function ShishaPage() {
 
   const stationLoader = useCallback(() => opsClient.stationWorkspace('shisha'), []);
   const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data: stationData, error: stationError } = useOpsWorkspace<StationWorkspace>(stationLoader, {
+  const { data: stationData, setData: setStationData, error: stationError } = useOpsWorkspace<StationWorkspace>(stationLoader, {
     enabled: Boolean(shift),
+    scopes: [OPS_SCOPE_STATION_SHISHA],
   });
-  const { data: orderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
+  const { data: orderData, setData: setOrderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
+    scopes: [OPS_SCOPE_WAITER],
   });
   const { summary } = useOpsChrome();
 
@@ -55,33 +67,69 @@ export default function ShishaPage() {
   const currentSessionLabel = sessions.find((session) => session.id === effectiveSessionId)?.label ?? '';
   const canManageComplaintActions = can.owner || can.billing;
 
-  const readyCommand = useOpsCommand(
+  const readyCommand = useOpsPendingCommand(
+    (orderItemId: string, _quantity: number) => orderItemId,
     async (orderItemId: string, quantity: number) => {
-      await opsClient.markReady(orderItemId, quantity);
+      const previousStationData = stationData;
+      const previousOrderData = orderData;
+      setStationData((current) => (current ? patchStationReady(current, orderItemId, quantity) : current));
+      setOrderData((current) => (current ? patchWaiterReady(current, orderItemId, quantity) : current));
       setQueueSelection((state) => ({ ...state, [orderItemId]: 1 }));
+      try {
+        await opsClient.markReady(orderItemId, quantity);
+      } catch (commandError) {
+        setStationData(previousStationData);
+        setOrderData(previousOrderData);
+        throw commandError;
+      }
     },
     { onError: setLocalError },
   );
 
-  const deliverCommand = useOpsCommand(
+  const deliverCommand = useOpsPendingCommand(
+    (orderItemId: string, _quantity: number) => orderItemId,
     async (orderItemId: string, quantity: number) => {
-      await opsClient.deliver(orderItemId, quantity);
+      const previousOrderData = orderData;
+      setOrderData((current) => (current ? patchWaiterDelivered(current, orderItemId, quantity) : current));
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
+      try {
+        await opsClient.deliver(orderItemId, quantity);
+      } catch (commandError) {
+        setOrderData(previousOrderData);
+        throw commandError;
+      }
     },
     { onError: setLocalError },
   );
 
-  const remakeCommand = useOpsCommand(
+  const remakeCommand = useOpsPendingCommand(
+    (item: SessionOrderItem, _quantity: number, _notes?: string) => item.orderItemId,
     async (item: SessionOrderItem, quantity: number, notes?: string) => {
-      await opsClient.createComplaint({
-        serviceSessionId: item.serviceSessionId,
-        orderItemId: item.orderItemId,
-        complaintKind: 'quality_issue',
-        quantity,
-        notes,
-        action: 'remake',
-      });
+      const previousStationData = stationData;
+      const previousOrderData = orderData;
+      setOrderData((current) => (current ? patchWaiterRemakeRequested(current, item.orderItemId, quantity) : current));
+      setStationData((current) => (current
+        ? patchStationRemakeRequested(current, {
+            orderItemId: item.orderItemId,
+            quantity,
+            fallback: item,
+          })
+        : current));
       setRemakeSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
+      try {
+        await opsClient.createComplaint({
+          serviceSessionId: item.serviceSessionId,
+          orderItemId: item.orderItemId,
+          complaintKind: 'quality_issue',
+          quantity,
+          notes,
+          action: 'remake',
+        });
+      } catch (commandError) {
+        setStationData(previousStationData);
+        setOrderData(previousOrderData);
+        throw commandError;
+      }
     },
     { onError: setLocalError },
   );
@@ -92,22 +140,55 @@ export default function ShishaPage() {
       if (!draftLines.length) return;
 
       const target = creatingNew || !effectiveSessionId
-        ? await opsClient.openOrResumeSession(label || undefined)
+        ? null
         : {
             sessionId: effectiveSessionId,
             label: orderData.sessions.find((session) => session.id === effectiveSessionId)?.label ?? label,
           };
 
-      setSessionId(target.sessionId);
+      const previousOrderData = orderData;
+      const optimisticSessionId = target?.sessionId ?? `temp-session:${Date.now()}`;
+      const optimisticLabel = target?.label ?? (label.trim() || 'جلسة جديدة');
+      setSessionId(optimisticSessionId);
       setCreatingNew(false);
-
-      await opsClient.createOrderWithItems({
-        serviceSessionId: target.sessionId,
-        items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
-      });
-
+      setOrderData((current) => (current
+        ? patchWaiterOrderSubmitted(current, {
+            serviceSessionId: optimisticSessionId,
+            sessionLabel: optimisticLabel,
+            items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          })
+        : current));
       setDraft({});
       setLabel('');
+
+      try {
+        if (target) {
+          await opsClient.createOrderWithItems({
+            serviceSessionId: target.sessionId,
+            items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          });
+        } else {
+          const created = await opsClient.openSessionAndCreateOrder({
+            label: label || undefined,
+            items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          });
+          setSessionId(created.sessionId);
+          setOrderData((current) => (current ? rebindWaiterSession(current, {
+            fromSessionId: optimisticSessionId,
+            toSessionId: created.sessionId,
+            sessionLabel: created.label,
+          }) : current));
+        }
+      } catch (commandError) {
+        setOrderData(previousOrderData);
+        setDraft(Object.fromEntries(draftLines));
+        if (creatingNew || !effectiveSessionId) {
+          setCreatingNew(true);
+          setSessionId('');
+          setLabel(label);
+        }
+        throw commandError;
+      }
     },
     { onError: setLocalError },
   );
@@ -174,7 +255,7 @@ export default function ShishaPage() {
               disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
               className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
             >
-              {submitCommand.busy ? '...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
+              {submitCommand.busy ? 'جارٍ الإرسال' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
             </button>
           </div>
         </StickyActionBar>
@@ -296,34 +377,40 @@ export default function ShishaPage() {
         <div className="space-y-2">
           {queue.map((item) => {
             const qty = Math.max(1, Math.min(queueSelection[item.orderItemId] ?? 1, item.qtyWaiting));
+            const itemBusy = readyCommand.isPending(item.orderItemId);
             return (
               <div key={item.orderItemId} className="rounded-2xl border border-slate-200 p-3">
                 <div className="flex items-center justify-between gap-2">
                   <div className="font-semibold">{item.sessionLabel} • {item.productName}</div>
-                  {item.qtyWaitingReplacement > 0 ? (
-                    <div className="rounded-xl bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">إعادة مجانية</div>
-                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {itemBusy ? (
+                      <div className="rounded-xl bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">جارٍ التثبيت</div>
+                    ) : null}
+                    {item.qtyWaitingReplacement > 0 ? (
+                      <div className="rounded-xl bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">إعادة مجانية</div>
+                    ) : null}
+                  </div>
                 </div>
                 <div className="mt-1 text-xs text-slate-500">بانتظار {item.qtyWaiting} • أصلي {item.qtyWaitingOriginal} • إعادة مجانية {item.qtyWaitingReplacement}</div>
                 <div className="mt-3 flex items-center justify-between">
-                  <button onClick={() => setQueueQty(item.orderItemId, qty - 1, item.qtyWaiting)} className="h-10 w-10 rounded-2xl border border-slate-200">-</button>
+                  <button disabled={itemBusy} onClick={() => setQueueQty(item.orderItemId, qty - 1, item.qtyWaiting)} className="h-10 w-10 rounded-2xl border border-slate-200 disabled:opacity-40">-</button>
                   <div className="text-lg font-bold">{qty}</div>
-                  <button onClick={() => setQueueQty(item.orderItemId, qty + 1, item.qtyWaiting)} className="h-10 w-10 rounded-2xl bg-slate-900 text-white">+</button>
+                  <button disabled={itemBusy} onClick={() => setQueueQty(item.orderItemId, qty + 1, item.qtyWaiting)} className="h-10 w-10 rounded-2xl bg-slate-900 text-white disabled:opacity-40">+</button>
                 </div>
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
-                    disabled={readyCommand.busy}
+                    disabled={itemBusy}
                     onClick={() => void readyCommand.run(item.orderItemId, qty)}
-                    className="rounded-2xl border border-slate-200 px-3 py-3 font-semibold"
+                    className="rounded-2xl border border-slate-200 px-3 py-3 font-semibold disabled:opacity-40"
                   >
-                    تجهيز المحدد
+                    {itemBusy ? 'جارٍ التثبيت' : 'تجهيز المحدد'}
                   </button>
                   <button
-                    disabled={readyCommand.busy}
+                    disabled={itemBusy}
                     onClick={() => void readyCommand.run(item.orderItemId, item.qtyWaiting)}
-                    className="rounded-2xl bg-slate-900 px-3 py-3 font-semibold text-white"
+                    className="rounded-2xl bg-slate-900 px-3 py-3 font-semibold text-white disabled:opacity-40"
                   >
-                    تجهيز الكل
+                    {itemBusy ? 'جارٍ التثبيت' : 'تجهيز الكل'}
                   </button>
                 </div>
               </div>
@@ -340,7 +427,7 @@ export default function ShishaPage() {
             setReadySelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
           }}
           onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
-          busy={deliverCommand.busy}
+          isBusy={deliverCommand.isPending}
           emptyLabel="لا يوجد شيشة جاهزة للتسليم"
         />
 
@@ -352,8 +439,8 @@ export default function ShishaPage() {
             onChangeQty={(orderItemId, nextQty, maxQty) => {
               setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
             }}
-            onRemake={(item, quantity) => remakeCommand.run(item, quantity)}
-            busy={remakeCommand.busy}
+            onRemake={(item, quantity, notes) => remakeCommand.run(item, quantity, notes)}
+            isBusy={remakeCommand.isPending}
             emptyLabel={effectiveSessionId ? 'لا توجد أصناف شيشة في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
           />
         ) : (

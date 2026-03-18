@@ -1,19 +1,35 @@
 import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/api/ops/_rpc';
 import {
   beginIdempotentMutation,
+  buildMutationPayload,
   type BegunIdempotentMutation,
   completeIdempotentMutation,
   jsonError,
-  ok,
+  mutationOk,
   publishOpsMutation,
   releaseIdempotentMutation,
   requireOpsActorContext,
   requireStationAccess,
 } from '@/app/api/ops/_helpers';
+import {
+  OPS_SCOPE_DASHBOARD,
+  OPS_SCOPE_NAV_SUMMARY,
+  OPS_SCOPE_STATION_BARISTA,
+  OPS_SCOPE_STATION_SHISHA,
+  OPS_SCOPE_WAITER,
+} from '@/lib/ops/workspaceScopes';
 
 type MarkReadyRpcResult = {
   ok?: boolean;
 };
+
+const MUTATION_SCOPES = [
+  OPS_SCOPE_STATION_BARISTA,
+  OPS_SCOPE_STATION_SHISHA,
+  OPS_SCOPE_WAITER,
+  OPS_SCOPE_DASHBOARD,
+  OPS_SCOPE_NAV_SUMMARY,
+] as const;
 
 export async function POST(req: Request) {
   let mutation: BegunIdempotentMutation | null = null;
@@ -55,9 +71,33 @@ export async function POST(req: Request) {
       data: { quantity: normalizedQuantity, stationCode: item.stationCode ?? '' },
     });
 
-    const responseBody = { ok: true };
+    const responseBody = buildMutationPayload({
+      data: {
+        orderItemId: item.id,
+        quantity: normalizedQuantity,
+        stationCode: item.stationCode ?? stationCode,
+      },
+      mutation: {
+        type: 'station.ready',
+        scopes: [...MUTATION_SCOPES],
+        entityId: item.id,
+        shiftId: item.shiftId,
+      },
+    });
     await completeIdempotentMutation(ctx, mutation, responseBody);
-    return ok(responseBody);
+    return mutationOk({
+      data: {
+        orderItemId: item.id,
+        quantity: normalizedQuantity,
+        stationCode: item.stationCode ?? stationCode,
+      },
+      mutation: {
+        type: 'station.ready',
+        scopes: [...MUTATION_SCOPES],
+        entityId: item.id,
+        shiftId: item.shiftId,
+      },
+    });
   } catch (e) {
     if (mutation) {
       try {

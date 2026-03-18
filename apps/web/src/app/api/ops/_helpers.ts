@@ -7,6 +7,7 @@ import { adminOps } from '@/app/api/ops/_server';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { resolveMessage } from '@/lib/messages/catalog';
 import type { StationCode } from '@/lib/ops/types';
+import type { OpsWorkspaceScope } from '@/lib/ops/workspaceScopes';
 
 export type OpsShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
 export type OpsStationCode = 'barista' | 'shisha';
@@ -427,6 +428,40 @@ export function jsonError(error: unknown, status = 400) {
 
 export function ok(data: unknown) {
   return NextResponse.json(data, { status: 200 });
+}
+
+export function buildMutationPayload<T extends Record<string, unknown>>(input: {
+  data?: T;
+  mutation: {
+    type: string;
+    scopes: OpsWorkspaceScope[];
+    entityId?: string | null;
+    shiftId?: string | null;
+  };
+}) {
+  return {
+    ...(input.data ?? ({} as T)),
+    ok: true,
+    mutation: {
+      type: input.mutation.type,
+      scopes: input.mutation.scopes,
+      entityId: input.mutation.entityId ?? null,
+      shiftId: input.mutation.shiftId ?? null,
+      at: new Date().toISOString(),
+    },
+  };
+}
+
+export function mutationOk<T extends Record<string, unknown>>(input: {
+  data?: T;
+  mutation: {
+    type: string;
+    scopes: OpsWorkspaceScope[];
+    entityId?: string | null;
+    shiftId?: string | null;
+  };
+}) {
+  return NextResponse.json(buildMutationPayload(input), { status: 200 });
 }
 
 export function publishOpsMutation(

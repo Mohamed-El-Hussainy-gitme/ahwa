@@ -18,6 +18,7 @@ import type {
   StaffPerformanceRow,
 } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
+import { OPS_SCOPE_REPORTS } from '@/lib/ops/workspaceScopes';
 
 type ReportTab = 'current' | 'day' | 'week' | 'month' | 'year' | 'deferred';
 type DetailTab = 'overview' | 'products' | 'staff' | 'issues';
@@ -423,7 +424,7 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>('current');
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const loader = useCallback(() => opsClient.reportsWorkspace(), []);
-  const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, { enabled: session.user?.baseRole === 'owner' });
+  const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, { enabled: session.user?.baseRole === 'owner', scopes: [OPS_SCOPE_REPORTS] });
   const selectedPeriod = useMemo(
     () => data && (tab === 'day' || tab === 'week' || tab === 'month' || tab === 'year') ? data.periods[tab] : null,
     [data, tab],

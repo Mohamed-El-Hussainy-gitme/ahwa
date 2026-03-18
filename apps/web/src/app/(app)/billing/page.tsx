@@ -7,8 +7,10 @@ import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import type { BillingWorkspace } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
-import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { useOpsPendingCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { StickyActionBar } from '@/ui/StickyActionBar';
+import { OPS_SCOPE_BILLING } from '@/lib/ops/workspaceScopes';
+import { patchBillingSettlement } from '@/lib/ops/workspacePatches';
 
 export default function BillingPage() {
   const { can, shift } = useAuthz();
@@ -18,7 +20,10 @@ export default function BillingPage() {
   const [localError, setLocalError] = useState<string | null>(null);
 
   const loader = useCallback(() => opsClient.billingWorkspace(), []);
-  const { data, error } = useOpsWorkspace<BillingWorkspace>(loader, { enabled: Boolean(shift) });
+  const { data, setData, error } = useOpsWorkspace<BillingWorkspace>(loader, {
+    enabled: Boolean(shift),
+    scopes: [OPS_SCOPE_BILLING],
+  });
 
   const effectiveSessionId = sessionId || data?.sessions[0]?.sessionId || '';
   const current = useMemo(
@@ -34,32 +39,50 @@ export default function BillingPage() {
       .filter((item) => item.quantity > 0);
   }, [current?.items, selectedQty]);
 
-  async function finalizeSessionIfPossible(targetSessionId: string) {
-    if (!targetSessionId) return;
-    try {
-      await opsClient.closeSession(targetSessionId);
-    } catch {
-      // قد تبقى الجلسة مفتوحة لو ما زالت فيها كميات غير منتهية، وهذا طبيعي.
-    }
-  }
 
-  const settleCommand = useOpsCommand(
-    async () => {
-      const currentSessionId = effectiveSessionId;
-      await opsClient.settle(allocations());
+  const settleCommand = useOpsPendingCommand(
+    (targetSessionId: string) => targetSessionId,
+    async (_targetSessionId: string) => {
+      const nextAllocations = allocations();
+      const previousWorkspace = data;
+      setData((currentWorkspace) => (currentWorkspace
+        ? patchBillingSettlement(currentWorkspace, {
+            mode: 'settle',
+            allocations: nextAllocations,
+          })
+        : currentWorkspace));
       setSelectedQty({});
-      await finalizeSessionIfPossible(currentSessionId);
+      try {
+        await opsClient.settle(nextAllocations);
+      } catch (commandError) {
+        setData(previousWorkspace);
+        throw commandError;
+      }
     },
     { onError: setLocalError },
   );
 
-  const deferCommand = useOpsCommand(
-    async () => {
-      const currentSessionId = effectiveSessionId;
-      await opsClient.defer(debtorName, allocations());
+  const deferCommand = useOpsPendingCommand(
+    (targetSessionId: string) => targetSessionId,
+    async (_targetSessionId: string) => {
+      const nextAllocations = allocations();
+      const trimmedDebtorName = debtorName.trim();
+      const previousWorkspace = data;
+      setData((currentWorkspace) => (currentWorkspace
+        ? patchBillingSettlement(currentWorkspace, {
+            mode: 'defer',
+            allocations: nextAllocations,
+            debtorName: trimmedDebtorName,
+          })
+        : currentWorkspace));
       setSelectedQty({});
       setDebtorName('');
-      await finalizeSessionIfPossible(currentSessionId);
+      try {
+        await opsClient.defer(trimmedDebtorName, nextAllocations);
+      } catch (commandError) {
+        setData(previousWorkspace);
+        throw commandError;
+      }
     },
     { onError: setLocalError },
   );
@@ -73,6 +96,7 @@ export default function BillingPage() {
 
   const effectiveError = localError ?? error;
   const busy = settleCommand.busy || deferCommand.busy;
+  const sessionBusy = effectiveSessionId ? settleCommand.isPending(effectiveSessionId) || deferCommand.isPending(effectiveSessionId) : false;
   const selectedAllocations = allocations();
   const selectedQtyTotal = selectedAllocations.reduce((sum, item) => sum + item.quantity, 0);
   const selectedAmountTotal = selectedAllocations.reduce((sum, item) => {
@@ -101,17 +125,17 @@ export default function BillingPage() {
             <div className="grid grid-cols-2 gap-2">
               <button
                 disabled={busy || selectedQtyTotal === 0}
-                onClick={() => void settleCommand.run()}
+                onClick={() => void settleCommand.run(effectiveSessionId)}
                 className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
               >
-                تحصيل المحدد
+                {sessionBusy ? 'جارٍ التحصيل' : 'تحصيل المحدد'}
               </button>
               <button
                 disabled={busy || !debtorName.trim() || selectedQtyTotal === 0}
-                onClick={() => void deferCommand.run()}
+                onClick={() => void deferCommand.run(effectiveSessionId)}
                 className="rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
               >
-                ترحيل المحدد
+                {sessionBusy ? 'جارٍ الترحيل' : 'ترحيل المحدد'}
               </button>
             </div>
           </div>
@@ -124,20 +148,24 @@ export default function BillingPage() {
         </div>
       ) : null}
       <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-        {(data?.sessions ?? []).map((session) => (
-          <button
-            key={session.sessionId}
-            onClick={() => setSessionId(session.sessionId)}
-            className={[
-              'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
-              effectiveSessionId === session.sessionId
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 bg-white',
-            ].join(' ')}
-          >
-            {session.sessionLabel}
-          </button>
-        ))}
+        {(data?.sessions ?? []).map((session) => {
+          const itemBusy = settleCommand.isPending(session.sessionId) || deferCommand.isPending(session.sessionId);
+          return (
+            <button
+              key={session.sessionId}
+              onClick={() => setSessionId(session.sessionId)}
+              className={[
+                'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
+                effectiveSessionId === session.sessionId
+                  ? 'border-slate-900 bg-slate-900 text-white'
+                  : 'border-slate-200 bg-white',
+                itemBusy ? 'opacity-70' : '',
+              ].join(' ')}
+            >
+              {session.sessionLabel}
+            </button>
+          );
+        })}
       </div>
       {!(data?.sessions ?? []).length ? (
         <div className="mb-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
@@ -151,20 +179,22 @@ export default function BillingPage() {
             <div className="mt-1 text-xs text-slate-500">جاهز للحساب {item.qtyBillable} • مُسقط {item.qtyWaived}</div>
             <div className="mt-3 flex items-center justify-between">
               <button
+                disabled={sessionBusy}
                 onClick={() => setQty(item.orderItemId, (selectedQty[item.orderItemId] ?? 0) - 1)}
-                className="h-10 w-10 rounded-2xl border border-slate-200"
+                className="h-10 w-10 rounded-2xl border border-slate-200 disabled:opacity-40"
               >
                 -
               </button>
               <div className="text-lg font-bold">{selectedQty[item.orderItemId] ?? 0}</div>
               <button
+                disabled={sessionBusy}
                 onClick={() =>
                   setQty(
                     item.orderItemId,
                     Math.min((selectedQty[item.orderItemId] ?? 0) + 1, item.qtyBillable),
                   )
                 }
-                className="h-10 w-10 rounded-2xl bg-slate-900 text-white"
+                className="h-10 w-10 rounded-2xl bg-slate-900 text-white disabled:opacity-40"
               >
                 +
               </button>
