@@ -5,6 +5,7 @@ import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
 import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
+import { normalizeCafeSlugForLookup } from '@/lib/cafes/slug';
 
 const Input = z.object({
   cafeSlug: z.string().min(1),
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
     return fail(400, 'INVALID_INPUT');
   }
 
-  const slug = parsed.data.cafeSlug.trim().toLowerCase();
+  const slug = normalizeCafeSlugForLookup(parsed.data.cafeSlug);
 
   let binding = null;
   try {
@@ -71,7 +72,7 @@ export async function POST(req: NextRequest) {
     return fail(409, 'CAFE_BINDING_MISMATCH');
   }
 
-  const resolvedCafeSlug = String(row.cafe_slug ?? binding.slug).trim().toLowerCase();
+  const resolvedCafeSlug = normalizeCafeSlugForLookup(String(row.cafe_slug ?? binding.slug));
   if (resolvedCafeSlug !== binding.slug) {
     return fail(409, 'CAFE_SLUG_MISMATCH');
   }

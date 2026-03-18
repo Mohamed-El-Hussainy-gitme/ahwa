@@ -1,4 +1,5 @@
 import ActivateClient from './ActivateClient';
+import { normalizeCafeSlugForLookup } from '@/lib/cafes/slug';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,5 +10,5 @@ function isPromise<T>(v: unknown): v is Promise<T> {
 }
 export default async function Page({ params }: PageProps) {
   const resolved = isPromise<ParamsObj>(params) ? await params : params;
-  return <ActivateClient cafeSlug={String(resolved.slug ?? '').trim().toLowerCase()} />;
+  return <ActivateClient cafeSlug={normalizeCafeSlugForLookup(String(resolved.slug ?? ''))} />;
 }

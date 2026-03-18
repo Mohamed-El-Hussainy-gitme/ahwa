@@ -39,6 +39,27 @@ export function normalizeDatabaseKeyToEnvToken(databaseKey: string): string {
 }
 
 
+
+export function listConfiguredOperationalDatabaseKeys(): string[] {
+  const keys = new Set<string>();
+
+  for (const name of Object.keys(process.env)) {
+    const match = /^AHWA_OPERATIONAL_DATABASE__([A-Z0-9_]+)__URL$/.exec(name);
+    if (!match) continue;
+
+    const token = match[1]?.trim();
+    if (!token) continue;
+
+    const databaseKey = token.toLowerCase().replace(/_/g, '-');
+    if (!databaseKey) continue;
+    if (!isOperationalDatabaseConfigured(databaseKey)) continue;
+
+    keys.add(databaseKey);
+  }
+
+  return Array.from(keys).sort((a, b) => a.localeCompare(b));
+}
+
 export function getControlPlaneSupabaseUrl(): string {
   return envValue('CONTROL_PLANE_SUPABASE_URL');
 }

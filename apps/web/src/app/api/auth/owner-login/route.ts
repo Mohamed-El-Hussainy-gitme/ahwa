@@ -5,6 +5,7 @@ import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/run
 import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
+import { normalizeCafeSlugForLookup } from '@/lib/cafes/slug';
 
 const Input = z.object({
   phone: z.string().min(1),
@@ -19,7 +20,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'INVALID_INPUT' }, { status: 400 });
   }
 
-  const slug = parsed.data.slug?.trim().toLowerCase() ?? '';
+  const slug = normalizeCafeSlugForLookup(parsed.data.slug);
   if (!slug) {
     return NextResponse.json({ ok: false, error: 'MISSING_CAFE_SLUG' }, { status: 400 });
   }
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'CAFE_BINDING_MISMATCH' }, { status: 409 });
   }
 
-  const resolvedCafeSlug = String(row.cafe_slug ?? binding.slug).trim().toLowerCase();
+  const resolvedCafeSlug = normalizeCafeSlugForLookup(String(row.cafe_slug ?? binding.slug));
   if (resolvedCafeSlug !== binding.slug) {
     return NextResponse.json({ ok: false, error: 'CAFE_SLUG_MISMATCH' }, { status: 409 });
   }

@@ -2,6 +2,8 @@ import 'server-only';
 import type { PostgrestError } from '@supabase/supabase-js';
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import type { PlatformAdminSession } from '@/lib/platform-auth/session';
+import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
+import { canonicalizeCafeSlug } from '@/lib/cafes/slug';
 
 type CreateCafeWithOwnerInput = {
   cafeSlug: string;
@@ -17,11 +19,6 @@ type CreateCafeWithOwnerInput = {
   subscriptionIsComplimentary: boolean;
   subscriptionNotes: string | null;
   databaseKey: string;
-};
-
-type ControlPlaneOperationalDatabaseRow = {
-  database_key?: string | null;
-  is_active?: boolean | null;
 };
 
 type CreatedCafeRow = {
@@ -53,7 +50,7 @@ function normalizeText(value: string | null | undefined): string {
 }
 
 function normalizeSlug(slug: string): string {
-  return normalizeText(slug).toLowerCase();
+  return canonicalizeCafeSlug(slug);
 }
 
 function normalizeDatabaseKey(databaseKey: string): string {
@@ -104,13 +101,8 @@ function ensureSubscriptionInput(input: CreateCafeWithOwnerInput) {
 }
 
 async function assertDatabaseKeyIsActive(databaseKey: string): Promise<void> {
-  const { data, error } = await controlPlaneAdmin().rpc('control_list_operational_databases');
-  if (error) throw error;
-
-  const rows = Array.isArray(data) ? data as ControlPlaneOperationalDatabaseRow[] : [];
-  const found = rows.some((row) => normalizeDatabaseKey(row.database_key ?? '') === databaseKey && row.is_active === true);
-  if (!found) {
-    throw new Error('operational_database_not_found');
+  if (!isOperationalDatabaseConfigured(databaseKey)) {
+    throw new Error(`OPERATIONAL_DATABASE_ENV_NOT_CONFIGURED:${databaseKey}`);
   }
 }
 

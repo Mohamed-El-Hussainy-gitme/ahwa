@@ -2,6 +2,7 @@ import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import LoginClient from './LoginClient';
 import { resolveCafeBySlug } from '@/lib/ops/cafes';
+import { normalizeCafeSlugForLookup } from '@/lib/cafes/slug';
 
 export const dynamic = 'force-dynamic';
 
@@ -14,7 +15,7 @@ function isPromise<T>(v: unknown): v is Promise<T> {
 
 export default async function Page({ params }: PageProps) {
   const resolved = isPromise<ParamsObj>(params) ? await params : params;
-  const slug = String(resolved.slug ?? '').trim().toLowerCase();
+  const slug = normalizeCafeSlugForLookup(String(resolved.slug ?? ''));
   if (!slug) redirect('/login?e=cafe_not_found');
 
   let cafe = null;

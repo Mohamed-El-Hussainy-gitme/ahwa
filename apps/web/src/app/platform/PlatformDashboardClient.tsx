@@ -8,7 +8,7 @@ import {
   extractPlatformApiErrorMessage,
   isPlatformApiOk,
 } from '@/lib/platform-auth/api';
-import { extractCafeListItems } from '@/lib/platform-data';
+import { extractCafeListItems, extractOperationalDatabaseOptions } from '@/lib/platform-data';
 import PlatformPortfolioOverview from './PlatformPortfolioOverview';
 
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'suspended';
@@ -100,7 +100,15 @@ type MoneyFollowResponseData = {
 };
 
 type CafeListResponse = { ok: true; items: CafeRow[] };
-type CreateCafeResponse = { ok: true; data?: { cafe_id?: string } };
+type CreateCafeResponse = { ok: true; data?: { cafe_id?: string; database_key?: string } };
+type OperationalDatabaseOption = {
+  database_key: string;
+  display_name: string;
+  description: string | null;
+  is_active: boolean;
+  is_accepting_new_cafes: boolean;
+  cafe_count: number;
+};
 type MoneyFollowApiResponse = { ok: true; data: MoneyFollowResponseData | null };
 
 type SupportMessageStatus = 'new' | 'in_progress' | 'closed';
@@ -805,6 +813,8 @@ export default function PlatformDashboardClient({ session }: { session: Platform
   const [search, setSearch] = useState('');
   const [cafeStatusFilter, setCafeStatusFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'free' | 'expired' | 'none'>('all');
+  const [loadingDatabases, setLoadingDatabases] = useState(false);
+  const [databaseOptions, setDatabaseOptions] = useState<OperationalDatabaseOption[]>([]);
   const [createCafe, setCreateCafe] = useState({
     cafeSlug: '',
     cafeDisplayName: '',
@@ -813,6 +823,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
     ownerPassword: '',
     ...applyPreset(30, true, 'trial'),
     notes: '',
+    databaseKey: '',
   });
 
   const loadCafes = useCallback(async (preferredCafeId?: string) => {
@@ -839,6 +850,42 @@ export default function PlatformDashboardClient({ session }: { session: Platform
       setError(loadError instanceof Error ? loadError.message : 'LOAD_CAFES_FAILED');
     });
   }, [loadCafes]);
+
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadOperationalDatabases() {
+      setLoadingDatabases(true);
+      try {
+        const res = await fetch('/api/platform/control-plane/operational-databases', { cache: 'no-store' });
+        const json: unknown = await res.json().catch(() => ({}));
+        if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'LOAD_OPERATIONAL_DATABASES_FAILED');
+
+        const items = extractOperationalDatabaseOptions(json)
+          .filter((item) => item.is_active && item.is_accepting_new_cafes);
+
+        if (!active) return;
+
+        setDatabaseOptions(items);
+        setCreateCafe((value) => ({
+          ...value,
+          databaseKey: value.databaseKey && items.some((item) => item.database_key === value.databaseKey)
+            ? value.databaseKey
+            : (items[0]?.database_key ?? ''),
+        }));
+      } catch (loadError) {
+        if (active) {
+          setError(loadError instanceof Error ? loadError.message : 'LOAD_OPERATIONAL_DATABASES_FAILED');
+        }
+      } finally {
+        if (active) setLoadingDatabases(false);
+      }
+    }
+
+    void loadOperationalDatabases();
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -901,12 +948,13 @@ export default function PlatformDashboardClient({ session }: { session: Platform
           subscriptionAmountPaid: Number(createCafe.amountPaid || '0'),
           subscriptionIsComplimentary: createCafe.isComplimentary,
           subscriptionNotes: createCafe.notes.trim() || null,
+          databaseKey: createCafe.databaseKey,
         }),
       });
       const json: unknown = await res.json().catch(() => ({}));
       if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'CREATE_CAFE_FAILED');
       const createdCafeId = isCreateCafeResponse(json) && typeof json.data?.cafe_id === 'string' ? json.data.cafe_id : undefined;
-      setCreateCafe({
+      setCreateCafe((current) => ({
         cafeSlug: '',
         cafeDisplayName: '',
         ownerFullName: '',
@@ -914,7 +962,8 @@ export default function PlatformDashboardClient({ session }: { session: Platform
         ownerPassword: '',
         ...applyPreset(30, true, 'trial'),
         notes: '',
-      });
+        databaseKey: current.databaseKey || databaseOptions[0]?.database_key || '',
+      }));
       await loadCafes(createdCafeId);
       setRefreshKey((value) => value + 1);
       setView('cafes');
@@ -1204,8 +1253,17 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                         <input type="checkbox" checked={createCafe.isComplimentary} onChange={(e) => setCreateCafe((v) => ({ ...v, isComplimentary: e.target.checked, amountPaid: e.target.checked ? '0' : v.amountPaid }))} />
                         مجاني / استثنائي
                       </label>
+                      <select className="rounded-2xl border border-slate-200 px-4 py-3 text-sm disabled:bg-slate-100 disabled:text-slate-500" value={createCafe.databaseKey} disabled={loadingDatabases || databaseOptions.length === 0} onChange={(e) => setCreateCafe((v) => ({ ...v, databaseKey: e.target.value }))}>
+                        {databaseOptions.length === 0 ? (
+                          <option value="">لا توجد قاعدة تشغيل متاحة حاليًا</option>
+                        ) : databaseOptions.map((option) => (
+                          <option key={option.database_key} value={option.database_key}>
+                            {option.display_name} — {option.database_key} ({option.cafe_count})
+                          </option>
+                        ))}
+                      </select>
                       <textarea className="min-h-24 rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="ملاحظة الاشتراك أو التحصيل" value={createCafe.notes} onChange={(e) => setCreateCafe((v) => ({ ...v, notes: e.target.value }))} />
-                      <button disabled={busy} onClick={submitCreateCafe} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
+                      <button disabled={busy || loadingDatabases || databaseOptions.length === 0 || !createCafe.databaseKey} onClick={submitCreateCafe} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">
                         إنشاء القهوة والاشتراك الأول
                       </button>
                     </div>

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import BrandLogo from "@/ui/brand/BrandLogo";
+import { canonicalizeCafeSlug } from '@/lib/cafes/slug';
 
 export default function LoginLandingClient() {
   const r = useRouter();
@@ -18,13 +19,7 @@ export default function LoginLandingClient() {
   }, []);
 
   function slugify(raw: string) {
-    return (raw ?? "")
-      .trim()
-      .toLowerCase()
-      .replace(/\s+/g, "-")
-      .replace(/[^\p{L}\p{N}_-]/gu, "")
-      .replace(/-+/g, "-")
-      .replace(/^[-_]+|[-_]+$/g, "");
+    return canonicalizeCafeSlug(raw);
   }
 
   function ownerHref(preferredSlug?: string) {

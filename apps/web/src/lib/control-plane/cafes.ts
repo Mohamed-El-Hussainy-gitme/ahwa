@@ -1,7 +1,8 @@
 import 'server-only';
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
-import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
+import { isOperationalDatabaseConfigured, listConfiguredOperationalDatabaseKeys } from '@/lib/supabase/env';
+import { normalizeCafeSlugForLookup } from '@/lib/cafes/slug';
 
 export type CafeDatabaseBinding = {
   cafeId: string;
@@ -61,7 +62,26 @@ type OperationalDatabaseOption = {
 };
 
 function normalizeCafeSlug(slug: string): string {
-  return slug.trim().toLowerCase();
+  return normalizeCafeSlugForLookup(slug);
+}
+
+function isControlSchemaPermissionError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') return false;
+  const code = 'code' in error && typeof (error as { code?: unknown }).code === 'string' ? String((error as { code: string }).code) : '';
+  const message = 'message' in error && typeof (error as { message?: unknown }).message === 'string' ? String((error as { message: string }).message) : '';
+  return code === '42501' && message.toLowerCase().includes('schema control');
+}
+
+function fallbackOperationalDatabaseOptions(): OperationalDatabaseOption[] {
+  return listConfiguredOperationalDatabaseKeys().map((databaseKey) => ({
+    databaseKey,
+    displayName: databaseKey,
+    description: 'env fallback',
+    isActive: true,
+    isAcceptingNewCafes: true,
+    createdAt: null,
+    updatedAt: null,
+  }));
 }
 
 function parseCafeRow(row: CafeRow): ResolvedCafe {
@@ -161,8 +181,13 @@ async function loadCafeBySlugFromControlPlane(slug: string): Promise<ResolvedCaf
 async function listOperationalDatabases(): Promise<OperationalDatabaseOption[]> {
   const { data, error } = await controlPlaneAdmin().rpc('control_list_operational_databases');
 
-  if (error) throw error;
-  if (!Array.isArray(data)) return [];
+  if (error) {
+    if (isControlSchemaPermissionError(error)) {
+      return fallbackOperationalDatabaseOptions();
+    }
+    throw error;
+  }
+  if (!Array.isArray(data)) return fallbackOperationalDatabaseOptions();
 
   return data
     .map((row) => parseOperationalDatabaseOption(row as OperationalDatabaseRpcRow | null))
@@ -254,14 +279,24 @@ export async function resolveCafeDatabaseBinding(cafeId: string): Promise<CafeDa
     p_cafe_id: normalizedCafeId,
   });
 
-  if (error) throw error;
+  if (error) {
+    if (isControlSchemaPermissionError(error)) {
+      return null;
+    }
+    throw error;
+  }
   return parseCafeDatabaseBinding((data ?? null) as CafeBindingRpcRow | null, normalizedCafeId);
 }
 
 export async function listCafeDatabaseBindings(): Promise<CafeDatabaseBinding[]> {
   const { data, error } = await controlPlaneAdmin().rpc('control_list_cafe_database_bindings');
 
-  if (error) throw error;
+  if (error) {
+    if (isControlSchemaPermissionError(error)) {
+      return [];
+    }
+    throw error;
+  }
   return parseCafeDatabaseBindingList(data);
 }
 
