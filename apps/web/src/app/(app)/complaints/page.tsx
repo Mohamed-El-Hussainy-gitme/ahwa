@@ -76,6 +76,7 @@ export default function ComplaintsPage() {
   });
 
   const itemById = useMemo(() => new Map((data?.items ?? []).map((item) => [item.orderItemId, item])), [data?.items]);
+  const canManageComplaintActions = can.owner || can.billing;
   const sessions = data?.sessions ?? [];
   const effectiveSessionId = generalSessionId || sessions[0]?.id || '';
 
@@ -204,6 +205,9 @@ export default function ComplaintsPage() {
 
         <section className="rounded-2xl border border-slate-200 p-3">
           <div className="mb-2 text-sm font-semibold text-slate-700">إجراءات مرتبطة بالصنف</div>
+          {!canManageComplaintActions ? (
+            <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">يمكن للويتر والشيشة تسجيل ملاحظات فقط. الإلغاء والإعادة المجانية وإسقاط الحساب متاحة للمشرف أو المعلم فقط.</div>
+          ) : null}
           <div className="space-y-3">
             {(data?.items ?? []).map((item) => {
               const maxQty = Math.max(item.availableCancelQty, item.availableRemakeQty, item.availableWaiveQty, 1);
@@ -238,21 +242,21 @@ export default function ComplaintsPage() {
                   />
                   <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                     <button
-                      disabled={actionCommand.busy || item.availableCancelQty <= 0}
+                      disabled={!canManageComplaintActions || actionCommand.busy || item.availableCancelQty <= 0}
                       onClick={() => void actionCommand.run(item, 'cancel_undelivered')}
                       className="rounded-2xl border border-red-200 px-3 py-3 text-sm font-semibold text-red-700 disabled:opacity-40"
                     >
                       إلغاء غير مسلم
                     </button>
                     <button
-                      disabled={actionCommand.busy || item.availableRemakeQty <= 0}
+                      disabled={!canManageComplaintActions || actionCommand.busy || item.availableRemakeQty <= 0}
                       onClick={() => void actionCommand.run(item, 'remake')}
                       className="rounded-2xl border border-amber-200 px-3 py-3 text-sm font-semibold text-amber-700 disabled:opacity-40"
                     >
                       إعادة مجانية
                     </button>
                     <button
-                      disabled={actionCommand.busy || item.availableWaiveQty <= 0}
+                      disabled={!canManageComplaintActions || actionCommand.busy || item.availableWaiveQty <= 0}
                       onClick={() => void actionCommand.run(item, 'waive_delivered')}
                       className="rounded-2xl border border-slate-200 px-3 py-3 text-sm font-semibold text-slate-800 disabled:opacity-40"
                     >
@@ -293,14 +297,14 @@ export default function ComplaintsPage() {
                   {complaint.notes ? <div className="mt-2 text-sm text-slate-700 whitespace-pre-wrap">{complaint.notes}</div> : null}
                   <div className="mt-3 grid grid-cols-2 gap-2">
                     <button
-                      disabled={resolveCommand.busy}
+                      disabled={!canManageComplaintActions || resolveCommand.busy}
                       onClick={() => void resolveCommand.run(complaint, 'resolved')}
                       className="rounded-2xl border border-emerald-200 px-3 py-3 text-sm font-semibold text-emerald-700 disabled:opacity-40"
                     >
                       تمت المعالجة
                     </button>
                     <button
-                      disabled={resolveCommand.busy}
+                      disabled={!canManageComplaintActions || resolveCommand.busy}
                       onClick={() => void resolveCommand.run(complaint, 'dismissed')}
                       className="rounded-2xl bg-slate-900 px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
                     >

@@ -8,6 +8,7 @@ import {
   publishOpsMutation,
   releaseIdempotentMutation,
   requireDeliveryAccess,
+  requireDeliveryItemAccess,
   requireOpsActorContext,
 } from '@/app/api/ops/_helpers';
 
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
 
     const ctx = requireDeliveryAccess(await requireOpsActorContext());
     const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId, ctx.databaseKey);
+    requireDeliveryItemAccess(ctx, item.stationCode as 'barista' | 'shisha' | 'service' | null);
 
     const started = await beginIdempotentMutation(req, ctx, 'ops.delivery.deliver', {
       orderItemId: normalizedOrderItemId,

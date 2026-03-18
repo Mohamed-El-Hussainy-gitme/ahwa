@@ -206,32 +206,36 @@ export async function openShiftWithAssignments(input: CafeDatabaseScope & {
   ownerUserId: string;
   kind: 'morning' | 'evening';
   notes?: string | null;
-  assignments: Array<{ userId: string; role: ShiftRole }>;
+  assignments: Array<{ userId: string; role: ShiftRole; actorType?: 'staff' | 'owner' }>;
 }) {
   const admin = supabaseAdminForDatabase(input.databaseKey);
-  const openRpc = await admin.rpc('ops_open_shift', {
+  const openRpc = await admin.rpc('ops_open_shift_with_assignments', {
     p_cafe_id: input.cafeId,
     p_shift_kind: input.kind,
     p_business_date: currentCairoDate(),
     p_opened_by_owner_id: input.ownerUserId,
     p_notes: input.notes ?? null,
+    p_assignments: input.assignments.map((assignment) =>
+      assignment.actorType === 'owner'
+        ? {
+            role: assignment.role,
+            actorType: 'owner',
+            userId: assignment.userId,
+            owner_user_id: assignment.userId,
+          }
+        : {
+            role: assignment.role,
+            actorType: 'staff',
+            userId: assignment.userId,
+            staff_member_id: assignment.userId,
+          },
+    ),
   });
   if (openRpc.error) throw openRpc.error;
 
   const rpcData = (openRpc.data as { shift_id?: string; mode?: string } | null) ?? null;
   const shiftId = String(rpcData?.shift_id ?? '');
   if (!shiftId) throw new Error('SHIFT_OPEN_FAILED');
-
-  for (const assignment of input.assignments) {
-    const rpc = await admin.rpc('ops_assign_shift_role', {
-      p_cafe_id: input.cafeId,
-      p_shift_id: shiftId,
-      p_role_code: assignment.role,
-      p_staff_member_id: assignment.userId,
-      p_owner_user_id: null,
-    });
-    if (rpc.error) throw rpc.error;
-  }
 
   return {
     shiftId,

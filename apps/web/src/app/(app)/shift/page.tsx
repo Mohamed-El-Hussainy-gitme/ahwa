@@ -14,13 +14,15 @@ type ShiftStatus = "open" | "closing" | "closed" | "draft" | "cancelled";
 
 type StaffEmploymentStatus = 'active' | 'inactive' | 'left';
 
-type StaffRow = {
+type AssignableActorRow = {
   id: string;
   fullName: string | null;
   employeeCode: string | null;
   accountKind: string;
+  actorType: 'owner' | 'staff';
   isActive: boolean;
   employmentStatus?: StaffEmploymentStatus;
+  isCurrentOwner?: boolean;
 };
 
 type AssignmentRow = {
@@ -29,6 +31,7 @@ type AssignmentRow = {
   role: ShiftRole;
   fullName?: string | null;
   isActive?: boolean;
+  actorType?: 'owner' | 'staff';
 };
 
 type ShiftRow = {
@@ -220,19 +223,20 @@ export default function ShiftPage() {
   const { can, effectiveRole } = useAuthz();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [staff, setStaff] = useState<StaffRow[]>([]);
+  const [actors, setActors] = useState<AssignableActorRow[]>([]);
   const [shift, setShift] = useState<ShiftRow | null>(null);
   const [history, setHistory] = useState<ShiftHistoryRow[]>([]);
   const [assignments, setAssignments] = useState<Record<string, ShiftRole | "">>({});
+  const [currentAssignments, setCurrentAssignments] = useState<AssignmentRow[]>([]);
   const [kind, setKind] = useState<ShiftKind>("morning");
   const [openNotes, setOpenNotes] = useState("");
   const [closeNotes, setCloseNotes] = useState("");
   const [snapshotBusyFor, setSnapshotBusyFor] = useState<string | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<RawShiftSnapshot | null>(null);
 
-  const activeStaff = useMemo(
-    () => staff.filter((item) => item.isActive && (item.employmentStatus ?? 'active') === 'active'),
-    [staff],
+  const activeAssignableActors = useMemo(
+    () => actors.filter((item) => item.isActive && (item.employmentStatus ?? 'active') === 'active'),
+    [actors],
   );
 
   const selectedSupervisorId = useMemo(
@@ -250,32 +254,39 @@ export default function ShiftPage() {
 
   const load = useCallback(async () => {
     setMessage(null);
-    const [staffRes, stateRes, historyRes] = await Promise.all([
-      fetch("/api/owner/staff/list", { cache: "no-store" }),
+
+    const requests: Array<Promise<Response>> = [
       fetch("/api/owner/shift/state", { cache: "no-store" }),
       fetch("/api/owner/shift/history", { cache: "no-store" }),
-    ]);
+    ];
 
-    const [staffJson, stateJson, historyJson] = await Promise.all([
-      staffRes.json().catch(() => null),
-      stateRes.json().catch(() => null),
-      historyRes.json().catch(() => null),
-    ]);
+    if (canManageShift) {
+      requests.unshift(fetch("/api/owner/shift/assignable-actors", { cache: "no-store" }));
+    }
 
-    if (!staffJson?.ok) {
-      setStaff([]);
-      setMessage(extractApiErrorMessage(staffJson, 'FAILED_TO_LOAD_STAFF'));
+    const responses = await Promise.all(requests);
+    const payloads = await Promise.all(responses.map((response) => response.json().catch(() => null)));
+
+    const actorsJson = canManageShift ? payloads[0] : null;
+    const stateJson = canManageShift ? payloads[1] : payloads[0];
+    const historyJson = canManageShift ? payloads[2] : payloads[1];
+
+    if (canManageShift && !actorsJson?.ok) {
+      setActors([]);
+      setMessage(extractApiErrorMessage(actorsJson, 'FAILED_TO_LOAD_SHIFT_ASSIGNABLE_ACTORS'));
       return;
     }
 
     if (!stateJson?.ok) {
       setShift(null);
+      setCurrentAssignments([]);
       setMessage(extractApiErrorMessage(stateJson, 'FAILED_TO_LOAD_SHIFT'));
       return;
     }
 
-    setStaff(staffJson.staff as StaffRow[]);
+    setActors(canManageShift ? (actorsJson.actors as AssignableActorRow[]) : []);
     setShift((stateJson.shift as ShiftRow | null) ?? null);
+    setCurrentAssignments(Array.isArray(stateJson?.assignments) ? (stateJson.assignments as AssignmentRow[]) : []);
     setHistory(Array.isArray(historyJson?.shifts) ? (historyJson.shifts as ShiftHistoryRow[]) : []);
     setSelectedSnapshot(null);
 
@@ -288,7 +299,7 @@ export default function ShiftPage() {
       nextAssignments[item.userId] = item.role;
     }
     setAssignments(nextAssignments);
-  }, []);
+  }, [canManageShift]);
 
   useEffect(() => {
     if (!canViewShift) return;
@@ -300,9 +311,14 @@ export default function ShiftPage() {
   }
 
   async function openShift() {
+    const actorTypeById = new Map(actors.map((item) => [item.id, item.actorType] as const));
     const payloadAssignments = Object.entries(assignments)
       .filter(([, role]) => !!role)
-      .map(([userId, role]) => ({ userId, role: role as ShiftRole }));
+      .map(([userId, role]) => ({
+        userId,
+        role: role as ShiftRole,
+        actorType: actorTypeById.get(userId) ?? 'staff',
+      }));
 
     if (payloadAssignments.filter((item) => item.role === "supervisor").length !== 1) {
       setMessage("يجب تحديد مشرف واحد فقط قبل فتح الوردية.");
@@ -417,21 +433,25 @@ export default function ShiftPage() {
                 تعيينات الوردية الحالية
               </div>
               <div className="mt-3 space-y-2">
-                {activeStaff
-                  .filter((item) => !!assignments[item.id])
-                  .map((item) => (
+                {currentAssignments.length > 0
+                  ? currentAssignments.map((item) => (
                     <div
                       key={item.id}
                       className="flex items-center justify-between gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-2"
                     >
                       <div className="rounded-xl bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-900">
-                        {roleLabel(assignments[item.id] as ShiftRole)}
+                        {roleLabel(item.role)}
                       </div>
                       <div className="text-right text-sm font-semibold text-emerald-950">
-                        {item.fullName ?? item.employeeCode ?? item.id}
+                        {item.fullName ?? item.id}{item.actorType === 'owner' ? ' • المعلم' : ''}
                       </div>
                     </div>
-                  ))}
+                  ))
+                  : (
+                    <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/30 p-3 text-right text-sm text-emerald-900/70">
+                      لا توجد تعيينات نشطة داخل هذه الوردية.
+                    </div>
+                  )}
               </div>
             </div>
 
@@ -509,12 +529,16 @@ export default function ShiftPage() {
             />
           </div>
 
+          <div className="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/60 p-3 text-right text-xs text-amber-900/80">
+            يمكنك تعيين نفسك داخل الوردية كمعلم من نفس الشاشة. هذا التعيين يدخل في التقارير وسجل الوردية مثل باقي الأدوار.
+          </div>
+
           <div className="mt-4 rounded-3xl border border-amber-200/70 bg-amber-50/40 p-3">
             <div className="mb-2 text-right text-sm font-semibold text-amber-950">
               تعيين الأدوار
             </div>
             <div className="space-y-2">
-              {activeStaff.map((item) => {
+              {activeAssignableActors.map((item) => {
                 const currentRole = assignments[item.id] ?? '';
                 return (
                   <div
@@ -522,7 +546,7 @@ export default function ShiftPage() {
                     className="flex items-center gap-2 rounded-2xl border border-amber-200/70 bg-white p-2"
                   >
                     <select
-                      aria-label="اختر دور الموظف في الوردية"
+                      aria-label={item.actorType === 'owner' ? 'اختر دورك أنت كمعلم في الوردية' : 'اختر دور الموظف في الوردية'}
                       className="w-1/2 rounded-2xl border border-amber-200/70 bg-amber-50/50 p-2"
                       value={currentRole}
                       onChange={(event) => setRole(item.id, event.target.value as ShiftRole | '')}
@@ -535,7 +559,7 @@ export default function ShiftPage() {
                     </select>
                     <div className="flex-1 text-right">
                       <div className="text-sm font-semibold text-amber-950">
-                        {item.fullName ?? item.employeeCode ?? item.id}
+                        {item.fullName ?? item.id}{item.actorType === 'owner' ? ' • المعلم' : ''}
                       </div>
                       <div className="text-[11px] text-amber-900/60">
                         {currentRole ? `الدور الحالي: ${roleLabel(currentRole as ShiftRole)}` : 'بدون دور'}
@@ -551,13 +575,13 @@ export default function ShiftPage() {
             المشرف المختار:{' '}
             <b>
               {selectedSupervisorId
-                ? activeStaff.find((item) => item.id === selectedSupervisorId)?.fullName ?? selectedSupervisorId
+                ? activeAssignableActors.find((item) => item.id === selectedSupervisorId)?.fullName ?? selectedSupervisorId
                 : 'غير محدد'}
             </b>
           </div>
 
           <button
-            disabled={busy || activeStaff.length === 0}
+            disabled={busy || activeAssignableActors.length === 0}
             onClick={openShift}
             className="mt-4 w-full rounded-2xl bg-amber-600 py-3 text-sm font-semibold text-white disabled:opacity-50"
           >

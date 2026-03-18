@@ -8,7 +8,7 @@ type RuntimeMe = {
   tenantSlug?: string;
   tenantId?: string;
   fullName?: string;
-  accountKind?: 'owner' | 'staff';
+  accountKind?: 'owner' | 'employee';
   ownerLabel?: 'owner' | 'partner';
   shiftRole?: 'supervisor' | 'waiter' | 'barista' | 'shisha';
 };
@@ -35,6 +35,7 @@ export default function SupportRequestClient() {
     cafeSlug: searchParams.get('slug') ?? '',
     issueType: issueOptions(source)[0] ?? 'استفسار عام',
     message: '',
+    requestAccess: false,
   });
 
   useEffect(() => {
@@ -70,6 +71,12 @@ export default function SupportRequestClient() {
     return 'مستخدم داخل النظام';
   }, [runtimeMe]);
 
+  const canRequestSupportAccess = useMemo(() => {
+    if (source !== 'in_app') return false;
+    if (!runtimeMe?.tenantId) return false;
+    return runtimeMe.accountKind === 'owner' || runtimeMe.shiftRole === 'supervisor';
+  }, [runtimeMe, source]);
+
   async function submit() {
     setBusy(true);
     setError(null);
@@ -81,6 +88,7 @@ export default function SupportRequestClient() {
         body: JSON.stringify({
           ...form,
           source,
+          requestAccess: canRequestSupportAccess ? form.requestAccess : false,
           pagePath: source === 'in_app' ? (searchParams.get('page') || pathname) : '/login',
         }),
       });
@@ -88,8 +96,13 @@ export default function SupportRequestClient() {
       if (!res.ok || !json.ok) {
         throw new Error(json?.error?.message || 'تعذر إرسال الرسالة الآن.');
       }
-      setNotice('تم إرسال طلب الدعم وسيتم التواصل معك عبر الهاتف في أقرب وقت.');
-      setForm((value) => ({ ...value, message: '' }));
+      const accessRequested = Boolean(json?.data?.supportAccessRequested);
+      setNotice(
+        accessRequested
+          ? 'تم إرسال طلب الدعم مع طلب وصول مؤقت لهذه القهوة. سيقوم الدعم بمراجعته وفتحه عند الحاجة.'
+          : 'تم إرسال طلب الدعم وسيتم التواصل معك عبر الهاتف في أقرب وقت.',
+      );
+      setForm((value) => ({ ...value, message: '', requestAccess: false }));
       if (source === 'login') setDismissed(true);
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'تعذر إرسال الرسالة الآن.');
@@ -135,6 +148,23 @@ export default function SupportRequestClient() {
           </div>
         ) : null}
 
+        {canRequestSupportAccess ? (
+          <label className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+            <input
+              type="checkbox"
+              className="mt-1 h-4 w-4"
+              checked={form.requestAccess}
+              onChange={(event) => setForm((value) => ({ ...value, requestAccess: event.target.checked }))}
+            />
+            <span>
+              أطلب فتح وصول دعم مؤقت لهذه القهوة لهذه الرسالة فقط.
+              <span className="mt-1 block text-xs text-amber-800">
+                هذا لا يمنح السوبر أدمن رؤية دائمة، بل يفتح مساحة دعم مؤقتة ومحددة بزمن عند موافقة الدعم.
+              </span>
+            </span>
+          </label>
+        ) : null}
+
         <div className="mt-5 flex flex-wrap gap-3">
           <button disabled={busy} onClick={submit} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60">{busy ? 'جارٍ الإرسال...' : 'إرسال طلب الدعم'}</button>
           <Link href={source === 'login' ? '/login' : '/dashboard'} className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700">إلغاء</Link>
@@ -145,6 +175,7 @@ export default function SupportRequestClient() {
           <ul className="mt-2 space-y-1">
             <li>• الاسم + رقم الهاتف + اسم القهوة أو الـ slug مطلوبة من صفحة الدخول.</li>
             <li>• في حال وجود رد أو متابعة سيتم التواصل معك عبر الهاتف.</li>
+            <li>• طلب الوصول المؤقت يظهر فقط من داخل القهوة للمعلم أو المشرف.</li>
           </ul>
         </div>
       </div>

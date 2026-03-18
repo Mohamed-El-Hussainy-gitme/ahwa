@@ -2,11 +2,34 @@ import { z } from 'zod';
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { assertPlatformEnv, platformJsonError, platformOk, requirePlatformAdmin } from '@/app/api/platform/_auth';
 
+type SupportAccessStatus = 'not_requested' | 'requested' | 'granted' | 'revoked' | 'expired';
+
 const querySchema = z.object({
   status: z.enum(['all', 'new', 'in_progress', 'closed']).optional(),
   cafeId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
+
+function normalizeSupportAccessStatus(status: unknown, expiresAt: unknown): SupportAccessStatus {
+  const normalized = typeof status === 'string' ? status : 'not_requested';
+  if (normalized === 'granted' && typeof expiresAt === 'string') {
+    const expiresAtMs = new Date(expiresAt).getTime();
+    if (Number.isFinite(expiresAtMs) && expiresAtMs <= Date.now()) {
+      return 'expired';
+    }
+  }
+
+  if (
+    normalized === 'requested' ||
+    normalized === 'granted' ||
+    normalized === 'revoked' ||
+    normalized === 'expired'
+  ) {
+    return normalized;
+  }
+
+  return 'not_requested';
+}
 
 export async function GET(request: Request) {
   try {
@@ -55,6 +78,8 @@ export async function GET(request: Request) {
 
     const enriched = (messages ?? []).map((item) => ({
       ...item,
+      support_access_requested: Boolean(item.support_access_requested),
+      support_access_status: normalizeSupportAccessStatus(item.support_access_status, item.support_access_expires_at),
       replies: replyMap.get(String(item.id)) ?? [],
     }));
 

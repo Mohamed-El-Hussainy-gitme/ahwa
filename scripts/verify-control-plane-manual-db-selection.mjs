@@ -40,6 +40,8 @@ const requiredFiles = [
   'apps/web/src/app/api/platform/control-plane/operational-databases/route.ts',
   'docs/architecture/control-plane-manual-database-selection.md',
   'database/migrations/0037_control_plane_public_binding_readers.sql',
+  'database/migrations/0039_control_plane_operational_database_registration.sql',
+  'database/control-plane/register-operational-database.sql',
 ];
 
 for (const file of requiredFiles) {

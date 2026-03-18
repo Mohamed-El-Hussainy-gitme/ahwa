@@ -1,5 +1,15 @@
+import { adminOps } from '@/app/api/ops/_server';
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireOpenOpsShift, requireOpsActorContext, requireSessionOrderAccess } from '@/app/api/ops/_helpers';
+import {
+  jsonError,
+  ok,
+  publishOpsMutation,
+  requireOpenOpsShift,
+  requireOpsActorContext,
+  requireScopedOrderSelectionAccess,
+  requireSessionOrderAccess,
+} from '@/app/api/ops/_helpers';
+import type { StationCode } from '@/lib/ops/types';
 
 type CreateOrderRequestBody = {
   serviceSessionId?: string;
@@ -9,6 +19,12 @@ type CreateOrderRequestBody = {
 type CreateOrderRpcResult = {
   order_id?: string;
   service_session_id?: string;
+};
+
+type MenuProductRow = {
+  id?: string | null;
+  station_code?: StationCode | null;
+  is_active?: boolean | null;
 };
 
 export async function POST(req: Request) {
@@ -30,6 +46,32 @@ export async function POST(req: Request) {
 
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
+
+    const uniqueProductIds = Array.from(new Set(items.map((item) => item.menu_product_id)));
+    const { data: productRows, error: productError } = await adminOps(ctx.databaseKey)
+      .from('menu_products')
+      .select('id, station_code, is_active')
+      .eq('cafe_id', ctx.cafeId)
+      .in('id', uniqueProductIds);
+
+    if (productError) {
+      throw productError;
+    }
+
+    const products = (productRows ?? []) as MenuProductRow[];
+    if (products.length !== uniqueProductIds.length) {
+      throw new Error('INVALID_INPUT');
+    }
+
+    const stationCodes = products.map((product) => {
+      const stationCode = product.station_code ? String(product.station_code) as StationCode : null;
+      if (!product.id || !stationCode || product.is_active !== true) {
+        throw new Error('INVALID_INPUT');
+      }
+      return stationCode;
+    });
+
+    requireScopedOrderSelectionAccess(ctx, stationCodes);
 
     const rpc = await callOpsRpc<CreateOrderRpcResult>('ops_create_order_with_items', {
       p_cafe_id: ctx.cafeId,

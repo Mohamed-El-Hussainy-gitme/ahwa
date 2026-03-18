@@ -53,6 +53,7 @@ export default function ShishaPage() {
   const draftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const currentSessionLabel = sessions.find((session) => session.id === effectiveSessionId)?.label ?? '';
+  const canManageComplaintActions = can.owner || can.billing;
 
   const readyCommand = useOpsCommand(
     async (orderItemId: string, quantity: number) => {
@@ -332,17 +333,23 @@ export default function ShishaPage() {
           emptyLabel="لا يوجد شيشة جاهزة للتسليم"
         />
 
-        <SessionRemakePanel
-          title="أصناف جلسة الشيشة الحالية"
-          items={currentSessionItems}
-          selectedQty={remakeSelection}
-          onChangeQty={(orderItemId, nextQty, maxQty) => {
-            setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
-          }}
-          onRemake={(item, quantity) => remakeCommand.run(item, quantity)}
-          busy={remakeCommand.busy}
-          emptyLabel={effectiveSessionId ? 'لا توجد أصناف شيشة في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
-        />
+        {canManageComplaintActions ? (
+          <SessionRemakePanel
+            title="أصناف جلسة الشيشة الحالية"
+            items={currentSessionItems}
+            selectedQty={remakeSelection}
+            onChangeQty={(orderItemId, nextQty, maxQty) => {
+              setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
+            }}
+            onRemake={(item, quantity) => remakeCommand.run(item, quantity)}
+            busy={remakeCommand.busy}
+            emptyLabel={effectiveSessionId ? 'لا توجد أصناف شيشة في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
+          />
+        ) : (
+          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            تسجيل ملاحظات الشيشة متاح من صفحة الشكاوى، لكن الإعادة المجانية أو إسقاط الحساب متاحة للمشرف أو المعلم فقط.
+          </div>
+        )}
       </div>
     </MobileShell>
   );

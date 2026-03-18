@@ -13,6 +13,7 @@ const Input = z.object({
       z.object({
         userId: z.string().uuid(),
         role: z.enum(['supervisor', 'waiter', 'barista', 'shisha']),
+        actorType: z.enum(['staff', 'owner']).optional(),
       }),
     )
     .default([]),
@@ -32,6 +33,16 @@ export async function POST(request: Request) {
 
   try {
     const ctx = requireOwnerRole(await requireOpsActorContext());
+
+    const hasForeignOwnerAssignment = parsed.data.assignments.some(
+      (item) => item.actorType === 'owner' && item.userId !== ctx.actorOwnerId,
+    );
+    if (hasForeignOwnerAssignment) {
+      return NextResponse.json(
+        { ok: false, error: { code: 'INVALID_OWNER_ASSIGNMENT_TARGET', message: 'يمكنك تعيين نفسك فقط كمعلم داخل الوردية.' } },
+        { status: 403 },
+      );
+    }
 
     const opened = await openShiftWithAssignments({
       cafeId: ctx.cafeId,
@@ -70,7 +81,15 @@ export async function POST(request: Request) {
         ? 'هناك وردية مفتوحة بالفعل. لا يمكن فتح وردية ثانية قبل إنهائها.'
         : code === 'cannot_resume_shift_after_next_shift_started'
           ? 'لا يمكن متابعة هذه الوردية لأن الشيفت التالي بدأ بالفعل.'
-          : code;
+          : code === 'supervisor_required'
+            ? 'يجب تحديد مشرف واحد فقط داخل تعيينات الوردية.'
+            : code === 'multiple_baristas_not_allowed'
+              ? 'لا يمكن تحديد أكثر من باريستا واحد في نفس الوردية.'
+              : code === 'duplicate_shift_assignment'
+                ? 'لا يمكن تكرار نفس التعيين داخل نفس الطلب.'
+                : code === 'INVALID_OWNER_ASSIGNMENT_TARGET'
+                  ? 'يمكنك تعيين نفسك فقط كمعلم داخل الوردية.'
+                  : code;
     return NextResponse.json({ ok: false, error: { code, message } }, { status: 400 });
   }
 }

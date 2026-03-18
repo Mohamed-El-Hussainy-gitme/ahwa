@@ -9,7 +9,7 @@ const schema = z.object({
 
 export async function POST(request: Request) {
   try {
-    await requirePlatformAdmin();
+    const session = await requirePlatformAdmin();
     assertPlatformEnv();
     const payload = schema.parse(await request.json());
     const admin = controlPlaneAdmin();
@@ -20,6 +20,17 @@ export async function POST(request: Request) {
       .update({ status: payload.status })
       .eq('id', payload.messageId);
     if (error) throw error;
+
+    if (payload.status === 'closed') {
+      const { error: revokeError } = await admin.rpc('platform_revoke_support_access_from_message', {
+        p_super_admin_user_id: session.superAdminUserId,
+        p_support_message_id: payload.messageId,
+        p_notes: 'AUTO_REVOKED_ON_CLOSE',
+      });
+      if (revokeError && revokeError.message !== 'support_message_requires_cafe') {
+        throw revokeError;
+      }
+    }
 
     return platformOk({ data: { ok: true } });
   } catch (error) {

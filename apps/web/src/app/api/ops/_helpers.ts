@@ -5,6 +5,7 @@ import { decodeRuntimeSession, assertBoundRuntimeSession } from '@/lib/runtime/s
 import { adminOps } from '@/app/api/ops/_server';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { resolveMessage } from '@/lib/messages/catalog';
+import type { StationCode } from '@/lib/ops/types';
 
 export type OpsShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
 export type OpsStationCode = 'barista' | 'shisha';
@@ -127,8 +128,19 @@ export function requireReportsAccess(ctx: OpsActorContext) {
   return requireRoleAccess(ctx, ['supervisor']);
 }
 
-export function requireComplaintsAccess(ctx: OpsActorContext) {
+export function requireComplaintLogAccess(ctx: OpsActorContext) {
   return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+}
+
+export function requireComplaintManagementAccess(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor']);
+}
+
+export function requireComplaintActionAccess(
+  ctx: OpsActorContext,
+  _stationCode?: StationCode | null | undefined,
+) {
+  return requireComplaintManagementAccess(ctx);
 }
 
 export function requireWaiterWorkspaceAccess(ctx: OpsActorContext) {
@@ -141,6 +153,87 @@ export function requireSessionOrderAccess(ctx: OpsActorContext) {
 
 export function requireDeliveryAccess(ctx: OpsActorContext) {
   return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+}
+
+function isAllowedStationCode(stationCode: StationCode | null | undefined, allowed: readonly StationCode[]) {
+  return !!stationCode && allowed.includes(stationCode);
+}
+
+export function requireScopedOrderItemAccess(
+  ctx: OpsActorContext,
+  stationCode: StationCode | null | undefined,
+  allowed: readonly StationCode[],
+) {
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor') {
+    return ctx;
+  }
+
+  if (ctx.shiftRole === 'waiter') {
+    return ctx;
+  }
+
+  if (ctx.shiftRole === 'shisha' && isAllowedStationCode(stationCode, allowed)) {
+    return ctx;
+  }
+
+  throw new Error('FORBIDDEN');
+}
+
+export function requireScopedOrderSelectionAccess(
+  ctx: OpsActorContext,
+  stationCodes: readonly StationCode[],
+) {
+  requireSessionOrderAccess(ctx);
+
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'waiter') {
+    return ctx;
+  }
+
+  if (ctx.shiftRole === 'shisha' && stationCodes.every((stationCode) => stationCode === 'shisha')) {
+    return ctx;
+  }
+
+  throw new Error('FORBIDDEN');
+}
+
+export function requireDeliveryItemAccess(ctx: OpsActorContext, stationCode: StationCode | null | undefined) {
+  requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor') {
+    return ctx;
+  }
+
+  if (ctx.shiftRole === 'waiter' && stationCode && stationCode !== 'shisha') {
+    return ctx;
+  }
+
+  if (ctx.shiftRole === 'shisha' && stationCode === 'shisha') {
+    return ctx;
+  }
+
+  throw new Error('FORBIDDEN');
+}
+
+export function requireComplaintItemAccess(
+  ctx: OpsActorContext,
+  stationCode: StationCode | null | undefined,
+  action: 'none' | 'remake' | 'cancel_undelivered' | 'waive_delivered',
+) {
+  if (action === 'none') {
+    requireComplaintLogAccess(ctx);
+
+    if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'waiter') {
+      return ctx;
+    }
+
+    if (ctx.shiftRole === 'shisha' && stationCode === 'shisha') {
+      return ctx;
+    }
+
+    throw new Error('FORBIDDEN');
+  }
+
+  return requireComplaintActionAccess(ctx, stationCode);
 }
 
 export function requireStationAccess(ctx: OpsActorContext, stationCode: OpsStationCode) {

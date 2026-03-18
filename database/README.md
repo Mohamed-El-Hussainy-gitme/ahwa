@@ -48,6 +48,9 @@ Apply migrations in this order:
 36. `0036_platform_response_hardening.sql`
 37. `0037_control_plane_public_binding_readers.sql`
 38. `0038_control_plane_create_flow_binding_upsert.sql`
+39. `0039_control_plane_operational_database_registration.sql`
+40. `0040_ops_atomic_shift_open_with_assignments.sql`
+41. `0041_support_access_on_demand.sql`
 
 ## Migration summary
 
@@ -104,8 +107,8 @@ Deferred finance non-archival policy. Codifies that `ops.deferred_ledger_entries
 ### 0033
 Search-path security hardening for the remaining linter-reported functions. This migration pins `search_path` for `app.current_cafe_id()`, `app.current_super_admin_user_id()`, `ops.generate_session_label()`, and `public.platform_touch_support_message()` without changing their functional behavior.
 
-### 0034 - 0038
-Control-plane manual database selection, strict explicit bindings, platform response hardening, public SECURITY DEFINER readers, and the canonical transactional create-cafe RPC/binding upsert flow that keep `control.*` private while still serving PostgREST-safe admin/runtime binding lookups.
+### 0034 - 0041
+Control-plane manual database selection, strict explicit bindings, platform response hardening, public SECURITY DEFINER readers, the canonical transactional create-cafe RPC/binding upsert flow, a saved control-plane operational-database registration contract, the atomic shift-open-plus-assignment runtime RPC, and on-demand temporary support access grants tied to explicit support requests.
 
 ## Current canonical boundaries
 
@@ -121,8 +124,10 @@ Control-plane manual database selection, strict explicit bindings, platform resp
 
 ## 0034 control plane manual database selection
 
-- `0034_control_plane_manual_database_selection.sql` belongs to the current primary database when it acts as the control plane.
-- Future operational databases should apply operational migrations only up to `0033_search_path_security_hardening.sql`.
+- `0034` through `0039` belong to the current primary database when it acts as the control plane.
+- Fresh operational databases should be provisioned from `database/baselines/operational/0001_fresh_operational_baseline.sql`.
+- The generated operational baseline excludes the control-plane-only migrations and already includes `0040_ops_atomic_shift_open_with_assignments.sql`.
+- New operational databases must then be registered in the existing control plane through `public.control_register_operational_database(...)` or `database/control-plane/register-operational-database.sql`.
 - New cafes can be assigned manually to an available operational database during platform create-cafe flow.
 
 
@@ -132,12 +137,13 @@ Phase 9 does not introduce a new SQL migration. The bug fixed in phase 9 was app
 
 ## Fresh database bootstrap bundles
 
-For new empty databases, use the generated baselines under `database/baselines/` instead of manually copy-pasting dozens of files:
+For new empty operational databases, use the generated baseline under `database/baselines/` instead of manually copy-pasting dozens of files:
 
 - `database/baselines/operational/0001_fresh_operational_baseline.sql`
-- `database/baselines/control-plane/0001_fresh_control_plane_baseline.sql`
 
-Regenerate them from the historical chain with:
+The existing control plane database stays in place. A new operational database only needs control-plane registration plus the new runtime env values in Vercel.
+
+Regenerate the operational baseline from the historical chain with:
 
 ```bash
 npm run build:db-baselines

@@ -1,5 +1,13 @@
 import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireComplaintsAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import {
+  jsonError,
+  ok,
+  publishOpsMutation,
+  requireComplaintActionAccess,
+  requireComplaintItemAccess,
+  requireComplaintLogAccess,
+  requireOpsActorContext,
+} from '@/app/api/ops/_helpers';
 
 type ComplaintKind = 'quality_issue' | 'wrong_item' | 'delay' | 'billing_issue' | 'other';
 type ComplaintAction = 'none' | 'remake' | 'cancel_undelivered' | 'waive_delivered';
@@ -78,9 +86,10 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const ctx = requireComplaintsAccess(await requireOpsActorContext());
+    const ctx = await requireOpsActorContext();
 
     if (mode === 'general' && !orderItemId) {
+      requireComplaintLogAccess(ctx);
       const created = await callOpsRpc<CreateComplaintRpcResult>('ops_create_complaint', {
         p_cafe_id: ctx.cafeId,
         p_service_session_id: serviceSessionId || null,
@@ -110,6 +119,12 @@ export async function POST(req: Request) {
       });
 
       return ok({ ok: true, complaintId });
+    }
+
+    const item = await loadOrderItemMutationContext(ctx.cafeId, orderItemId, ctx.databaseKey);
+    requireComplaintItemAccess(ctx, item.stationCode as 'barista' | 'shisha' | 'service' | null, action);
+    if (action !== 'none') {
+      requireComplaintActionAccess(ctx, item.stationCode as 'barista' | 'shisha' | 'service' | null);
     }
 
     const created = await callOpsRpc<CreateItemIssueRpcResult>('ops_log_order_item_issue', {
@@ -144,7 +159,6 @@ export async function POST(req: Request) {
     });
 
     if (effectiveOrderItemId && action !== 'none') {
-      const item = await loadOrderItemMutationContext(ctx.cafeId, effectiveOrderItemId, ctx.databaseKey);
       const resolvedQuantity = Number(created.resolved_quantity ?? quantity ?? 0);
       const eventType = action === 'remake'
         ? 'station.remake_requested'

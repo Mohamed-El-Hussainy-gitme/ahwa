@@ -25,6 +25,16 @@ import type {
   BillingWorkspace,
 } from '@/lib/ops/types';
 
+type WaiterWorkspaceScope = {
+  productStationCodes?: readonly StationCode[] | null;
+  readyStationCodes?: readonly StationCode[] | null;
+  sessionItemStationCodes?: readonly StationCode[] | null;
+};
+
+type ComplaintsWorkspaceScope = {
+  itemStationCodes?: readonly StationCode[] | null;
+};
+
 export type BoundOperationalDatabaseContext = {
   cafeId: string;
   databaseKey: string;
@@ -170,7 +180,15 @@ export async function buildMenuWorkspace(cafeId: string, databaseKey: string): P
   };
 }
 
-export async function buildWaiterWorkspace(cafeId: string, databaseKey: string): Promise<WaiterWorkspace> {
+function allowStationCode(stationCode: StationCode, allowed: readonly StationCode[] | null | undefined) {
+  return !allowed || allowed.includes(stationCode);
+}
+
+export async function buildWaiterWorkspace(
+  cafeId: string,
+  databaseKey: string,
+  scope: WaiterWorkspaceScope = {},
+): Promise<WaiterWorkspace> {
   const admin = adminOps(databaseKey);
   const normalizedShift = await loadOpenShift(cafeId, databaseKey);
   const [sessions, sectionsResult, productsResult] = await Promise.all([
@@ -194,8 +212,12 @@ export async function buildWaiterWorkspace(cafeId: string, databaseKey: string):
   if (sectionsResult.error) throw sectionsResult.error;
   if (productsResult.error) throw productsResult.error;
 
-  const sections = sectionsResult.data ?? [];
-  const products = productsResult.data ?? [];
+  const sections = (sectionsResult.data ?? []).filter((row: any) => allowStationCode(String(row.station_code) as StationCode, scope.productStationCodes));
+  const allowedSectionIds = new Set(sections.map((row: any) => String(row.id)));
+  const products = (productsResult.data ?? []).filter((row: any) => {
+    const stationCode = String(row.station_code) as StationCode;
+    return allowStationCode(stationCode, scope.productStationCodes) && allowedSectionIds.has(String(row.section_id));
+  });
   const openSessionIds = (sessions ?? []).map((session: any) => String(session.id));
   const openSessionIdsSet = new Set(openSessionIds);
 
@@ -214,6 +236,7 @@ export async function buildWaiterWorkspace(cafeId: string, databaseKey: string):
 
   const sessionItems: SessionOrderItem[] = itemRows
     .filter((row) => openSessionIdsSet.has(String(row.service_session_id ?? '')))
+    .filter((row) => allowStationCode(String(row.station_code) as StationCode, scope.sessionItemStationCodes))
     .map((row: any) => {
       const qtyReady = Number(row.qty_ready ?? 0);
       const qtyTotal = Number(row.qty_total ?? 0);
@@ -249,6 +272,7 @@ export async function buildWaiterWorkspace(cafeId: string, databaseKey: string):
     });
 
   const readyItems: ReadyItem[] = sessionItems
+    .filter((item) => allowStationCode(item.stationCode, scope.readyStationCodes))
     .map((item) => {
       const totalOriginalReady = Math.min(item.qtyReady, Math.max(item.qtyTotal - item.qtyCancelled, 0));
       const qtyReadyForNormalDelivery = Math.max(totalOriginalReady - item.qtyDelivered, 0);
@@ -640,7 +664,11 @@ export async function buildDeferredCustomerLedgerWorkspace(
   };
 }
 
-export async function buildComplaintsWorkspace(cafeId: string, databaseKey: string): Promise<ComplaintsWorkspace> {
+export async function buildComplaintsWorkspace(
+  cafeId: string,
+  databaseKey: string,
+  scope: ComplaintsWorkspaceScope = {},
+): Promise<ComplaintsWorkspace> {
   const admin = adminOps(databaseKey);
   const { data: shift } = await admin
     .from('shifts')
@@ -701,6 +729,7 @@ export async function buildComplaintsWorkspace(cafeId: string, databaseKey: stri
   );
 
   const items: ComplaintItemCandidate[] = (itemRows ?? [])
+    .filter((row: any) => allowStationCode(String(row.station_code) as StationCode, scope.itemStationCodes))
     .map((row: any) => {
       const availableCancelQty = Math.max(Number(row.qty_total ?? 0) - Number(row.qty_cancelled ?? 0) - Number(row.qty_delivered ?? 0), 0);
       const availableRemakeQty = Math.max(Number(row.qty_delivered ?? 0) + Number(row.qty_replacement_delivered ?? 0) - Number(row.qty_remade ?? 0), 0);
@@ -724,7 +753,12 @@ export async function buildComplaintsWorkspace(cafeId: string, databaseKey: stri
     })
     .filter((item) => item.availableCancelQty > 0 || item.availableRemakeQty > 0 || item.availableWaiveQty > 0);
 
-  const complaints: ComplaintRecord[] = (complaintRows ?? []).map((row: any) => {
+  const complaints: ComplaintRecord[] = (complaintRows ?? [])
+    .filter((row: any) => {
+      if (!row.station_code) return true;
+      return allowStationCode(String(row.station_code) as StationCode, scope.itemStationCodes);
+    })
+    .map((row: any) => {
     const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
     const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
     return {
@@ -751,7 +785,12 @@ export async function buildComplaintsWorkspace(cafeId: string, databaseKey: stri
     } satisfies ComplaintRecord;
   });
 
-  const itemIssues = (issueRows ?? []).map((row: any) => {
+  const itemIssues = (issueRows ?? [])
+    .filter((row: any) => {
+      if (!row.station_code) return true;
+      return allowStationCode(String(row.station_code) as StationCode, scope.itemStationCodes);
+    })
+    .map((row: any) => {
     const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
     const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
     return {

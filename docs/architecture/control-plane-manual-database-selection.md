@@ -29,8 +29,9 @@
 ## Current rollout model
 
 - The control plane owns cafe lookup and binding resolution for every rollout stage.
-- Future operational databases should receive migrations through `0033` only.
-- Control-plane-only migrations start at `0034`; strict binding cleanup and PostgREST-safe control-plane readers continue through `0037`.
+- `0034` through `0039` are control-plane-only migrations. Apply them on the current control-plane database (`db0001`).
+- Fresh operational databases must use the generated baseline under `database/baselines/operational/0001_fresh_operational_baseline.sql` instead of replaying control-plane-only migrations.
+- Register every new operational database in the control plane with `public.control_register_operational_database(...)` before assigning cafes to it.
 
 
 ## Phase 9 request binding rule

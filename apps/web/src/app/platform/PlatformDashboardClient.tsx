@@ -105,6 +105,7 @@ type MoneyFollowApiResponse = { ok: true; data: MoneyFollowResponseData | null }
 
 type SupportMessageStatus = 'new' | 'in_progress' | 'closed';
 type SupportMessagePriority = 'low' | 'normal' | 'high';
+type SupportAccessStatus = 'not_requested' | 'requested' | 'granted' | 'revoked' | 'expired';
 
 type SupportReplyRow = {
   id: string;
@@ -131,6 +132,13 @@ type SupportMessageRow = {
   created_at: string;
   updated_at: string;
   closed_at: string | null;
+  support_access_requested: boolean;
+  support_access_status: SupportAccessStatus;
+  support_access_requested_at: string | null;
+  support_access_granted_at: string | null;
+  support_access_expires_at: string | null;
+  support_access_revoked_at: string | null;
+  support_access_note: string | null;
   replies: SupportReplyRow[];
 };
 
@@ -146,6 +154,22 @@ type SupportInboxData = {
 };
 
 type SupportInboxResponse = { ok: true; data: SupportInboxData | null };
+
+type CreateCafeFormState = {
+  cafeSlug: string;
+  cafeDisplayName: string;
+  ownerFullName: string;
+  ownerPhone: string;
+  ownerPassword: string;
+  startsAt: string;
+  endsAt: string;
+  graceDays: string;
+  status: SubscriptionStatus;
+  amountPaid: string;
+  isComplimentary: boolean;
+  notes: string;
+  databaseKey: string;
+};
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
@@ -173,6 +197,33 @@ function isCafeSubscriptionRow(value: unknown): value is CafeSubscriptionRow {
     typeof value.countdown_seconds === 'number'
   );
 }
+
+function createPlatformError(payload: unknown, fallback: string) {
+  return new Error(extractPlatformApiErrorMessage(payload, fallback));
+}
+
+function isMoneyFollowResponse(value: unknown): value is MoneyFollowApiResponse {
+  return isRecord(value) && value.ok === true && (value.data === null || isRecord(value.data));
+}
+
+function isSupportInboxResponse(value: unknown): value is SupportInboxResponse {
+  return (
+    isRecord(value) &&
+    value.ok === true &&
+    (value.data === null || (
+      isRecord(value.data) &&
+      isRecord(value.data.summary) &&
+      typeof value.data.summary.total === 'number' &&
+      typeof value.data.summary.new_count === 'number' &&
+      typeof value.data.summary.in_progress_count === 'number' &&
+      typeof value.data.summary.closed_count === 'number' &&
+      typeof value.data.summary.high_priority_count === 'number' &&
+      Array.isArray(value.data.items) &&
+      value.data.items.every(isSupportMessageRow)
+    ))
+  );
+}
+
 
 function isCafeOwnerRow(value: unknown): value is CafeOwnerRow {
   return (
@@ -202,66 +253,11 @@ function isCafeRow(value: unknown): value is CafeRow {
   );
 }
 
-function isCafeListResponse(value: unknown): value is CafeListResponse {
-  return isRecord(value) && value.ok === true && Array.isArray(value.items) && value.items.every(isCafeRow);
-}
-
 function isCreateCafeResponse(value: unknown): value is CreateCafeResponse {
   if (!isRecord(value) || value.ok !== true) return false;
   if (typeof value.data === 'undefined') return true;
   return isRecord(value.data) && (typeof value.data.cafe_id === 'undefined' || typeof value.data.cafe_id === 'string');
 }
-
-function isMoneyFollowSummary(value: unknown): value is MoneyFollowSummary {
-  return (
-    isRecord(value) &&
-    typeof value.subscriptions_total === 'number' &&
-    typeof value.paid_entries === 'number' &&
-    typeof value.complimentary_entries === 'number' &&
-    typeof value.collected_total === 'number' &&
-    typeof value.overdue_count === 'number' &&
-    typeof value.due_soon_count === 'number' &&
-    typeof value.suspended_count === 'number'
-  );
-}
-
-function isMoneyFollowWatchRow(value: unknown): value is MoneyFollowWatchRow {
-  return (
-    isRecord(value) &&
-    typeof value.cafe_id === 'string' &&
-    typeof value.slug === 'string' &&
-    typeof value.display_name === 'string' &&
-    typeof value.is_active === 'boolean' &&
-    (value.payment_state === 'paid_current' || value.payment_state === 'trial_or_free' || value.payment_state === 'overdue' || value.payment_state === 'suspended') &&
-    (value.effective_status === null || isSubscriptionStatus(value.effective_status)) &&
-    (typeof value.ends_at === 'string' || value.ends_at === null) &&
-    (typeof value.countdown_seconds === 'number' || value.countdown_seconds === null) &&
-    (typeof value.amount_paid === 'number' || value.amount_paid === null) &&
-    (typeof value.is_complimentary === 'boolean' || value.is_complimentary === null) &&
-    (typeof value.last_activity_at === 'string' || value.last_activity_at === null) &&
-    typeof value.has_open_shift === 'boolean' &&
-    (typeof value.notes === 'string' || value.notes === null)
-  );
-}
-
-function isMoneyFollowEntryRow(value: unknown): value is MoneyFollowEntryRow {
-  return (
-    isRecord(value) &&
-    typeof value.subscription_id === 'string' &&
-    typeof value.cafe_id === 'string' &&
-    typeof value.slug === 'string' &&
-    typeof value.display_name === 'string' &&
-    typeof value.starts_at === 'string' &&
-    typeof value.ends_at === 'string' &&
-    isSubscriptionStatus(value.status) &&
-    isSubscriptionStatus(value.effective_status) &&
-    typeof value.amount_paid === 'number' &&
-    typeof value.is_complimentary === 'boolean' &&
-    (typeof value.notes === 'string' || value.notes === null) &&
-    typeof value.created_at === 'string'
-  );
-}
-
 
 function isSupportReplyRow(value: unknown): value is SupportReplyRow {
   return (
@@ -293,68 +289,16 @@ function isSupportMessageRow(value: unknown): value is SupportMessageRow {
     typeof value.created_at === 'string' &&
     typeof value.updated_at === 'string' &&
     (typeof value.closed_at === 'string' || value.closed_at === null) &&
+    typeof value.support_access_requested === 'boolean' &&
+    (value.support_access_status === 'not_requested' || value.support_access_status === 'requested' || value.support_access_status === 'granted' || value.support_access_status === 'revoked' || value.support_access_status === 'expired') &&
+    (typeof value.support_access_requested_at === 'string' || value.support_access_requested_at === null) &&
+    (typeof value.support_access_granted_at === 'string' || value.support_access_granted_at === null) &&
+    (typeof value.support_access_expires_at === 'string' || value.support_access_expires_at === null) &&
+    (typeof value.support_access_revoked_at === 'string' || value.support_access_revoked_at === null) &&
+    (typeof value.support_access_note === 'string' || value.support_access_note === null) &&
     Array.isArray(value.replies) &&
     value.replies.every(isSupportReplyRow)
   );
-}
-
-function isSupportInboxResponse(value: unknown): value is SupportInboxResponse {
-  return (
-    isRecord(value) &&
-    value.ok === true &&
-    (value.data === null || (
-      isRecord(value.data) &&
-      isRecord(value.data.summary) &&
-      typeof value.data.summary.total === 'number' &&
-      typeof value.data.summary.new_count === 'number' &&
-      typeof value.data.summary.in_progress_count === 'number' &&
-      typeof value.data.summary.closed_count === 'number' &&
-      typeof value.data.summary.high_priority_count === 'number' &&
-      Array.isArray(value.data.items) &&
-      value.data.items.every(isSupportMessageRow)
-    ))
-  );
-}
-
-function isMoneyFollowResponse(value: unknown): value is MoneyFollowApiResponse {
-  return (
-    isRecord(value) &&
-    value.ok === true &&
-    (value.data === null || (
-      isRecord(value.data) &&
-      typeof value.data.generated_at === 'string' &&
-      isMoneyFollowSummary(value.data.summary) &&
-      Array.isArray(value.data.watchlist) &&
-      value.data.watchlist.every(isMoneyFollowWatchRow) &&
-      Array.isArray(value.data.recent_entries) &&
-      value.data.recent_entries.every(isMoneyFollowEntryRow)
-    ))
-  );
-}
-
-function createPlatformError(payload: unknown, fallback: string) {
-  return new Error(extractPlatformApiErrorMessage(payload, fallback));
-}
-
-function formatDateTime(value: string | null | undefined) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return new Intl.DateTimeFormat('ar-EG', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
-}
-
-function amountLabel(value: number | null | undefined) {
-  const safe = typeof value === 'number' && Number.isFinite(value) ? value : 0;
-  return new Intl.NumberFormat('ar-EG', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(safe);
 }
 
 function toDateInputValue(date: Date) {
@@ -366,15 +310,6 @@ function toDateInputValue(date: Date) {
 
 function fromDateInputValue(value: string) {
   return new Date(`${value}T00:00:00`).toISOString();
-}
-
-function countdownLabel(totalSeconds: number | null | undefined) {
-  const safe = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(Number(totalSeconds))) : 0;
-  const days = Math.floor(safe / 86400);
-  const hours = Math.floor((safe % 86400) / 3600);
-  if (days > 0) return `${days} يوم و ${hours} ساعة`;
-  const minutes = Math.floor((safe % 3600) / 60);
-  return `${hours} ساعة و ${minutes} دقيقة`;
 }
 
 function subscriptionBadgeClass(status: SubscriptionStatus) {
@@ -408,7 +343,7 @@ function ownerLabelText(label: 'owner' | 'partner') {
   return label === 'owner' ? 'مالك' : 'شريك';
 }
 
-function applyPreset(days: number, complimentary: boolean, status: SubscriptionStatus) {
+function applyPreset(days: number, complimentary: boolean, status: SubscriptionStatus): Pick<CreateCafeFormState, 'startsAt' | 'endsAt' | 'graceDays' | 'status' | 'amountPaid' | 'isComplimentary'> {
   const start = new Date();
   const end = new Date(start.getTime() + 1000 * 60 * 60 * 24 * days);
   return {
@@ -421,13 +356,45 @@ function applyPreset(days: number, complimentary: boolean, status: SubscriptionS
   };
 }
 
-
 function supportStatusLabel(status: SupportMessageStatus) {
   switch (status) {
-    case 'new': return 'جديد';
-    case 'in_progress': return 'قيد المتابعة';
-    default: return 'مغلق';
+    case 'new':
+      return 'جديد';
+    case 'in_progress':
+      return 'قيد المتابعة';
+    default:
+      return 'مغلق';
   }
+}
+
+function formatDateTime(value: string | null | undefined) {
+  if (!value) return '—';
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return value;
+  return new Intl.DateTimeFormat('ar-EG', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(parsed);
+}
+
+function amountLabel(value: number | null | undefined) {
+  const safe = typeof value === 'number' && Number.isFinite(value) ? value : 0;
+  return new Intl.NumberFormat('ar-EG', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(safe);
+}
+
+function countdownLabel(totalSeconds: number | null | undefined) {
+  const safe = Number.isFinite(totalSeconds) ? Math.max(0, Math.floor(Number(totalSeconds))) : 0;
+  const days = Math.floor(safe / 86400);
+  const hours = Math.floor((safe % 86400) / 3600);
+  if (days > 0) return `${days} يوم و ${hours} ساعة`;
+  const minutes = Math.floor((safe % 3600) / 60);
+  return `${hours} ساعة و ${minutes} دقيقة`;
 }
 
 function supportStatusClass(status: SupportMessageStatus) {
@@ -454,12 +421,44 @@ function priorityLabel(priority: SupportMessagePriority) {
   }
 }
 
+function supportAccessStatusClass(status: SupportAccessStatus) {
+  switch (status) {
+    case 'requested':
+      return 'border-indigo-200 bg-indigo-50 text-indigo-700';
+    case 'granted':
+      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+    case 'expired':
+      return 'border-amber-200 bg-amber-50 text-amber-800';
+    case 'revoked':
+      return 'border-rose-200 bg-rose-50 text-rose-700';
+    default:
+      return 'border-slate-200 bg-slate-50 text-slate-700';
+  }
+}
+
+function supportAccessStatusLabel(status: SupportAccessStatus) {
+  switch (status) {
+    case 'requested':
+      return 'طلب وصول';
+    case 'granted':
+      return 'وصول مفعل';
+    case 'expired':
+      return 'وصول منتهي';
+    case 'revoked':
+      return 'وصول مسحوب';
+    default:
+      return 'بدون وصول';
+  }
+}
+
 export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: number; selectedCafeId: string }) {
+  const router = useRouter();
   const [data, setData] = useState<SupportInboxData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<'all' | SupportMessageStatus>('all');
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
+  const [accessDurationHoursById, setAccessDurationHoursById] = useState<Record<string, number>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -472,7 +471,17 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
       const res = await fetch(`/api/platform/support/messages?${params.toString()}`, { cache: 'no-store' });
       const json: unknown = await res.json().catch(() => ({}));
       if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'LOAD_SUPPORT_FAILED');
-      setData(isSupportInboxResponse(json) ? json.data : null);
+      const nextData = isSupportInboxResponse(json) ? json.data : null;
+      setData(nextData);
+      setAccessDurationHoursById((current) => {
+        const next = { ...current };
+        for (const item of nextData?.items ?? []) {
+          if (!next[item.id]) {
+            next[item.id] = 4;
+          }
+        }
+        return next;
+      });
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'LOAD_SUPPORT_FAILED');
     } finally {
@@ -491,6 +500,7 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
       const json: unknown = await res.json().catch(() => ({}));
       if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'UPDATE_SUPPORT_STATUS_FAILED');
       await load();
+      router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'UPDATE_SUPPORT_STATUS_FAILED');
     } finally {
@@ -510,8 +520,48 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
       if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'SEND_SUPPORT_REPLY_FAILED');
       setReplyDrafts((value) => ({ ...value, [messageId]: '' }));
       await load();
+      router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'SEND_SUPPORT_REPLY_FAILED');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function grantSupportAccess(messageId: string) {
+    setBusyId(messageId);
+    try {
+      const durationHours = Math.max(1, Math.min(Math.trunc(accessDurationHoursById[messageId] ?? 4), 72));
+      const res = await fetch('/api/platform/support/access/grant', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId, durationHours }),
+      });
+      const json: unknown = await res.json().catch(() => ({}));
+      if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'GRANT_SUPPORT_ACCESS_FAILED');
+      await load();
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'GRANT_SUPPORT_ACCESS_FAILED');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function revokeSupportAccess(messageId: string) {
+    setBusyId(messageId);
+    try {
+      const res = await fetch('/api/platform/support/access/revoke', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ messageId }),
+      });
+      const json: unknown = await res.json().catch(() => ({}));
+      if (!res.ok || !isPlatformApiOk(json)) throw createPlatformError(json, 'REVOKE_SUPPORT_ACCESS_FAILED');
+      await load();
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'REVOKE_SUPPORT_ACCESS_FAILED');
     } finally {
       setBusyId(null);
     }
@@ -530,7 +580,6 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <h2 className="text-lg font-bold text-slate-900">صندوق الدعم الفني</h2>
-            
           </div>
           <div className="flex flex-wrap gap-2">
             {(['all', 'new', 'in_progress', 'closed'] as const).map((item) => (
@@ -543,46 +592,106 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
         </div>
         <div className="mt-4 space-y-4">
           {!data && loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">جارٍ تحميل رسائل الدعم...</div> : null}
-          {data?.items.map((item) => (
-            <div key={item.id} className="rounded-2xl border border-slate-200 p-4">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <div className="font-semibold text-slate-900">{item.cafe_display_name_snapshot || item.cafe_slug_snapshot || 'بدون قهوة محددة'}</div>
-                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${supportStatusClass(item.status)}`}>{supportStatusLabel(item.status)}</span>
-                    <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${priorityClass(item.priority)}`}>{priorityLabel(item.priority)}</span>
-                  </div>
-                  <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
-                    <span>{item.sender_name}</span>
-                    <span>{item.sender_phone}</span>
-                    <span>{item.issue_type}</span>
-                    <span>{formatDateTime(item.created_at)}</span>
-                    {item.page_path ? <span>{item.page_path}</span> : null}
-                  </div>
-                  <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">{item.message}</div>
-                  {item.replies.length ? (
-                    <div className="mt-3 space-y-2">
-                      {item.replies.map((reply) => (
-                        <div key={reply.id} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
-                          <div className="text-xs text-slate-500">رد داخلي — {formatDateTime(reply.created_at)}</div>
-                          <div className="mt-1">{reply.reply_note}</div>
-                        </div>
-                      ))}
+          {data?.items.map((item) => {
+            const durationHours = Math.max(1, Math.min(Math.trunc(accessDurationHoursById[item.id] ?? 4), 72));
+            const accessRequested = item.support_access_requested || item.support_access_status !== 'not_requested';
+            const accessGranted = item.support_access_status === 'granted';
+            return (
+              <div key={item.id} className="rounded-2xl border border-slate-200 p-4">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="font-semibold text-slate-900">{item.cafe_display_name_snapshot || item.cafe_slug_snapshot || 'بدون قهوة محددة'}</div>
+                      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${supportStatusClass(item.status)}`}>{supportStatusLabel(item.status)}</span>
+                      <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${priorityClass(item.priority)}`}>{priorityLabel(item.priority)}</span>
+                      {accessRequested ? (
+                        <span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${supportAccessStatusClass(item.support_access_status)}`}>{supportAccessStatusLabel(item.support_access_status)}</span>
+                      ) : null}
                     </div>
-                  ) : null}
-                </div>
-                <div className="w-full max-w-sm space-y-2 lg:w-80">
-                  <div className="grid grid-cols-3 gap-2">
-                    <button disabled={busyId === item.id} type="button" onClick={() => void updateStatus(item.id, 'new')} className="rounded-2xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700">جديد</button>
-                    <button disabled={busyId === item.id} type="button" onClick={() => void updateStatus(item.id, 'in_progress')} className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">متابعة</button>
-                    <button disabled={busyId === item.id} type="button" onClick={() => void updateStatus(item.id, 'closed')} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">إغلاق</button>
+                    <div className="mt-2 flex flex-wrap gap-3 text-xs text-slate-500">
+                      <span>{item.sender_name}</span>
+                      <span>{item.sender_phone}</span>
+                      <span>{item.issue_type}</span>
+                      <span>{formatDateTime(item.created_at)}</span>
+                      {item.page_path ? <span>{item.page_path}</span> : null}
+                    </div>
+                    <div className="mt-3 rounded-2xl bg-slate-50 p-3 text-sm text-slate-700">{item.message}</div>
+                    {accessRequested ? (
+                      <div className="mt-3 rounded-2xl border border-indigo-200 bg-indigo-50 p-3 text-sm text-indigo-900">
+                        <div className="font-semibold">وصول الدعم المؤقت</div>
+                        <div className="mt-1 text-xs text-indigo-800">
+                          {item.support_access_requested_at ? `طُلِب عند ${formatDateTime(item.support_access_requested_at)}.` : 'تم طلب الوصول من داخل القهوة.'}
+                          {item.support_access_granted_at ? ` فُعّل عند ${formatDateTime(item.support_access_granted_at)}.` : ''}
+                          {item.support_access_expires_at ? ` ينتهي عند ${formatDateTime(item.support_access_expires_at)}.` : ''}
+                        </div>
+                        {item.support_access_note ? <div className="mt-2 rounded-2xl bg-white/70 p-3 text-xs text-indigo-900">{item.support_access_note}</div> : null}
+                      </div>
+                    ) : null}
+                    {item.replies.length ? (
+                      <div className="mt-3 space-y-2">
+                        {item.replies.map((reply) => (
+                          <div key={reply.id} className="rounded-2xl border border-slate-200 bg-white p-3 text-sm text-slate-700">
+                            <div className="text-xs text-slate-500">رد داخلي — {formatDateTime(reply.created_at)}</div>
+                            <div className="mt-1">{reply.reply_note}</div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
-                  <textarea className="min-h-24 w-full rounded-2xl border border-slate-200 px-3 py-3 text-sm" placeholder="أضف ردًا أو ملاحظة متابعة داخلية" value={replyDrafts[item.id] ?? ''} onChange={(e) => setReplyDrafts((value) => ({ ...value, [item.id]: e.target.value }))} />
-                  <button disabled={busyId === item.id} type="button" onClick={() => void sendReply(item.id)} className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{busyId === item.id ? 'جارٍ الحفظ...' : 'حفظ رد المتابعة'}</button>
+                  <div className="w-full max-w-sm space-y-2 lg:w-80">
+                    <div className="grid grid-cols-3 gap-2">
+                      <button disabled={busyId === item.id} type="button" onClick={() => void updateStatus(item.id, 'new')} className="rounded-2xl border border-slate-200 px-3 py-2 text-xs font-medium text-slate-700">جديد</button>
+                      <button disabled={busyId === item.id} type="button" onClick={() => void updateStatus(item.id, 'in_progress')} className="rounded-2xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-800">متابعة</button>
+                      <button disabled={busyId === item.id} type="button" onClick={() => void updateStatus(item.id, 'closed')} className="rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-800">إغلاق</button>
+                    </div>
+
+                    {accessRequested ? (
+                      <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="mb-2 text-xs font-semibold text-slate-700">التحكم في الوصول المؤقت</div>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="number"
+                            min={1}
+                            max={72}
+                            value={durationHours}
+                            onChange={(event) => setAccessDurationHoursById((value) => ({ ...value, [item.id]: Number(event.target.value || 4) }))}
+                            className="w-24 rounded-2xl border border-slate-200 px-3 py-2 text-sm"
+                          />
+                          <span className="text-xs text-slate-500">ساعة</span>
+                        </div>
+                        <div className="mt-3 grid grid-cols-1 gap-2">
+                          <button
+                            disabled={busyId === item.id || !item.cafe_id || !accessRequested}
+                            type="button"
+                            onClick={() => void grantSupportAccess(item.id)}
+                            className="rounded-2xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                          >
+                            {busyId === item.id && !accessGranted ? 'جارٍ التفعيل...' : accessGranted ? 'تجديد الوصول المؤقت' : 'تفعيل وصول الدعم'}
+                          </button>
+                          <button
+                            disabled={busyId === item.id || !accessGranted}
+                            type="button"
+                            onClick={() => void revokeSupportAccess(item.id)}
+                            className="rounded-2xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-700 disabled:opacity-60"
+                          >
+                            {busyId === item.id && accessGranted ? 'جارٍ السحب...' : 'سحب الوصول'}
+                          </button>
+                          {accessGranted ? (
+                            <Link href={`/platform/support/access/${item.id}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700">
+                              فتح مساحة الدعم
+                            </Link>
+                          ) : null}
+                        </div>
+                      </div>
+                    ) : null}
+
+                    <textarea className="min-h-24 w-full rounded-2xl border border-slate-200 px-3 py-3 text-sm" placeholder="أضف ردًا أو ملاحظة متابعة داخلية" value={replyDrafts[item.id] ?? ''} onChange={(e) => setReplyDrafts((value) => ({ ...value, [item.id]: e.target.value }))} />
+                    <button disabled={busyId === item.id} type="button" onClick={() => void sendReply(item.id)} className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">{busyId === item.id ? 'جارٍ الحفظ...' : 'حفظ رد المتابعة'}</button>
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
           {data && data.items.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-5 text-sm text-slate-500">لا توجد رسائل دعم مطابقة للفلترة الحالية.</div> : null}
         </div>
       </section>
@@ -806,7 +915,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
   const [cafeStatusFilter, setCafeStatusFilter] = useState<'all' | 'active' | 'inactive'>('active');
   const [paymentFilter, setPaymentFilter] = useState<'all' | 'paid' | 'free' | 'expired' | 'none'>('all');
   const [databaseOptions, setDatabaseOptions] = useState<Array<{ database_key: string; display_name: string; is_active: boolean; is_accepting_new_cafes: boolean }>>([]);
-  const [createCafe, setCreateCafe] = useState({
+  const [createCafe, setCreateCafe] = useState<CreateCafeFormState>({
     cafeSlug: '',
     cafeDisplayName: '',
     ownerFullName: '',

@@ -7,7 +7,8 @@ import {
   ok,
   publishOpsMutation,
   releaseIdempotentMutation,
-  requireComplaintsAccess,
+  requireComplaintActionAccess,
+  requireComplaintManagementAccess,
   requireOpsActorContext,
 } from '@/app/api/ops/_helpers';
 
@@ -26,8 +27,9 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const ctx = requireComplaintsAccess(await requireOpsActorContext());
+    const ctx = requireComplaintManagementAccess(await requireOpsActorContext());
     const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId, ctx.databaseKey);
+    requireComplaintActionAccess(ctx, item.stationCode as 'barista' | 'shisha' | 'service' | null);
 
     const started = await beginIdempotentMutation(req, ctx, 'ops.fulfillment.remake', {
       orderItemId: normalizedOrderItemId,

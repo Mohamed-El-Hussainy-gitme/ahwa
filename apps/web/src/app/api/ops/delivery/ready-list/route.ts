@@ -1,3 +1,17 @@
 import { buildWaiterWorkspace } from '@/app/api/ops/_server';
 import { jsonError, ok, requireOpsActorContext, requireWaiterWorkspaceAccess } from '@/app/api/ops/_helpers';
-export async function POST() { try { const ctx = requireWaiterWorkspaceAccess(await requireOpsActorContext()); return ok((await buildWaiterWorkspace(ctx.cafeId, ctx.databaseKey)).readyItems); } catch (e) { return jsonError(e, 400); } }
+
+export async function POST() {
+  try {
+    const ctx = requireWaiterWorkspaceAccess(await requireOpsActorContext());
+    const scope = ctx.shiftRole === 'shisha'
+      ? { productStationCodes: ['shisha'] as const, readyStationCodes: ['shisha'] as const, sessionItemStationCodes: ['shisha'] as const }
+      : ctx.shiftRole === 'waiter'
+        ? { readyStationCodes: ['barista', 'service'] as const, sessionItemStationCodes: ['barista', 'service'] as const }
+        : {};
+
+    return ok((await buildWaiterWorkspace(ctx.cafeId, ctx.databaseKey, scope)).readyItems);
+  } catch (e) {
+    return jsonError(e, 400);
+  }
+}

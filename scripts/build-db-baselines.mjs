@@ -5,8 +5,7 @@ const root = process.cwd();
 const migrationsDir = path.join(root, 'database', 'migrations');
 const baselinesDir = path.join(root, 'database', 'baselines');
 
-const operationalCutoff = 33;
-const controlPlaneCutoff = 38;
+const controlPlaneOnlyMigrations = new Set([34, 35, 36, 37, 38, 39, 41]);
 
 function migrationNumber(name) {
   const match = /^(\d{4})_/.exec(name);
@@ -20,11 +19,11 @@ async function listMigrations() {
     .sort();
 }
 
-async function readBundle(maxNumber) {
+async function readOperationalBundle() {
   const migrations = await listMigrations();
   const selected = migrations.filter((name) => {
     const num = migrationNumber(name);
-    return num !== null && num <= maxNumber;
+    return num !== null && !controlPlaneOnlyMigrations.has(num);
   });
 
   const chunks = [];
@@ -52,20 +51,19 @@ async function writeBaseline(relativePath, content) {
   await fs.writeFile(target, content, 'utf8');
 }
 
-const operational = await readBundle(operationalCutoff);
-const controlPlane = await readBundle(controlPlaneCutoff);
+const operational = await readOperationalBundle();
 
 await writeBaseline('operational/0001_fresh_operational_baseline.sql', operational.content);
-await writeBaseline('control-plane/0001_fresh_control_plane_baseline.sql', controlPlane.content);
+await fs.rm(path.join(baselinesDir, 'control-plane'), { recursive: true, force: true });
 await writeBaseline(
   'README.md',
   [
     '# Fresh database baselines',
     '',
-    '- `operational/0001_fresh_operational_baseline.sql`: fresh operational database install bundle (canonical history 0001-0033).',
-    '- `control-plane/0001_fresh_control_plane_baseline.sql`: fresh control-plane install bundle (canonical history 0001-0038).',
+    '- `operational/0001_fresh_operational_baseline.sql`: fresh operational database install bundle (all operational migrations; control-plane-only migrations excluded).',
     '',
-    'These files are generated from `database/migrations/*` and are meant for **new empty databases only**.',
+    'These files are generated from `database/migrations/*` and are meant for **new empty operational databases only**.',
+    'The existing control plane remains the source of truth; a newly provisioned operational database only needs registration in the control plane plus the new runtime env values.',
     'Live databases must continue to move forward through the historical migration chain.',
     '',
     'Regenerate after any migration change with:',
@@ -76,9 +74,7 @@ await writeBaseline(
     '',
     `Operational bundle includes: ${operational.selected.join(', ')}`,
     '',
-    `Control-plane bundle includes: ${controlPlane.selected.join(', ')}`,
-    '',
   ].join('\n'),
 );
 
-console.log('[OK] generated fresh database baselines');
+console.log('[OK] generated operational database baseline (control-plane-only migrations excluded)');

@@ -101,6 +101,7 @@ export default function OrdersPage() {
   );
 
   const effectiveError = commandError ?? workspaceError;
+  const canManageComplaintActions = can.owner || can.billing;
 
   if (!shift) return <ShiftRequired title="الطلبات" />;
   if (!can.takeOrders && !can.owner) return <AccessDenied title="الطلبات" />;
@@ -282,17 +283,19 @@ export default function OrdersPage() {
           emptyLabel="لا يوجد جاهز للتسليم"
         />
 
-        <SessionRemakePanel
-          title="أصناف الجلسة الحالية"
-          items={currentSessionItems}
-          selectedQty={remakeSelection}
-          onChangeQty={(orderItemId, nextQty, maxQty) => {
-            setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
-          }}
-          onRemake={(item, quantity) => remakeCommand.run(item, quantity)}
-          busy={remakeCommand.busy}
-          emptyLabel={effectiveSessionId ? 'لا توجد أصناف في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
-        />
+        {canManageComplaintActions ? (
+          <SessionRemakePanel
+            title="أصناف الجلسة الحالية"
+            items={currentSessionItems}
+            selectedQty={remakeSelection}
+            onChangeQty={(orderItemId, nextQty, maxQty) => {
+              setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
+            }}
+            onRemake={(item, quantity) => remakeCommand.run(item, quantity)}
+            busy={remakeCommand.busy}
+            emptyLabel={effectiveSessionId ? 'لا توجد أصناف في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
+          />
+        ) : null}
       </div>
     </MobileShell>
   );

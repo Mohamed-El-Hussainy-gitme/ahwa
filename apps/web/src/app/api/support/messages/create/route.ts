@@ -14,6 +14,7 @@ const schema = z.object({
   message: z.string().trim().min(8).max(4000),
   source: z.enum(['login', 'in_app']).default('login'),
   pagePath: z.string().trim().max(240).optional(),
+  requestAccess: z.boolean().optional(),
 });
 
 function inferPriority(issueType: string) {
@@ -75,6 +76,16 @@ export async function POST(request: Request) {
           ? 'staff'
           : 'guest');
 
+    const canRequestSupportAccess =
+      source === 'in_app' &&
+      !!cafeId &&
+      (
+        runtimeMe?.accountKind === 'owner' ||
+        runtimeMe?.shiftRole === 'supervisor'
+      );
+    const supportAccessRequested = canRequestSupportAccess && payload.requestAccess === true;
+    const nowIso = new Date().toISOString();
+
     const { data, error } = await admin
       .schema('platform')
       .from('support_messages')
@@ -91,21 +102,34 @@ export async function POST(request: Request) {
         message: payload.message.trim(),
         status: 'new',
         priority: inferPriority(issueType),
+        support_access_requested: supportAccessRequested,
+        support_access_status: supportAccessRequested ? 'requested' : 'not_requested',
+        support_access_requested_at: supportAccessRequested ? nowIso : null,
         metadata: runtimeMe
           ? {
               runtimeUserId: runtimeMe.userId,
               accountKind: runtimeMe.accountKind,
               ownerLabel: runtimeMe.ownerLabel ?? null,
               shiftRole: runtimeMe.shiftRole ?? null,
+              supportAccessRequested,
             }
-          : {},
+          : {
+              supportAccessRequested,
+            },
       })
-      .select('id')
+      .select('id,support_access_requested,support_access_status')
       .single();
 
     if (error) throw error;
 
-    return NextResponse.json({ ok: true, data: { id: data.id } }, { status: 201 });
+    return NextResponse.json({
+      ok: true,
+      data: {
+        id: data.id,
+        supportAccessRequested: !!data.support_access_requested,
+        supportAccessStatus: data.support_access_status ?? 'not_requested',
+      },
+    }, { status: 201 });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ ok: false, error: { code: 'INVALID_INPUT', message: error.issues[0]?.message ?? 'INVALID_INPUT' } }, { status: 400 });

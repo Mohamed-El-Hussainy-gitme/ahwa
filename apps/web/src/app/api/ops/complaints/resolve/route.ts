@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireComplaintsAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, publishOpsMutation, requireComplaintManagementAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 type ResolutionKind = 'resolved' | 'dismissed';
 
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const ctx = requireComplaintsAccess(await requireOpsActorContext());
+    const ctx = requireComplaintManagementAccess(await requireOpsActorContext());
     const resolved = await callOpsRpc<ResolveComplaintRpcResult>('ops_resolve_complaint', {
       p_cafe_id: ctx.cafeId,
       p_complaint_id: complaintId,
