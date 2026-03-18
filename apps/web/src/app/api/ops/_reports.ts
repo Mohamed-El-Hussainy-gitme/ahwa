@@ -15,6 +15,7 @@ import type {
   StationCode,
 } from '@/lib/ops/types';
 import { adminOps, buildDeferredCustomersWorkspace, ensureRuntimeContract } from '@/app/api/ops/_server';
+import { normalizeNullableStationCode, normalizeStationCode } from '@/lib/ops/stations';
 
 type ShiftRow = {
   id: string;
@@ -514,7 +515,7 @@ function parseSnapshotProducts(snapshot: any): Map<string, ProductReportRow> {
     byId.set(productId, {
       productId,
       productName: toStringValue(raw?.product_name),
-      stationCode: (toStringValue(raw?.station_code, 'barista') as StationCode),
+      stationCode: normalizeStationCode(toStringValue(raw?.station_code, 'barista')),
       qtySubmitted: toNumber(raw?.qty_submitted),
       qtyReady: toNumber(raw?.qty_ready),
       qtyDelivered: toNumber(raw?.qty_delivered),
@@ -596,7 +597,7 @@ function parseSnapshotItemIssueEntries(snapshot: any, fallback: ShiftRow): Repor
       serviceSessionId: toStringValue(raw?.service_session_id),
       sessionLabel: toStringValue(raw?.session_label),
       productName: toStringValue(raw?.product_name),
-      stationCode: toNullableString(raw?.station_code) as StationCode | null,
+      stationCode: normalizeNullableStationCode(toNullableString(raw?.station_code)),
       issueKind: toStringValue(raw?.issue_kind, 'other') as ItemIssueRecord['issueKind'],
       actionKind: toStringValue(raw?.action_kind, 'note') as ItemIssueRecord['actionKind'],
       status: toStringValue(raw?.status, 'logged') as ItemIssueRecord['status'],
@@ -622,7 +623,7 @@ function parseLiveComplaintEntry(row: ComplaintDetailRow, shift: ShiftRow, actor
     serviceSessionId: String(row.service_session_id),
     sessionLabel: toStringValue(sessionRef?.session_label),
     productName: null,
-    stationCode: row.station_code ? (String(row.station_code) as StationCode) : null,
+    stationCode: normalizeNullableStationCode(row.station_code),
     complaintKind: toStringValue(row.complaint_kind, 'other') as ComplaintRecord['complaintKind'],
     status: toStringValue(row.status, 'open') as ComplaintRecord['status'],
     resolutionKind: toNullableString(row.resolution_kind) === 'dismissed' ? 'dismissed' : toStringValue(row.status) === 'resolved' ? 'resolved' : null,
@@ -649,7 +650,7 @@ function parseLiveItemIssueEntry(row: ItemIssueDetailRow, shift: ShiftRow, actor
     serviceSessionId: String(row.service_session_id),
     sessionLabel: toStringValue(sessionRef?.session_label),
     productName: toStringValue(productRef?.product_name),
-    stationCode: row.station_code ? (String(row.station_code) as StationCode) : null,
+    stationCode: normalizeNullableStationCode(row.station_code),
     issueKind: toStringValue(row.issue_kind, 'other') as ItemIssueRecord['issueKind'],
     actionKind: toStringValue(row.action_kind, 'note') as ItemIssueRecord['actionKind'],
     status: toStringValue(row.status, 'logged') as ItemIssueRecord['status'],
@@ -988,7 +989,7 @@ function parseSummaryProducts(summaryLike: any): ProductReportRow[] {
         return {
           productId,
           productName: toStringValue(raw?.product_name),
-          stationCode: (toStringValue(raw?.station_code, 'barista') as StationCode),
+          stationCode: normalizeStationCode(toStringValue(raw?.station_code, 'barista')),
           qtySubmitted: toNumber(raw?.qty_submitted),
           qtyReady: toNumber(raw?.qty_ready),
           qtyDelivered: toNumber(raw?.qty_delivered),

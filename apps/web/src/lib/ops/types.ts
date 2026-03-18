@@ -1,4 +1,4 @@
-export type StationCode = 'barista' | 'shisha' | 'service';
+export type StationCode = 'barista' | 'shisha';
 export type OpsShift = { id: string; kind: string; status: string; openedAt: string };
 export type OpsSessionSummary = { id: string; label: string; status: string; openedAt: string; billableCount: number; readyCount: number };
 export type OpsSection = { id: string; title: string; stationCode: StationCode; sortOrder: number; isActive?: boolean };

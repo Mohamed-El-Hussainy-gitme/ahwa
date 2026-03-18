@@ -22,6 +22,8 @@ function errorMessage(error: string | null) {
     case 'cafe_not_found':
     case 'CAFE_NOT_FOUND':
       return 'القهوة غير موجودة أو غير مفعلة.';
+    case 'OWNER_PASSWORD_SET_LOGIN_UNAVAILABLE':
+      return 'تم حفظ كلمة المرور بنجاح، لكن تعذر تسجيل الدخول تلقائيًا الآن. ادخل من صفحة المعلم بنفس البيانات الجديدة.';
     default:
       return error ? 'تعذر إكمال العملية.' : '';
   }
@@ -76,6 +78,15 @@ export default function OwnerPasswordSetupClient() {
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok || !json.ok) {
+        const nextAction = json && typeof json === 'object' ? (json as { next?: { action?: string; slug?: string } }).next : undefined;
+        const nextSlug = nextAction?.slug ? normalizeCafeSlug(nextAction.slug) : resolvedSlug;
+        if ((json as { passwordSet?: unknown }).passwordSet === true && nextAction?.action === 'login_manually') {
+          if (typeof window !== 'undefined' && nextSlug) {
+            localStorage.setItem('ahwa.lastCafeSlug', nextSlug);
+          }
+          router.replace(nextSlug ? `/owner-login?slug=${encodeURIComponent(nextSlug)}` : '/owner-login');
+          return;
+        }
         setError(typeof json.error === 'string' ? json.error : 'OWNER_PASSWORD_SETUP_FAILED');
         return;
       }

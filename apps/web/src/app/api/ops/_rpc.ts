@@ -1,6 +1,7 @@
 import { adminOps } from '@/app/api/ops/_server';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import type { OpsActorContext } from '@/app/api/ops/_helpers';
+import { normalizeNullableStationCode } from '@/lib/ops/stations';
 
 type JsonObject = Record<string, unknown>;
 
@@ -74,6 +75,6 @@ export async function loadOrderItemMutationContext(
     id: String(row.id),
     shiftId: String(row.shift_id),
     serviceSessionId: row.service_session_id ? String(row.service_session_id) : null,
-    stationCode: row.station_code ? String(row.station_code) : null,
+    stationCode: normalizeNullableStationCode(row.station_code),
   };
 }

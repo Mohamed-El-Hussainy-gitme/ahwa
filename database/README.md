@@ -53,6 +53,9 @@ Apply migrations in this order:
 41. `0041_support_access_on_demand.sql`
 42. `0042_owner_password_setup_runtime_readiness.sql`
 43. `0043_control_plane_owner_password_setup_flow.sql`
+44. `0044_control_plane_owner_password_setup_preflight.sql`
+45. `0045_remove_service_station_code.sql`
+46. `0046_owner_phone_normalization_uniqueness.sql`
 
 ## Migration summary
 
@@ -126,9 +129,9 @@ Control-plane manual database selection, strict explicit bindings, platform resp
 
 ## 0034 control plane manual database selection
 
-- `0034` through `0039` belong to the current primary database when it acts as the control plane.
+- `0034` through `0039`, together with `0041`, `0043`, and `0044`, belong to the current primary database when it acts as the control plane.
 - Fresh operational databases should be provisioned from `database/baselines/operational/0001_fresh_operational_baseline.sql`.
-- The generated operational baseline excludes the control-plane-only migrations and already includes the latest operational-ready owner-password migration (`0042_owner_password_setup_runtime_readiness.sql`) together with `0040_ops_atomic_shift_open_with_assignments.sql`.
+- The generated operational baseline excludes the control-plane-only migrations and already includes the latest operational-ready owner-password migration (`0042_owner_password_setup_runtime_readiness.sql`) together with `0040_ops_atomic_shift_open_with_assignments.sql`, `0045_remove_service_station_code.sql`, and `0046_owner_phone_normalization_uniqueness.sql`.
 - New operational databases must then be registered in the existing control plane through `public.control_register_operational_database(...)` or `database/control-plane/register-operational-database.sql`.
 - New cafes can be assigned manually to an available operational database during platform create-cafe flow.
 

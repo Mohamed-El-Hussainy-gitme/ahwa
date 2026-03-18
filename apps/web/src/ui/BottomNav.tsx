@@ -5,8 +5,66 @@ import { usePathname } from 'next/navigation';
 import { useAuthz } from '@/lib/authz';
 import { useOpsChrome } from '@/lib/ops/chrome';
 
+type NavTab = {
+  href: string;
+  label: string;
+  icon: string;
+  badge: number;
+};
+
 function isActivePath(pathname: string, href: string) {
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function buildTabs(input: {
+  role: 'owner' | 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'unassigned';
+  summary: ReturnType<typeof useOpsChrome>['summary'];
+}): NavTab[] {
+  const { role, summary } = input;
+
+  if (role === 'owner') {
+    return [
+      { href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: 0 },
+      { href: '/orders', label: 'طلبات', icon: '🧾', badge: summary?.readyForDelivery ?? 0 },
+      { href: '/kitchen', label: 'باريستا', icon: '☕', badge: summary?.waitingBarista ?? 0 },
+      { href: '/shisha', label: 'شيشة', icon: '🔥', badge: summary?.waitingShisha ?? 0 },
+      { href: '/billing', label: 'حساب', icon: '💵', badge: summary?.billableQty ?? 0 },
+      { href: '/owner', label: 'إدارة', icon: '👑', badge: 0 },
+    ];
+  }
+
+  if (role === 'supervisor') {
+    return [
+      { href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: 0 },
+      { href: '/orders', label: 'طلبات', icon: '🧾', badge: summary?.readyForDelivery ?? 0 },
+      { href: '/billing', label: 'حساب', icon: '💵', badge: summary?.billableQty ?? 0 },
+      { href: '/customers', label: 'آجل', icon: '👥', badge: summary?.deferredCustomerCount ?? 0 },
+      { href: '/complaints', label: 'شكاوى', icon: '🛟', badge: 0 },
+    ];
+  }
+
+  if (role === 'barista') {
+    return [
+      { href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: 0 },
+      { href: '/kitchen', label: 'الباريستا', icon: '☕', badge: summary?.waitingBarista ?? 0 },
+    ];
+  }
+
+  if (role === 'shisha') {
+    return [
+      { href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: 0 },
+      { href: '/shisha', label: 'الشيشة', icon: '🔥', badge: summary?.waitingShisha ?? 0 },
+    ];
+  }
+
+  if (role === 'waiter') {
+    return [
+      { href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: 0 },
+      { href: '/orders', label: 'الطلبات', icon: '🧾', badge: summary?.readyForDelivery ?? 0 },
+    ];
+  }
+
+  return [{ href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: 0 }];
 }
 
 export function BottomNav() {
@@ -14,31 +72,22 @@ export function BottomNav() {
   const { can, effectiveRole } = useAuthz();
   const { summary } = useOpsChrome();
 
-  const kitchenTab = (() => {
-    if (!can.kitchen) return null;
-    if (effectiveRole === 'shisha' && !can.owner) {
-      return { href: '/shisha', label: 'شيشة', icon: '🔥', show: true, badge: summary?.waitingShisha ?? 0 };
-    }
-    return { href: '/kitchen', label: 'مطبخ', icon: '☕', show: true, badge: summary?.waitingBarista ?? 0 };
-  })();
+  const role: 'owner' | 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'unassigned' = can.owner
+    ? 'owner'
+    : effectiveRole ?? 'unassigned';
 
-  const tabs = [
-    { href: '/dashboard', label: 'الرئيسية', icon: '🏠', show: can.viewDashboard, badge: 0 },
-    { href: '/orders', label: 'طلبات', icon: '🧾', show: can.takeOrders, badge: summary?.readyForDelivery ?? 0 },
-    kitchenTab ?? { href: '/kitchen', label: 'مطبخ', icon: '☕', show: false, badge: 0 },
-    { href: '/billing', label: 'حساب', icon: '💵', show: can.billing, badge: summary?.billableQty ?? 0 },
-    { href: '/customers', label: 'آجل', icon: '👥', show: can.billing && !can.owner, badge: summary?.deferredCustomerCount ?? 0 },
-    { href: '/owner', label: 'إدارة', icon: '👑', show: can.owner, badge: 0 },
-  ].filter((t) => t.show);
+  const tabs = buildTabs({ role, summary });
 
   const cols =
-    tabs.length <= 3
-      ? 'grid-cols-3'
-      : tabs.length === 4
-        ? 'grid-cols-4'
-        : tabs.length === 5
-          ? 'grid-cols-5'
-          : 'grid-cols-6';
+    tabs.length <= 2
+      ? 'grid-cols-2'
+      : tabs.length === 3
+        ? 'grid-cols-3'
+        : tabs.length === 4
+          ? 'grid-cols-4'
+          : tabs.length === 5
+            ? 'grid-cols-5'
+            : 'grid-cols-6';
 
   return (
     <nav className={['grid gap-1', cols].join(' ')} aria-label="تنقل سريع">
@@ -55,10 +104,12 @@ export function BottomNav() {
             ].join(' ')}
           >
             {t.badge > 0 ? (
-              <span className={[
-                'absolute -top-1 left-1 inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold',
-                active ? 'bg-white text-emerald-700' : 'bg-slate-900 text-white',
-              ].join(' ')}>
+              <span
+                className={[
+                  'absolute -top-1 left-1 inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                  active ? 'bg-white text-emerald-700' : 'bg-slate-900 text-white',
+                ].join(' ')}
+              >
                 {t.badge > 99 ? '99+' : t.badge}
               </span>
             ) : null}

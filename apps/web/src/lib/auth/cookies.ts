@@ -55,6 +55,17 @@ export function setGateSlugCookie(response: NextResponse, slug: string, maxAgeSe
   });
 }
 
+
+export function clearRuntimeSessionCookie(response: NextResponse) {
+  response.cookies.set(RUNTIME_SESSION_COOKIE, '', {
+    httpOnly: true,
+    secure: secure(),
+    sameSite: 'strict',
+    path: '/',
+    maxAge: 0,
+  });
+}
+
 export function clearAuthCookies(response: NextResponse) {
   for (const name of [RUNTIME_SESSION_COOKIE, PLATFORM_SESSION_COOKIE]) {
     response.cookies.set(name, "", {

@@ -5,7 +5,7 @@ const root = process.cwd();
 const migrationsDir = path.join(root, 'database', 'migrations');
 const baselinesDir = path.join(root, 'database', 'baselines');
 
-const controlPlaneOnlyMigrations = new Set([34, 35, 36, 37, 38, 39, 41, 43]);
+const controlPlaneOnlyMigrations = new Set([34, 35, 36, 37, 38, 39, 41, 43, 44]);
 
 function migrationNumber(name) {
   const match = /^(\d{4})_/.exec(name);

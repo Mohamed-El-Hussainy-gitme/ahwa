@@ -11,7 +11,7 @@ const Input = z.object({
   label: z.string().min(1).max(120),
   deviceType: z.enum(['mobile_phone', 'tablet', 'desktop', 'kiosk']),
   deviceMode: z.enum(['shared_runtime', 'station_only', 'owner_private']).default('shared_runtime'),
-  stationType: z.enum(['barista', 'shisha', 'kitchen', 'service']).optional(),
+  stationType: z.enum(['barista', 'shisha', 'kitchen']).optional(),
 });
 
 export async function POST(request: Request) {

@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useCallback, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
@@ -155,7 +156,7 @@ export default function ComplaintsPage() {
   const itemIssues = data?.itemIssues ?? [];
 
   return (
-    <MobileShell title="الشكاوى" backHref={backHref}>
+    <MobileShell title="الشكاوى" backHref={backHref} topRight={<Link href="/support?source=in_app&page=/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>}>
       {effectiveError ? (
         <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {effectiveError === 'INVALID_INPUT' ? 'أكمل البيانات المطلوبة أولاً.' : effectiveError}

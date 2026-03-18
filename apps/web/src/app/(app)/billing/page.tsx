@@ -83,7 +83,12 @@ export default function BillingPage() {
   return (
     <MobileShell
       title="الحساب"
-      topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}
+      topRight={
+        <div className="flex gap-2">
+          <Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>
+          <Link href="/support?source=in_app&page=/billing" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>
+        </div>
+      }
       stickyFooter={
         <StickyActionBar>
           <div className="space-y-3">
@@ -134,6 +139,11 @@ export default function BillingPage() {
           </button>
         ))}
       </div>
+      {!(data?.sessions ?? []).length ? (
+        <div className="mb-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+          لا توجد جلسات جاهزة للحساب الآن. سيظهر هنا أي شيء جاهز للتحصيل أو الترحيل إلى الآجل.
+        </div>
+      ) : null}
       <div className="space-y-2">
         {(current?.items ?? []).map((item) => (
           <div key={item.orderItemId} className="rounded-2xl border border-slate-200 p-3">
@@ -162,7 +172,7 @@ export default function BillingPage() {
           </div>
         ))}
         {!current?.items?.length ? (
-          <div className="text-sm text-slate-500">لا يوجد عناصر جاهزة للحساب</div>
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">لا يوجد عناصر جاهزة للحساب في هذه الجلسة. اختر جلسة أخرى أو انتظر اكتمال التسليم.</div>
         ) : null}
       </div>
       <input

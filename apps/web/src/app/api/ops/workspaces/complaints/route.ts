@@ -7,7 +7,7 @@ export async function POST() {
     const scope = ctx.shiftRole === 'shisha'
       ? { itemStationCodes: ['shisha'] as const }
       : ctx.shiftRole === 'waiter'
-        ? { itemStationCodes: ['barista', 'service'] as const }
+        ? { itemStationCodes: ['barista'] as const }
         : {};
     return ok(await buildComplaintsWorkspace(ctx.cafeId, ctx.databaseKey, scope));
   } catch (e) {

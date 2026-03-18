@@ -1,7 +1,7 @@
 import { adminOps } from '@/app/api/ops/_server';
 
 export function normalizeStationCode(value: unknown) {
-  if (value === 'shisha' || value === 'service') return value;
+  if (value === 'shisha') return value;
   return 'barista' as const;
 }
 

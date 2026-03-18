@@ -122,9 +122,9 @@ export async function POST(req: Request) {
     }
 
     const item = await loadOrderItemMutationContext(ctx.cafeId, orderItemId, ctx.databaseKey);
-    requireComplaintItemAccess(ctx, item.stationCode as 'barista' | 'shisha' | 'service' | null, action);
+    requireComplaintItemAccess(ctx, item.stationCode as 'barista' | 'shisha' | null, action);
     if (action !== 'none') {
-      requireComplaintActionAccess(ctx, item.stationCode as 'barista' | 'shisha' | 'service' | null);
+      requireComplaintActionAccess(ctx, item.stationCode as 'barista' | 'shisha' | null);
     }
 
     const created = await callOpsRpc<CreateItemIssueRpcResult>('ops_log_order_item_issue', {

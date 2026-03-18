@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import { NextResponse } from 'next/server';
 import { getCookieValue, RUNTIME_SESSION_COOKIE } from '@/lib/auth/cookies';
 import { decodeRuntimeSession, assertBoundRuntimeSession } from '@/lib/runtime/session';
+import { validatePlatformSupportRuntimeAccess } from '@/lib/runtime/support';
 import { adminOps } from '@/app/api/ops/_server';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { resolveMessage } from '@/lib/messages/catalog';
@@ -49,6 +50,7 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
   }
 
   const session = assertBoundRuntimeSession(decoded, 'requireOpsActorContext');
+  await validatePlatformSupportRuntimeAccess(session);
   const cafeId = String(session.tenantId ?? '');
   const tenantSlug = String(session.tenantSlug ?? '').trim();
   const databaseKey = String(session.databaseKey ?? '').trim();

@@ -6,6 +6,14 @@ export type RuntimeShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
 export type RuntimeAccountKind = 'owner' | 'employee';
 export type RuntimeSessionVersion = 1 | 2;
 
+export type RuntimeSupportAccessPayload = {
+  mode: 'platform_support';
+  superAdminUserId: string;
+  messageId: string;
+  grantId: string;
+  expiresAt?: string | null;
+};
+
 export type RuntimeSessionPayload = {
   sessionVersion: RuntimeSessionVersion;
   databaseKey: string | null;
@@ -19,6 +27,7 @@ export type RuntimeSessionPayload = {
   shiftRole?: RuntimeShiftRole | null;
   actorOwnerId?: string | null;
   actorStaffId?: string | null;
+  supportAccess?: RuntimeSupportAccessPayload | null;
 };
 
 export type BoundRuntimeSessionPayload = RuntimeSessionPayload & {
@@ -104,6 +113,22 @@ export function decodeRuntimeSession(raw: string | null | undefined): RuntimeSes
           : null,
       actorOwnerId: typeof parsed.actorOwnerId === 'string' ? parsed.actorOwnerId : null,
       actorStaffId: typeof parsed.actorStaffId === 'string' ? parsed.actorStaffId : null,
+      supportAccess:
+        parsed.supportAccess &&
+        typeof parsed.supportAccess === 'object' &&
+        parsed.supportAccess !== null &&
+        parsed.supportAccess.mode === 'platform_support' &&
+        typeof parsed.supportAccess.superAdminUserId === 'string' &&
+        typeof parsed.supportAccess.messageId === 'string' &&
+        typeof parsed.supportAccess.grantId === 'string'
+          ? {
+              mode: 'platform_support',
+              superAdminUserId: parsed.supportAccess.superAdminUserId,
+              messageId: parsed.supportAccess.messageId,
+              grantId: parsed.supportAccess.grantId,
+              expiresAt: typeof parsed.supportAccess.expiresAt === 'string' ? parsed.supportAccess.expiresAt : null,
+            }
+          : null,
     };
   } catch {
     return null;

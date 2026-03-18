@@ -50,7 +50,7 @@ export function resolvePermissions(input: {
   const owner = !!user && user.baseRole === 'owner';
   return {
     owner,
-    viewDashboard: owner || effectiveRole === 'supervisor',
+    viewDashboard: !!user,
     viewShift: owner || effectiveRole === 'supervisor',
     takeOrders: owner || effectiveRole === 'waiter' || effectiveRole === 'supervisor',
     kitchen: owner || effectiveRole === 'barista' || effectiveRole === 'shisha',

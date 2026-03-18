@@ -29,7 +29,7 @@ export async function POST(req: Request) {
 
     const ctx = requireComplaintManagementAccess(await requireOpsActorContext());
     const item = await loadOrderItemMutationContext(ctx.cafeId, normalizedOrderItemId, ctx.databaseKey);
-    requireComplaintActionAccess(ctx, item.stationCode as 'barista' | 'shisha' | 'service' | null);
+    requireComplaintActionAccess(ctx, item.stationCode as 'barista' | 'shisha' | null);
 
     const started = await beginIdempotentMutation(req, ctx, 'ops.fulfillment.remake', {
       orderItemId: normalizedOrderItemId,

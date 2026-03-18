@@ -99,7 +99,7 @@ export default function SupportRequestClient() {
       const accessRequested = Boolean(json?.data?.supportAccessRequested);
       setNotice(
         accessRequested
-          ? 'تم إرسال طلب الدعم مع طلب وصول مؤقت لهذه القهوة. سيقوم الدعم بمراجعته وفتحه عند الحاجة.'
+          ? 'تم إرسال طلب الدعم مع طلب دخول مؤقت كامل إلى القهوة. سيقوم الدعم بمراجعته وتفعيله عند الحاجة.'
           : 'تم إرسال طلب الدعم وسيتم التواصل معك عبر الهاتف في أقرب وقت.',
       );
       setForm((value) => ({ ...value, message: '', requestAccess: false }));
@@ -157,9 +157,9 @@ export default function SupportRequestClient() {
               onChange={(event) => setForm((value) => ({ ...value, requestAccess: event.target.checked }))}
             />
             <span>
-              أطلب فتح وصول دعم مؤقت لهذه القهوة لهذه الرسالة فقط.
+              أطلب فتح دخول دعم مؤقت كامل لهذه القهوة لهذه الرسالة فقط.
               <span className="mt-1 block text-xs text-amber-800">
-                هذا لا يمنح السوبر أدمن رؤية دائمة، بل يفتح مساحة دعم مؤقتة ومحددة بزمن عند موافقة الدعم.
+                هذا لا يمنح السوبر أدمن رؤية دائمة، بل يفتح دخولًا مؤقتًا كاملًا إلى القهوة عند موافقة الدعم ولمدة محددة أو حتى إغلاق البلاغ.
               </span>
             </span>
           </label>
@@ -175,7 +175,7 @@ export default function SupportRequestClient() {
           <ul className="mt-2 space-y-1">
             <li>• الاسم + رقم الهاتف + اسم القهوة أو الـ slug مطلوبة من صفحة الدخول.</li>
             <li>• في حال وجود رد أو متابعة سيتم التواصل معك عبر الهاتف.</li>
-            <li>• طلب الوصول المؤقت يظهر فقط من داخل القهوة للمعلم أو المشرف.</li>
+            <li>• طلب الدخول المؤقت الكامل يظهر فقط من داخل القهوة للمعلم أو المشرف.</li>
           </ul>
         </div>
       </div>

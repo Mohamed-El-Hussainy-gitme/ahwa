@@ -12,7 +12,6 @@ import { AccessDenied } from '@/ui/AccessState';
 const stationOptions: Array<{ value: StationCode; label: string }> = [
   { value: 'barista', label: 'باريستا' },
   { value: 'shisha', label: 'شيشة' },
-  { value: 'service', label: 'خدمة' },
 ];
 
 function formatMoney(value: number) {

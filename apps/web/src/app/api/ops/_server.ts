@@ -24,6 +24,7 @@ import type {
   WaiterWorkspace,
   BillingWorkspace,
 } from '@/lib/ops/types';
+import { normalizeNullableStationCode, normalizeStationCode } from '@/lib/ops/stations';
 
 type WaiterWorkspaceScope = {
   productStationCodes?: readonly StationCode[] | null;
@@ -160,7 +161,7 @@ export async function buildMenuWorkspace(cafeId: string, databaseKey: string): P
         ({
           id: String(row.id),
           title: String(row.title),
-          stationCode: String(row.station_code) as StationCode,
+          stationCode: normalizeStationCode(row.station_code),
           sortOrder: Number(row.sort_order ?? 0),
           isActive: Boolean(row.is_active),
         }) satisfies OpsSection,
@@ -171,7 +172,7 @@ export async function buildMenuWorkspace(cafeId: string, databaseKey: string): P
           id: String(row.id),
           sectionId: String(row.section_id),
           name: String(row.product_name),
-          stationCode: String(row.station_code) as StationCode,
+          stationCode: normalizeStationCode(row.station_code),
           unitPrice: Number(row.unit_price ?? 0),
           sortOrder: Number(row.sort_order ?? 0),
           isActive: Boolean(row.is_active),
@@ -212,10 +213,10 @@ export async function buildWaiterWorkspace(
   if (sectionsResult.error) throw sectionsResult.error;
   if (productsResult.error) throw productsResult.error;
 
-  const sections = (sectionsResult.data ?? []).filter((row: any) => allowStationCode(String(row.station_code) as StationCode, scope.productStationCodes));
+  const sections = (sectionsResult.data ?? []).filter((row: any) => allowStationCode(normalizeStationCode(row.station_code), scope.productStationCodes));
   const allowedSectionIds = new Set(sections.map((row: any) => String(row.id)));
   const products = (productsResult.data ?? []).filter((row: any) => {
-    const stationCode = String(row.station_code) as StationCode;
+    const stationCode = normalizeStationCode(row.station_code);
     return allowStationCode(stationCode, scope.productStationCodes) && allowedSectionIds.has(String(row.section_id));
   });
   const openSessionIds = (sessions ?? []).map((session: any) => String(session.id));
@@ -236,7 +237,7 @@ export async function buildWaiterWorkspace(
 
   const sessionItems: SessionOrderItem[] = itemRows
     .filter((row) => openSessionIdsSet.has(String(row.service_session_id ?? '')))
-    .filter((row) => allowStationCode(String(row.station_code) as StationCode, scope.sessionItemStationCodes))
+    .filter((row) => allowStationCode(normalizeStationCode(row.station_code), scope.sessionItemStationCodes))
     .map((row: any) => {
       const qtyReady = Number(row.qty_ready ?? 0);
       const qtyTotal = Number(row.qty_total ?? 0);
@@ -255,7 +256,7 @@ export async function buildWaiterWorkspace(
         serviceSessionId: String(row.service_session_id),
         sessionLabel: String(row.service_sessions?.session_label ?? ''),
         productName: String(row.menu_products?.product_name ?? ''),
-        stationCode: String(row.station_code) as StationCode,
+        stationCode: normalizeStationCode(row.station_code),
         unitPrice: Number(row.unit_price ?? 0),
         qtyTotal,
         qtyReady,
@@ -364,7 +365,7 @@ export async function buildStationWorkspace(cafeId: string, stationCode: Station
         serviceSessionId: String(row.service_session_id),
         sessionLabel: String(row.service_sessions?.session_label ?? ''),
         productName: String(row.menu_products?.product_name ?? ''),
-        stationCode: String(row.station_code) as StationCode,
+        stationCode: normalizeStationCode(row.station_code),
         qtyWaitingOriginal,
         qtyWaitingReplacement,
         qtyWaiting,
@@ -729,7 +730,7 @@ export async function buildComplaintsWorkspace(
   );
 
   const items: ComplaintItemCandidate[] = (itemRows ?? [])
-    .filter((row: any) => allowStationCode(String(row.station_code) as StationCode, scope.itemStationCodes))
+    .filter((row: any) => allowStationCode(normalizeStationCode(row.station_code), scope.itemStationCodes))
     .map((row: any) => {
       const availableCancelQty = Math.max(Number(row.qty_total ?? 0) - Number(row.qty_cancelled ?? 0) - Number(row.qty_delivered ?? 0), 0);
       const availableRemakeQty = Math.max(Number(row.qty_delivered ?? 0) + Number(row.qty_replacement_delivered ?? 0) - Number(row.qty_remade ?? 0), 0);
@@ -739,7 +740,7 @@ export async function buildComplaintsWorkspace(
         serviceSessionId: String(row.service_session_id),
         sessionLabel: String(row.service_sessions?.session_label ?? ''),
         productName: String(row.menu_products?.product_name ?? ''),
-        stationCode: String(row.station_code) as StationCode,
+        stationCode: normalizeStationCode(row.station_code),
         unitPrice: Number(row.unit_price ?? 0),
         availableCancelQty,
         availableRemakeQty,
@@ -756,7 +757,7 @@ export async function buildComplaintsWorkspace(
   const complaints: ComplaintRecord[] = (complaintRows ?? [])
     .filter((row: any) => {
       if (!row.station_code) return true;
-      return allowStationCode(String(row.station_code) as StationCode, scope.itemStationCodes);
+      return allowStationCode(normalizeStationCode(row.station_code), scope.itemStationCodes);
     })
     .map((row: any) => {
     const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
@@ -767,7 +768,7 @@ export async function buildComplaintsWorkspace(
       serviceSessionId: String(row.service_session_id),
       sessionLabel: String(row.service_sessions?.session_label ?? ''),
       productName: menuProductRef?.product_name ? String(menuProductRef.product_name) : null,
-      stationCode: row.station_code ? (String(row.station_code) as StationCode) : null,
+      stationCode: row.station_code ? (normalizeStationCode(row.station_code)) : null,
       complaintKind: String(row.complaint_kind) as ComplaintRecord['complaintKind'],
       status: String(row.status) as ComplaintRecord['status'],
       resolutionKind: row.resolution_kind && String(row.resolution_kind) === 'dismissed'
@@ -788,7 +789,7 @@ export async function buildComplaintsWorkspace(
   const itemIssues = (issueRows ?? [])
     .filter((row: any) => {
       if (!row.station_code) return true;
-      return allowStationCode(String(row.station_code) as StationCode, scope.itemStationCodes);
+      return allowStationCode(normalizeStationCode(row.station_code), scope.itemStationCodes);
     })
     .map((row: any) => {
     const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
@@ -799,7 +800,7 @@ export async function buildComplaintsWorkspace(
       serviceSessionId: String(row.service_session_id),
       sessionLabel: String(row.service_sessions?.session_label ?? ''),
       productName: String(menuProductRef?.product_name ?? ''),
-      stationCode: row.station_code ? (String(row.station_code) as StationCode) : null,
+      stationCode: row.station_code ? (normalizeStationCode(row.station_code)) : null,
       issueKind: String(row.issue_kind ?? 'other') as ComplaintsWorkspace['itemIssues'][number]['issueKind'],
       actionKind: String(row.action_kind ?? 'note') as ComplaintsWorkspace['itemIssues'][number]['actionKind'],
       status: String(row.status ?? 'logged') as ComplaintsWorkspace['itemIssues'][number]['status'],

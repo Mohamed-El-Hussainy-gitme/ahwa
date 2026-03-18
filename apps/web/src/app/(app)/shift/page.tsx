@@ -410,6 +410,14 @@ export default function ShiftPage() {
         </div>
       ) : null}
 
+      <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-right text-sm text-slate-700">
+        {!shift
+          ? 'ابدأ من هنا فقط: اختر نوع الوردية، حدد المشرف والباريستا وباقي الفريق، ثم اضغط فتح الوردية.'
+          : canManageShift
+            ? 'هذه الصفحة لإدارة حالة الوردية الحالية. إذا كانت الوردية مفتوحة فتستطيع مراجعة التعيينات ثم التقفيل بعد إنهاء الجلسات والحسابات.'
+            : 'هذه الصفحة للمتابعة فقط بالنسبة لك الآن. راقب حالة الوردية الحالية والسناب شوت، ولأي تعديل ارجع للمعلم.'}
+      </div>
+
       {shift ? (
         <>
           <section className="rounded-3xl border border-emerald-200/70 bg-emerald-50 p-4 shadow-sm">

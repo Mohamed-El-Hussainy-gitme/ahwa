@@ -156,7 +156,12 @@ export default function ShishaPage() {
   return (
     <MobileShell
       title="الشيشة"
-      topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}
+      topRight={
+        <div className="flex gap-2">
+          {(can.owner || can.billing) ? <Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link> : null}
+          <Link href="/support?source=in_app&page=/shisha" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>
+        </div>
+      }
       stickyFooter={
         <StickyActionBar>
           <div className="flex items-center justify-between gap-3">
@@ -218,7 +223,7 @@ export default function ShishaPage() {
 
           {creatingNew ? (
             <div className="mt-3 space-y-2">
-              <div className="text-xs text-slate-500">اكتب اسم أو رقم جلسة الشيشة الجديدة، أو اتركه فارغًا ليولد النظام label تلقائيًا.</div>
+              <div className="text-xs text-slate-500">ابدأ باسم أو رقم الجلسة، ثم اختر أصناف قسم الشيشة فقط واضغط إرسال.</div>
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
@@ -229,6 +234,12 @@ export default function ShishaPage() {
           ) : currentSessionLabel ? (
             <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
               الجلسة الحالية: <span className="font-semibold">{currentSessionLabel}</span>
+            </div>
+          ) : null}
+
+          {!sessions.length && !creatingNew ? (
+            <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              لا توجد جلسات شيشة مفتوحة الآن. ابدأ بجلسة جديدة أو اختر جلسة قائمة لتكمل عليها.
             </div>
           ) : null}
 
@@ -318,7 +329,7 @@ export default function ShishaPage() {
               </div>
             );
           })}
-          {!queue.length ? <div className="text-sm text-slate-500">لا يوجد طلبات شيشة</div> : null}
+          {!queue.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">لا يوجد طلبات شيشة الآن. عندما تصل طلبات جديدة ستظهر هنا.</div> : null}
         </div>
 
         <ReadyDeliveryPanel

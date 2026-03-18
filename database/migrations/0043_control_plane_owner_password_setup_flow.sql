@@ -588,7 +588,7 @@ begin
   )
   values (
     v_cafe.id,
-    'owner_auth',
+    'owner',
     v_owner.phone,
     'owner_password_setup_completed',
     'owner_user',

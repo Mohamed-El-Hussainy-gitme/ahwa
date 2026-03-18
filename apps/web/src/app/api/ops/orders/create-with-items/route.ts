@@ -10,6 +10,7 @@ import {
   requireSessionOrderAccess,
 } from '@/app/api/ops/_helpers';
 import type { StationCode } from '@/lib/ops/types';
+import { normalizeNullableStationCode } from '@/lib/ops/stations';
 
 type CreateOrderRequestBody = {
   serviceSessionId?: string;
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
     }
 
     const stationCodes = products.map((product) => {
-      const stationCode = product.station_code ? String(product.station_code) as StationCode : null;
+      const stationCode = normalizeNullableStationCode(product.station_code);
       if (!product.id || !stationCode || product.is_active !== true) {
         throw new Error('INVALID_INPUT');
       }

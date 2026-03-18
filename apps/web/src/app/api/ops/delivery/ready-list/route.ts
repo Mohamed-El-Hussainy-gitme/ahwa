@@ -7,7 +7,7 @@ export async function POST() {
     const scope = ctx.shiftRole === 'shisha'
       ? { productStationCodes: ['shisha'] as const, readyStationCodes: ['shisha'] as const, sessionItemStationCodes: ['shisha'] as const }
       : ctx.shiftRole === 'waiter'
-        ? { readyStationCodes: ['barista', 'service'] as const, sessionItemStationCodes: ['barista', 'service'] as const }
+        ? { readyStationCodes: ['barista'] as const, sessionItemStationCodes: ['barista'] as const }
         : {};
 
     return ok((await buildWaiterWorkspace(ctx.cafeId, ctx.databaseKey, scope)).readyItems);

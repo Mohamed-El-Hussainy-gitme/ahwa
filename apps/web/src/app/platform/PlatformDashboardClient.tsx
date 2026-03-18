@@ -149,6 +149,8 @@ type SupportInboxData = {
     in_progress_count: number;
     closed_count: number;
     high_priority_count: number;
+    requested_access_count: number;
+    active_access_count: number;
   };
   items: SupportMessageRow[];
 };
@@ -224,6 +226,8 @@ function isSupportInboxResponse(value: unknown): value is SupportInboxResponse {
       typeof value.data.summary.in_progress_count === 'number' &&
       typeof value.data.summary.closed_count === 'number' &&
       typeof value.data.summary.high_priority_count === 'number' &&
+      typeof value.data.summary.requested_access_count === 'number' &&
+      typeof value.data.summary.active_access_count === 'number' &&
       Array.isArray(value.data.items) &&
       value.data.items.every(isSupportMessageRow)
     ))
@@ -465,7 +469,7 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
   const [data, setData] = useState<SupportInboxData | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [statusFilter, setStatusFilter] = useState<'all' | SupportMessageStatus>('all');
+  const [statusFilter, setStatusFilter] = useState<'all' | SupportMessageStatus | 'requested_access' | 'active_access'>('all');
   const [replyDrafts, setReplyDrafts] = useState<Record<string, string>>({});
   const [accessDurationHoursById, setAccessDurationHoursById] = useState<Record<string, number>>({});
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -579,10 +583,12 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
   return (
     <div className="space-y-6">
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <MetricCard title="رسائل الدعم" value={String(data?.summary.total ?? 0)} />
         <MetricCard title="جديدة" value={String(data?.summary.new_count ?? 0)} tone="sky" />
         <MetricCard title="قيد المتابعة" value={String(data?.summary.in_progress_count ?? 0)} tone="warn" />
+        <MetricCard title="طلبات وصول" value={String(data?.summary.requested_access_count ?? 0)} tone="sky" />
+        <MetricCard title="وصول مفعل" value={String(data?.summary.active_access_count ?? 0)} tone="ok" />
         <MetricCard title="أولوية عالية" value={String(data?.summary.high_priority_count ?? 0)} tone="warn" />
       </section>
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -591,15 +597,18 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
             <h2 className="text-lg font-bold text-slate-900">صندوق الدعم الفني</h2>
           </div>
           <div className="flex flex-wrap gap-2">
-            {(['all', 'new', 'in_progress', 'closed'] as const).map((item) => (
+            {(['all', 'new', 'in_progress', 'requested_access', 'active_access', 'closed'] as const).map((item) => (
               <button key={item} type="button" onClick={() => setStatusFilter(item)} className={`rounded-2xl px-4 py-2 text-sm font-medium ${statusFilter === item ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-slate-50 text-slate-700'}`}>
-                {item === 'all' ? 'الكل' : supportStatusLabel(item)}
+                {item === 'all' ? 'الكل' : item === 'requested_access' ? 'طلبات الوصول' : item === 'active_access' ? 'الوصولات المفعلة' : supportStatusLabel(item)}
               </button>
             ))}
             <button type="button" onClick={() => void load()} className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">تحديث</button>
           </div>
         </div>
         <div className="mt-4 space-y-4">
+          <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
+            إذا طلبت القهوة وصول دعم مؤقت، يمكنك من هنا تفعيل الوصول ثم الدخول إلى نفس القهوة مؤقتًا بصلاحيات المعلم حتى انتهاء الوقت أو إغلاق البلاغ.
+          </div>
           {!data && loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">جارٍ تحميل رسائل الدعم...</div> : null}
           {data?.items.map((item) => {
             const durationHours = Math.max(1, Math.min(Math.trunc(accessDurationHoursById[item.id] ?? 4), 72));
@@ -686,9 +695,14 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
                             {busyId === item.id && accessGranted ? 'جارٍ السحب...' : 'سحب الوصول'}
                           </button>
                           {accessGranted ? (
-                            <Link href={`/platform/support/access/${item.id}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700">
-                              فتح مساحة الدعم
-                            </Link>
+                            <>
+                              <Link href={`/api/platform/support/access/enter?messageId=${item.id}&next=/dashboard`} className="rounded-2xl bg-slate-900 px-4 py-3 text-center text-sm font-semibold text-white">
+                                الدخول إلى القهوة الآن
+                              </Link>
+                              <Link href={`/platform/support/access/${item.id}`} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-center text-sm font-semibold text-slate-700">
+                                عرض ملخص القراءة السريعة
+                              </Link>
+                            </>
                           ) : null}
                         </div>
                       </div>
@@ -837,13 +851,15 @@ function MetricCard({
   title: string;
   value: string;
   helper?: string;
-  tone?: 'default' | 'warn' | 'sky';
+  tone?: 'default' | 'warn' | 'sky' | 'ok';
 }) {
   const toneClass = tone === 'warn'
     ? 'border-amber-200 bg-amber-50'
     : tone === 'sky'
       ? 'border-sky-200 bg-sky-50'
-      : 'border-slate-200 bg-white';
+      : tone === 'ok'
+        ? 'border-emerald-200 bg-emerald-50'
+        : 'border-slate-200 bg-white';
   return (
     <div className={`rounded-3xl border p-5 shadow-sm ${toneClass}`}>
       <div className="text-sm text-slate-500">{title}</div>

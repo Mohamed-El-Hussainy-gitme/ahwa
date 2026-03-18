@@ -17,6 +17,7 @@ export default async function PlatformSupportAccessPage({
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <Link href="/platform/support" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">العودة إلى صندوق الدعم</Link>
+          <Link href={`/api/platform/support/access/enter?messageId=${messageId}&next=/dashboard`} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">الدخول إلى القهوة مؤقتًا</Link>
         </div>
         <PlatformSupportAccessWorkspaceClient messageId={messageId} />
       </div>

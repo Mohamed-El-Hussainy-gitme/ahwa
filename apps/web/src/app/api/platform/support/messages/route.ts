@@ -3,9 +3,10 @@ import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { assertPlatformEnv, platformJsonError, platformOk, requirePlatformAdmin } from '@/app/api/platform/_auth';
 
 type SupportAccessStatus = 'not_requested' | 'requested' | 'granted' | 'revoked' | 'expired';
+type SupportFilter = 'all' | 'new' | 'in_progress' | 'closed' | 'requested_access' | 'active_access';
 
 const querySchema = z.object({
-  status: z.enum(['all', 'new', 'in_progress', 'closed']).optional(),
+  status: z.enum(['all', 'new', 'in_progress', 'closed', 'requested_access', 'active_access']).optional(),
   cafeId: z.string().uuid().optional(),
   limit: z.coerce.number().int().min(1).max(200).optional(),
 });
@@ -31,6 +32,24 @@ function normalizeSupportAccessStatus(status: unknown, expiresAt: unknown): Supp
   return 'not_requested';
 }
 
+function applySupportFilter<T extends { status: string; support_access_status: SupportAccessStatus; support_access_requested: boolean }>(
+  items: T[],
+  filter: SupportFilter,
+) {
+  switch (filter) {
+    case 'new':
+    case 'in_progress':
+    case 'closed':
+      return items.filter((item) => item.status === filter);
+    case 'requested_access':
+      return items.filter((item) => item.support_access_requested && item.support_access_status === 'requested');
+    case 'active_access':
+      return items.filter((item) => item.support_access_status === 'granted');
+    default:
+      return items;
+  }
+}
+
 export async function GET(request: Request) {
   try {
     await requirePlatformAdmin();
@@ -43,6 +62,8 @@ export async function GET(request: Request) {
       limit: url.searchParams.get('limit') ?? undefined,
     });
 
+    const filter = (query.status ?? 'all') as SupportFilter;
+
     let builder = admin
       .schema('platform')
       .from('support_messages')
@@ -50,7 +71,6 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false })
       .limit(query.limit ?? 80);
 
-    if (query.status && query.status !== 'all') builder = builder.eq('status', query.status);
     if (query.cafeId) builder = builder.eq('cafe_id', query.cafeId);
 
     const { data: messages, error } = await builder;
@@ -89,9 +109,13 @@ export async function GET(request: Request) {
       in_progress_count: enriched.filter((item) => item.status === 'in_progress').length,
       closed_count: enriched.filter((item) => item.status === 'closed').length,
       high_priority_count: enriched.filter((item) => item.priority === 'high' && item.status !== 'closed').length,
+      requested_access_count: enriched.filter((item) => item.support_access_requested && item.support_access_status === 'requested').length,
+      active_access_count: enriched.filter((item) => item.support_access_status === 'granted').length,
     };
 
-    return platformOk({ data: { summary, items: enriched } });
+    const items = applySupportFilter(enriched, filter);
+
+    return platformOk({ data: { summary, items } });
   } catch (error) {
     if (error instanceof z.ZodError) {
       return platformJsonError(new Error(error.issues[0]?.message ?? 'INVALID_INPUT'), 400);

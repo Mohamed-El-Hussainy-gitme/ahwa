@@ -8,7 +8,7 @@ export type DeviceGateSession = {
   label: string;
   deviceType: 'mobile_phone' | 'tablet' | 'desktop' | 'kiosk';
   deviceMode: 'shared_runtime' | 'station_only' | 'owner_private';
-  stationType?: 'barista' | 'shisha' | 'kitchen' | 'service' | null;
+  stationType?: 'barista' | 'shisha' | 'kitchen' | null;
   activatedAt: string;
 };
 
@@ -59,8 +59,7 @@ export function decodeDeviceGateSession(raw: string | null | undefined): DeviceG
       stationType:
         parsed.stationType === 'barista' ||
         parsed.stationType === 'shisha' ||
-        parsed.stationType === 'kitchen' ||
-        parsed.stationType === 'service'
+        parsed.stationType === 'kitchen'
           ? parsed.stationType
           : null,
       activatedAt: parsed.activatedAt,

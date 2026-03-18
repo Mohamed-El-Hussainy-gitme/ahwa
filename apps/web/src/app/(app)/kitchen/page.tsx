@@ -41,7 +41,7 @@ export default function KitchenPage() {
   }
 
   return (
-    <MobileShell title="الباريستا" topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}>
+    <MobileShell title="الباريستا" topRight={<Link href="/support?source=in_app&page=/kitchen" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>}>
       {localError ?? error ? (
         <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {localError ?? error}
@@ -94,7 +94,7 @@ export default function KitchenPage() {
             </div>
           );
         })}
-        {!data?.queue?.length ? <div className="text-sm text-slate-500">لا يوجد طلبات للباريستا</div> : null}
+        {!data?.queue?.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">لا يوجد طلبات للباريستا الآن. عندما تصل طلبات جديدة ستظهر هنا مباشرة.</div> : null}
       </div>
     </MobileShell>
   );

@@ -1,5 +1,10 @@
 import { getCookieValue, RUNTIME_SESSION_COOKIE } from '@/lib/auth/cookies';
 import { decodeRuntimeSession, type RuntimeSessionPayload } from '@/lib/runtime/session';
+import {
+  getPlatformSupportRuntimeAccess,
+  isSupportRuntimeSessionError,
+  validatePlatformSupportRuntimeAccess,
+} from '@/lib/runtime/support';
 import { resolveRuntimeOpsActor, type RuntimeAccountKind, type RuntimeOpsActorIdentity } from '@/lib/runtime/ops-actor';
 
 export const UNBOUND_RUNTIME_SESSION_CODE = 'UNBOUND_RUNTIME_SESSION';
@@ -30,11 +35,18 @@ export type RuntimeMe = {
   ownerLabel?: 'owner' | 'partner';
   shiftId?: string;
   shiftRole?: 'supervisor' | 'waiter' | 'barista' | 'shisha';
+  supportAccess?: {
+    mode: 'platform_support';
+    messageId: string;
+    grantId: string;
+    expiresAt: string | null;
+  } | null;
 };
 
 export type EnrichedRuntimeMe = RuntimeMe & RuntimeOpsActorIdentity;
 
 function toRuntimeMe(session: RuntimeSessionPayload): RuntimeMe {
+  const supportAccess = getPlatformSupportRuntimeAccess(session);
   return {
     tenantId: session.tenantId,
     tenantSlug: session.tenantSlug,
@@ -45,6 +57,14 @@ function toRuntimeMe(session: RuntimeSessionPayload): RuntimeMe {
     ownerLabel: session.ownerLabel,
     shiftId: session.shiftId ?? undefined,
     shiftRole: session.shiftRole ?? undefined,
+    supportAccess: supportAccess
+      ? {
+          mode: 'platform_support',
+          messageId: supportAccess.messageId,
+          grantId: supportAccess.grantId,
+          expiresAt: supportAccess.expiresAt ?? null,
+        }
+      : null,
   };
 }
 
@@ -56,14 +76,29 @@ export async function getBaseRuntimeMeFromSessionToken(sessionToken: string): Pr
 
 export async function enrichRuntimeMe(me: RuntimeMe, rawSessionToken?: string | null): Promise<EnrichedRuntimeMe> {
   const decoded = rawSessionToken ? decodeRuntimeSession(rawSessionToken) : null;
-  if (decoded && (decoded.actorOwnerId || decoded.actorStaffId)) {
-    return {
-      ...me,
-      actorOwnerId: decoded.actorOwnerId ?? null,
-      actorStaffId: decoded.actorStaffId ?? null,
-      actorType: decoded.actorOwnerId ? 'owner' : decoded.actorStaffId ? 'staff' : null,
-      opsActorId: decoded.actorOwnerId ?? decoded.actorStaffId ?? null,
-    };
+  if (decoded) {
+    const supportAccess = getPlatformSupportRuntimeAccess(decoded);
+    if (supportAccess) {
+      await validatePlatformSupportRuntimeAccess(decoded);
+    }
+
+    if (decoded.actorOwnerId || decoded.actorStaffId) {
+      return {
+        ...me,
+        supportAccess: supportAccess
+          ? {
+              mode: 'platform_support',
+              messageId: supportAccess.messageId,
+              grantId: supportAccess.grantId,
+              expiresAt: supportAccess.expiresAt ?? null,
+            }
+          : null,
+        actorOwnerId: decoded.actorOwnerId ?? null,
+        actorStaffId: decoded.actorStaffId ?? null,
+        actorType: decoded.actorOwnerId ? 'owner' : decoded.actorStaffId ? 'staff' : null,
+        opsActorId: decoded.actorOwnerId ?? decoded.actorStaffId ?? null,
+      };
+    }
   }
 
   const databaseKey = String(me.databaseKey ?? '').trim();
@@ -95,3 +130,5 @@ export async function getEnrichedRuntimeMeFromCookie(): Promise<EnrichedRuntimeM
   if (!token) return null;
   return getEnrichedRuntimeMeFromSessionToken(token);
 }
+
+export { isSupportRuntimeSessionError };

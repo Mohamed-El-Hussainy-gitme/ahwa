@@ -136,7 +136,12 @@ export default function OrdersPage() {
   return (
     <MobileShell
       title="الطلبات"
-      topRight={<Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>}
+      topRight={
+        <div className="flex gap-2">
+          {(can.owner || can.billing) ? <Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link> : null}
+          <Link href="/support?source=in_app&page=/orders" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>
+        </div>
+      }
       stickyFooter={
         <StickyActionBar>
           <div className="flex items-center justify-between gap-3">
@@ -197,7 +202,7 @@ export default function OrdersPage() {
 
           {creatingNew ? (
             <div className="mt-3 space-y-2">
-              <div className="text-xs text-slate-500">اكتب اسم أو رقم الجلسة الجديدة. ويمكن تركه فارغًا ليولد النظام label تلقائيًا.</div>
+              <div className="text-xs text-slate-500">ابدأ باسم الجلسة أو رقمها، ويمكن تركه فارغًا ليولد النظام اسمًا تلقائيًا. بعد ذلك اختر الأصناف واضغط إرسال.</div>
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
@@ -208,6 +213,18 @@ export default function OrdersPage() {
           ) : currentSessionLabel ? (
             <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
               الجلسة الحالية: <span className="font-semibold">{currentSessionLabel}</span>
+            </div>
+          ) : null}
+
+          {!sessions.length && !creatingNew ? (
+            <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              لا توجد جلسات مفتوحة الآن. اضغط "جلسة جديدة" ثم ابدأ بإضافة الطلبات.
+            </div>
+          ) : null}
+
+          {!sections.length ? (
+            <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              لا توجد أقسام منيو متاحة الآن. راجع المنيو من شاشة الإدارة.
             </div>
           ) : null}
 
