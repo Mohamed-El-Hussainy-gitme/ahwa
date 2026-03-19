@@ -143,6 +143,10 @@ function buildQuickMetrics(input: {
   }
 
   if (pathname === '/orders') {
+    if (role === 'waiter' || role === 'supervisor') {
+      return [sessionMetric];
+    }
+
     return [
       {
         key: 'ready-age',
@@ -209,14 +213,14 @@ function buildQuickMetrics(input: {
           key: 'ready-age',
           label: 'أقدم جاهز',
           value: formatMinutes(summary.queueHealth.oldestReadyMinutes),
-          href: '/orders#ready-panel',
+          href: '/dashboard#ready-panel',
           tone: ageTone(summary.queueHealth.oldestReadyMinutes),
         },
         {
           key: 'ready-count',
           label: 'جاهز',
           value: summary.readyForDelivery,
-          href: '/orders#ready-panel',
+          href: '/dashboard#ready-panel',
           tone: countTone(summary.readyForDelivery, 'ready'),
         },
         sessionMetric,
@@ -236,7 +240,7 @@ function buildQuickMetrics(input: {
           key: 'ready-count',
           label: 'جاهز',
           value: summary.readyForDelivery,
-          href: '/orders#ready-panel',
+          href: role === 'supervisor' ? '/dashboard#ready-panel' : '/orders#ready-panel',
           tone: countTone(summary.readyForDelivery, 'ready'),
         },
         sessionMetric,

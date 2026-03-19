@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
@@ -14,10 +14,9 @@ import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
-import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 
 export default function OrdersPage() {
-  const { can, shift } = useAuthz();
+  const { can, shift, effectiveRole } = useAuthz();
   const [label, setLabel] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [creatingNew, setCreatingNew] = useState(false);
@@ -32,7 +31,6 @@ export default function OrdersPage() {
     enabled: Boolean(shift),
     pollIntervalMs: 1500,
   });
-  const previousReadyQtyRef = useRef(0);
 
   const [commandError, setCommandError] = useState<string | null>(null);
 
@@ -50,19 +48,8 @@ export default function OrdersPage() {
     [data?.sessionItems, effectiveSessionId],
   );
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
-  const totalReadyForDelivery = (data?.readyItems ?? []).reduce((sum, item) => sum + item.qtyReadyForDelivery, 0);
   const canManageComplaintActions = can.owner || can.billing;
-
-  useEffect(() => {
-    if (document.visibilityState !== 'visible') {
-      previousReadyQtyRef.current = totalReadyForDelivery;
-      return;
-    }
-    if (!can.owner && totalReadyForDelivery > previousReadyQtyRef.current) {
-      void playOpsNotificationSignal('waiter-ready');
-    }
-    previousReadyQtyRef.current = totalReadyForDelivery;
-  }, [can.owner, totalReadyForDelivery]);
+  const showReadyOnDashboard = !can.owner && (effectiveRole === 'waiter' || effectiveRole === 'supervisor');
 
   useEffect(() => {
     if (creatingNew || effectiveSessionId) {
@@ -351,20 +338,22 @@ export default function OrdersPage() {
           </div>
         </section>
 
-        <section id="ready-panel">
-          <ReadyDeliveryPanel
-            title="جاهز للتسليم"
-            items={data?.readyItems ?? []}
-            selectedQty={readySelection}
-            onChangeQty={(orderItemId, nextQty, maxQty) => {
-              setReadySelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
-            }}
-            onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
-            busy={deliverCommand.busy}
-            emptyLabel="لا يوجد جاهز للتسليم"
-            compact
-          />
-        </section>
+        {!showReadyOnDashboard ? (
+          <section id="ready-panel">
+            <ReadyDeliveryPanel
+              title="جاهز للتسليم"
+              items={data?.readyItems ?? []}
+              selectedQty={readySelection}
+              onChangeQty={(orderItemId, nextQty, maxQty) => {
+                setReadySelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
+              }}
+              onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
+              busy={deliverCommand.busy}
+              emptyLabel="لا يوجد جاهز للتسليم"
+              compact
+            />
+          </section>
+        ) : null}
 
         {canManageComplaintActions ? (
           <section id="session-items-panel">

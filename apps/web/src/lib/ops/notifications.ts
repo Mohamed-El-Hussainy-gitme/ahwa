@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import type { ShiftRole } from '@/lib/authz/policy';
 import type { OpsRealtimeEvent, StationCode } from '@/lib/ops/types';
 
@@ -116,7 +117,7 @@ function normalizeStationCode(value: unknown): StationCode | null {
   return value === 'barista' || value === 'shisha' ? value : null;
 }
 
-function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, isOwner: boolean): OpsNotificationSignal | null {
+function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, isOwner: boolean, pathname: string): OpsNotificationSignal | null {
   if (!role || isOwner) {
     return null;
   }
@@ -132,7 +133,7 @@ function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, 
     return null;
   }
 
-  if (event.type === 'station.ready' && role === 'waiter') {
+  if (event.type === 'station.ready' && (role === 'waiter' || role === 'supervisor') && pathname === '/dashboard') {
     return 'waiter-ready';
   }
 
@@ -140,6 +141,7 @@ function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, 
 }
 
 export function useOpsRealtimeNotifications(input: UseOpsRealtimeNotificationsInput) {
+  const pathname = usePathname();
   const seenEventIdsRef = useRef<string[]>([]);
   const seenEventIdsSetRef = useRef<Set<string>>(new Set());
   const lastPlayedAtRef = useRef<Record<OpsNotificationSignal, number>>({
@@ -166,7 +168,7 @@ export function useOpsRealtimeNotifications(input: UseOpsRealtimeNotificationsIn
       }
     }
 
-    const signal = resolveSignalForEvent(event, input.role, input.isOwner);
+    const signal = resolveSignalForEvent(event, input.role, input.isOwner, pathname);
     if (!signal) return;
 
     const now = Date.now();
@@ -175,5 +177,5 @@ export function useOpsRealtimeNotifications(input: UseOpsRealtimeNotificationsIn
     }
     lastPlayedAtRef.current[signal] = now;
     await playOpsNotificationSignal(signal);
-  }, [input.enabled, input.isOwner, input.role]);
+  }, [input.enabled, input.isOwner, input.role, pathname]);
 }
