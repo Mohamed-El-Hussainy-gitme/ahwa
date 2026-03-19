@@ -6,6 +6,7 @@ import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import type { SessionOrderItem, WaiterWorkspace } from '@/lib/ops/types';
+import { appendOrTouchSession, applyDeliverToWaiterWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
@@ -27,7 +28,7 @@ export default function OrdersPage() {
   const [remakeSelection, setRemakeSelection] = useState<Record<string, number>>({});
 
   const loader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
+  const { data, setData, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
     enabled: Boolean(shift),
   });
   const { summary } = useOpsChrome();
@@ -55,21 +56,20 @@ export default function OrdersPage() {
       const nextDraftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
       if (!nextDraftLines.length) return;
 
-      const target = creatingNew || !effectiveSessionId
-        ? await opsClient.openOrResumeSession(label || undefined)
-        : {
-            sessionId: effectiveSessionId,
-            label:
-              data.sessions.find((session) => session.id === effectiveSessionId)?.label ?? label,
-          };
-
-      setSessionId(target.sessionId);
-      setCreatingNew(false);
-
-      await opsClient.createOrderWithItems({
-        serviceSessionId: target.sessionId,
-        items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
-      });
+      if (creatingNew || !effectiveSessionId) {
+        const created = await opsClient.openAndCreateOrder({
+          label: label || undefined,
+          items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
+        });
+        setSessionId(created.sessionId);
+        setCreatingNew(false);
+        setData((current) => appendOrTouchSession(current, created.sessionId, created.label));
+      } else {
+        await opsClient.createOrderWithItems({
+          serviceSessionId: effectiveSessionId,
+          items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
+        });
+      }
 
       setDraft({});
       setLabel('');
@@ -81,6 +81,7 @@ export default function OrdersPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.deliver(orderItemId, quantity);
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
+      setData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
     },
     { onError: setCommandError },
   );

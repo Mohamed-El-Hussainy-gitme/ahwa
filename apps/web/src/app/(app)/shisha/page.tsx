@@ -5,7 +5,8 @@ import { useCallback, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { SessionOrderItem, StationWorkspace, WaiterWorkspace } from '@/lib/ops/types';
+import type { SessionOrderItem, StationQueueItem, StationWorkspace, WaiterWorkspace } from '@/lib/ops/types';
+import { appendOrTouchSession, applyDeliverToWaiterWorkspace, applyReadyToStationWorkspace, applyReadyToWaiterWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
@@ -30,10 +31,10 @@ export default function ShishaPage() {
 
   const stationLoader = useCallback(() => opsClient.stationWorkspace('shisha'), []);
   const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data: stationData, error: stationError } = useOpsWorkspace<StationWorkspace>(stationLoader, {
+  const { data: stationData, setData: setStationData, error: stationError } = useOpsWorkspace<StationWorkspace>(stationLoader, {
     enabled: Boolean(shift),
   });
-  const { data: orderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
+  const { data: orderData, setData: setOrderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
   });
   const { summary } = useOpsChrome();
@@ -56,9 +57,11 @@ export default function ShishaPage() {
   const canManageComplaintActions = can.owner || can.billing;
 
   const readyCommand = useOpsCommand(
-    async (orderItemId: string, quantity: number) => {
-      await opsClient.markReady(orderItemId, quantity);
-      setQueueSelection((state) => ({ ...state, [orderItemId]: 1 }));
+    async (item: StationQueueItem, quantity: number) => {
+      await opsClient.markReady(item.orderItemId, quantity);
+      setQueueSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
+      setStationData((current) => applyReadyToStationWorkspace(current, item, quantity));
+      setOrderData((current) => applyReadyToWaiterWorkspace(current, item, quantity));
     },
     { onError: setLocalError },
   );
@@ -67,6 +70,7 @@ export default function ShishaPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.deliver(orderItemId, quantity);
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
+      setOrderData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
     },
     { onError: setLocalError },
   );
@@ -91,20 +95,20 @@ export default function ShishaPage() {
       if (!orderData) return;
       if (!draftLines.length) return;
 
-      const target = creatingNew || !effectiveSessionId
-        ? await opsClient.openOrResumeSession(label || undefined)
-        : {
-            sessionId: effectiveSessionId,
-            label: orderData.sessions.find((session) => session.id === effectiveSessionId)?.label ?? label,
-          };
-
-      setSessionId(target.sessionId);
-      setCreatingNew(false);
-
-      await opsClient.createOrderWithItems({
-        serviceSessionId: target.sessionId,
-        items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
-      });
+      if (creatingNew || !effectiveSessionId) {
+        const created = await opsClient.openAndCreateOrder({
+          label: label || undefined,
+          items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
+        });
+        setSessionId(created.sessionId);
+        setCreatingNew(false);
+        setOrderData((current) => appendOrTouchSession(current, created.sessionId, created.label));
+      } else {
+        await opsClient.createOrderWithItems({
+          serviceSessionId: effectiveSessionId,
+          items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
+        });
+      }
 
       setDraft({});
       setLabel('');
@@ -313,14 +317,14 @@ export default function ShishaPage() {
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     disabled={readyCommand.busy}
-                    onClick={() => void readyCommand.run(item.orderItemId, qty)}
+                    onClick={() => void readyCommand.run(item, qty)}
                     className="rounded-2xl border border-slate-200 px-3 py-3 font-semibold"
                   >
                     تجهيز المحدد
                   </button>
                   <button
                     disabled={readyCommand.busy}
-                    onClick={() => void readyCommand.run(item.orderItemId, item.qtyWaiting)}
+                    onClick={() => void readyCommand.run(item, item.qtyWaiting)}
                     className="rounded-2xl bg-slate-900 px-3 py-3 font-semibold text-white"
                   >
                     تجهيز الكل

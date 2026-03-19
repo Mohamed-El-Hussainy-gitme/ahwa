@@ -8,6 +8,7 @@ import { opsClient } from '@/lib/ops/client';
 import type { BillingWorkspace } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { applyBillingToWorkspace } from '@/lib/ops/workspacePatches';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 
 export default function BillingPage() {
@@ -18,7 +19,7 @@ export default function BillingPage() {
   const [localError, setLocalError] = useState<string | null>(null);
 
   const loader = useCallback(() => opsClient.billingWorkspace(), []);
-  const { data, error } = useOpsWorkspace<BillingWorkspace>(loader, { enabled: Boolean(shift) });
+  const { data, setData, error } = useOpsWorkspace<BillingWorkspace>(loader, { enabled: Boolean(shift) });
 
   const effectiveSessionId = sessionId || data?.sessions[0]?.sessionId || '';
   const current = useMemo(
@@ -34,21 +35,14 @@ export default function BillingPage() {
       .filter((item) => item.quantity > 0);
   }, [current?.items, selectedQty]);
 
-  async function finalizeSessionIfPossible(targetSessionId: string) {
-    if (!targetSessionId) return;
-    try {
-      await opsClient.closeSession(targetSessionId);
-    } catch {
-      // قد تبقى الجلسة مفتوحة لو ما زالت فيها كميات غير منتهية، وهذا طبيعي.
-    }
-  }
 
   const settleCommand = useOpsCommand(
     async () => {
       const currentSessionId = effectiveSessionId;
-      await opsClient.settle(allocations());
+      const selected = allocations();
+      await opsClient.settleAndClose(selected);
       setSelectedQty({});
-      await finalizeSessionIfPossible(currentSessionId);
+      setData((current) => applyBillingToWorkspace(current, currentSessionId, selected, 'settle'));
     },
     { onError: setLocalError },
   );
@@ -56,10 +50,11 @@ export default function BillingPage() {
   const deferCommand = useOpsCommand(
     async () => {
       const currentSessionId = effectiveSessionId;
-      await opsClient.defer(debtorName, allocations());
+      const selected = allocations();
+      await opsClient.deferAndClose(debtorName, selected);
       setSelectedQty({});
       setDebtorName('');
-      await finalizeSessionIfPossible(currentSessionId);
+      setData((current) => applyBillingToWorkspace(current, currentSessionId, selected, 'defer'));
     },
     { onError: setLocalError },
   );

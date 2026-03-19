@@ -5,7 +5,8 @@ import { useCallback, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { StationWorkspace } from '@/lib/ops/types';
+import type { StationQueueItem, StationWorkspace } from '@/lib/ops/types';
+import { applyReadyToStationWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { useOpsChrome } from '@/lib/ops/chrome';
@@ -16,14 +17,15 @@ export default function KitchenPage() {
   const [localError, setLocalError] = useState<string | null>(null);
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
   const loader = useCallback(() => opsClient.stationWorkspace('barista'), []);
-  const { data, error } = useOpsWorkspace<StationWorkspace>(loader, {
+  const { data, setData, error } = useOpsWorkspace<StationWorkspace>(loader, {
     enabled: Boolean(shift),
   });
   const { summary } = useOpsChrome();
   const readyCommand = useOpsCommand(
-    async (orderItemId: string, quantity: number) => {
-      await opsClient.markReady(orderItemId, quantity);
-      setSelectedQty((state) => ({ ...state, [orderItemId]: 0 }));
+    async (item: StationQueueItem, quantity: number) => {
+      await opsClient.markReady(item.orderItemId, quantity);
+      setSelectedQty((state) => ({ ...state, [item.orderItemId]: 0 }));
+      setData((current) => applyReadyToStationWorkspace(current, item, quantity));
     },
     { onError: setLocalError },
   );
@@ -78,14 +80,14 @@ export default function KitchenPage() {
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   disabled={readyCommand.busy}
-                  onClick={() => void readyCommand.run(item.orderItemId, qty)}
+                  onClick={() => void readyCommand.run(item, qty)}
                   className="rounded-2xl border border-slate-200 px-3 py-3 font-semibold"
                 >
                   تجهيز المحدد
                 </button>
                 <button
                   disabled={readyCommand.busy}
-                  onClick={() => void readyCommand.run(item.orderItemId, item.qtyWaiting)}
+                  onClick={() => void readyCommand.run(item, item.qtyWaiting)}
                   className="rounded-2xl bg-slate-900 px-3 py-3 font-semibold text-white"
                 >
                   تجهيز الكل
