@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { enqueueOpsMutation, jsonError, kickOpsOutboxDispatch, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadProduct, productUsageCount, renumberProductSortOrders } from '@/app/api/ops/menu/_utils';
 
 export async function POST(request: Request) {
@@ -15,7 +15,8 @@ export async function POST(request: Request) {
     if (usageCount > 0) {
       const { error } = await adminOps(ctx.databaseKey).from('menu_products').update({ is_active: false }).eq('cafe_id', ctx.cafeId).eq('id', productId);
       if (error) throw error;
-      publishOpsMutation(ctx, { type: 'menu.product_archived', entityId: productId, data: { productName: String(product.product_name ?? ''), usageCount } });
+      await enqueueOpsMutation(ctx, { type: 'menu.product_archived', entityId: productId, data: { productName: String(product.product_name ?? ''), usageCount } });
+      kickOpsOutboxDispatch(ctx);
       return ok({ ok: true, mode: 'archived' as const });
     }
 
@@ -23,7 +24,8 @@ export async function POST(request: Request) {
     const { error } = await adminOps(ctx.databaseKey).from('menu_products').delete().eq('cafe_id', ctx.cafeId).eq('id', productId);
     if (error) throw error;
     await renumberProductSortOrders(ctx.cafeId, sectionId, ctx.databaseKey);
-    publishOpsMutation(ctx, { type: 'menu.product_deleted', entityId: productId, data: { productName: String(product.product_name ?? '') } });
+    await enqueueOpsMutation(ctx, { type: 'menu.product_deleted', entityId: productId, data: { productName: String(product.product_name ?? '') } });
+    kickOpsOutboxDispatch(ctx);
     return ok({ ok: true, mode: 'deleted' as const });
   } catch (error) {
     return jsonError(error, 400);

@@ -13,6 +13,8 @@ type CafeBindingRow = {
   cafeId: string;
   databaseKey: string;
   bindingSource: string | null;
+  cafeLoadTier?: 'small' | 'medium' | 'heavy' | 'enterprise';
+  loadUnits?: number;
 };
 
 type BindingStatus = 'bound' | 'unbound' | 'invalid';
@@ -20,6 +22,8 @@ type BindingStatus = 'bound' | 'unbound' | 'invalid';
 type DatabaseBindingPayload = {
   database_key: string;
   binding_source: string;
+  cafe_load_tier?: 'small' | 'medium' | 'heavy' | 'enterprise';
+  load_units?: number;
 };
 
 function toBindingStatus(databaseKey: string | null | undefined): BindingStatus {
@@ -37,6 +41,8 @@ function toDatabaseBinding(row: CafeBindingRow | undefined): DatabaseBindingPayl
   return {
     database_key: row.databaseKey.trim(),
     binding_source: row.bindingSource?.trim() || 'unknown',
+    cafe_load_tier: row.cafeLoadTier,
+    load_units: row.loadUnits,
   };
 }
 

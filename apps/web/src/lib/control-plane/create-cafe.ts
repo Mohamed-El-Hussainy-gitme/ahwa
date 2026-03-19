@@ -19,6 +19,7 @@ export type CreateCafeWithOwnerInput = {
   subscriptionIsComplimentary: boolean;
   subscriptionNotes: string | null;
   databaseKey: string;
+  cafeLoadTier: 'small' | 'medium' | 'heavy' | 'enterprise';
 };
 
 type CreatedCafeRow = {
@@ -120,7 +121,8 @@ async function createCafeWithOwnerViaRpc(
     p_subscription_amount_paid: input.subscriptionAmountPaid,
     p_subscription_is_complimentary: input.subscriptionIsComplimentary,
     p_subscription_notes: input.subscriptionNotes,
-    p_database_key: input.databaseKey,
+    p_database_key: input.databaseKey || null,
+    p_cafe_load_tier: input.cafeLoadTier,
   });
 
   if (error) throw error;
@@ -190,6 +192,27 @@ async function assertDatabaseKeyIsAvailable(databaseKey: string): Promise<void> 
   }
 }
 
+async function resolveDatabaseKeyForCreate(session: PlatformAdminSession, input: CreateCafeWithOwnerInput): Promise<string> {
+  if (input.databaseKey) {
+    await assertDatabaseKeyIsAvailable(input.databaseKey);
+    return input.databaseKey;
+  }
+
+  const { data, error } = await controlPlaneAdmin().rpc('control_recommend_operational_database', {
+    p_super_admin_user_id: session.superAdminUserId,
+    p_cafe_load_tier: input.cafeLoadTier,
+  });
+
+  if (error) throw error;
+
+  const databaseKey = normalizeDatabaseKey(
+    data && typeof data === 'object' && 'database_key' in data ? String((data as { database_key?: string | null }).database_key ?? '') : '',
+  );
+
+  await assertDatabaseKeyIsAvailable(databaseKey);
+  return databaseKey;
+}
+
 async function cleanupCafeCreate(cafeId: string): Promise<void> {
   const normalizedCafeId = normalizeText(cafeId);
   if (!normalizedCafeId) {
@@ -223,12 +246,13 @@ async function insertCafe(slug: string, displayName: string): Promise<CreatedCaf
   return data;
 }
 
-async function assignDatabase(session: PlatformAdminSession, cafeId: string, databaseKey: string): Promise<void> {
+async function assignDatabase(session: PlatformAdminSession, cafeId: string, databaseKey: string, cafeLoadTier: CreateCafeWithOwnerInput['cafeLoadTier']): Promise<void> {
   const { error } = await controlPlaneAdmin().rpc('control_assign_cafe_database', {
     p_super_admin_user_id: session.superAdminUserId,
     p_cafe_id: cafeId,
     p_database_key: databaseKey,
     p_binding_source: 'manual',
+    p_cafe_load_tier: cafeLoadTier,
   });
 
   if (error) throw error;
@@ -306,6 +330,8 @@ async function writeCafeAuditEvent(
     owner_phone: input.ownerPhone,
     owner_label: 'owner',
     database_key: input.databaseKey,
+    cafe_load_tier: input.cafeLoadTier,
+    load_units: input.cafeLoadTier === 'enterprise' ? 15 : input.cafeLoadTier === 'heavy' ? 8 : input.cafeLoadTier === 'medium' ? 3 : 1,
     password_state: invite.passwordState,
     password_setup_expires_at: invite.passwordSetupExpiresAt,
     subscription: subscriptionId
@@ -354,6 +380,7 @@ function normalizeInput(input: CreateCafeWithOwnerInput): CreateCafeWithOwnerInp
     subscriptionIsComplimentary: input.subscriptionIsComplimentary === true,
     subscriptionNotes: input.subscriptionNotes ? normalizeText(input.subscriptionNotes) : null,
     databaseKey: normalizeDatabaseKey(input.databaseKey),
+    cafeLoadTier: input.cafeLoadTier,
   };
 }
 
@@ -365,7 +392,7 @@ export async function createCafeWithOwnerOnControlPlane(
   let createdCafeId = '';
 
   try {
-    await assertDatabaseKeyIsAvailable(input.databaseKey);
+    input.databaseKey = await resolveDatabaseKeyForCreate(session, input);
 
     try {
       return await createCafeWithOwnerViaRpc(session, input);
@@ -378,7 +405,7 @@ export async function createCafeWithOwnerOnControlPlane(
     const createdCafe = await insertCafe(input.cafeSlug, input.cafeDisplayName);
     createdCafeId = createdCafe.id;
 
-    await assignDatabase(session, createdCafe.id, input.databaseKey);
+    await assignDatabase(session, createdCafe.id, input.databaseKey, input.cafeLoadTier);
     const createdOwner = await createOwner(session, createdCafe.id, input);
     const subscriptionId = await createSubscription(session, createdCafe.id, input);
     await writeCafeAuditEvent(session, createdCafe.id, createdOwner.ownerUserId, subscriptionId, input, createdOwner);

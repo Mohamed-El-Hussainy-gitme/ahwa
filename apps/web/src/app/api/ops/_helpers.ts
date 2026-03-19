@@ -5,9 +5,10 @@ import { decodeRuntimeSession, assertBoundRuntimeSession } from '@/lib/runtime/s
 import { validatePlatformSupportRuntimeAccess } from '@/lib/runtime/support';
 import { adminOps } from '@/app/api/ops/_server';
 import { publishOpsEvent } from '@/lib/ops/events';
+import { scheduleOpsOutboxDispatch } from '@/lib/ops/outbox/dispatcher';
 import { resolveMessage } from '@/lib/messages/catalog';
+import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import type { StationCode } from '@/lib/ops/types';
-import type { OpsWorkspaceScope } from '@/lib/ops/workspaceScopes';
 
 export type OpsShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
 export type OpsStationCode = 'barista' | 'shisha';
@@ -430,38 +431,32 @@ export function ok(data: unknown) {
   return NextResponse.json(data, { status: 200 });
 }
 
-export function buildMutationPayload<T extends Record<string, unknown>>(input: {
-  data?: T;
-  mutation: {
+export async function enqueueOpsMutation(
+  ctx: Pick<OpsActorContext, 'cafeId' | 'shiftId' | 'databaseKey'>,
+  input: {
     type: string;
-    scopes: OpsWorkspaceScope[];
     entityId?: string | null;
     shiftId?: string | null;
-  };
-}) {
-  return {
-    ...(input.data ?? ({} as T)),
-    ok: true,
-    mutation: {
-      type: input.mutation.type,
-      scopes: input.mutation.scopes,
-      entityId: input.mutation.entityId ?? null,
-      shiftId: input.mutation.shiftId ?? null,
-      at: new Date().toISOString(),
-    },
-  };
-}
+    data?: Record<string, unknown>;
+    scopes?: string[];
+    stream?: string | null;
+  },
+) {
+  const { data, error } = await supabaseAdminForDatabase(ctx.databaseKey).rpc('ops_stage_outbox_event', {
+    p_cafe_id: ctx.cafeId,
+    p_shift_id: input.shiftId ?? ctx.shiftId ?? null,
+    p_event_type: input.type,
+    p_entity_id: input.entityId ?? null,
+    p_payload: input.data ?? {},
+    p_scope_codes: input.scopes ?? null,
+    p_stream_name: input.stream ?? 'ops',
+  });
 
-export function mutationOk<T extends Record<string, unknown>>(input: {
-  data?: T;
-  mutation: {
-    type: string;
-    scopes: OpsWorkspaceScope[];
-    entityId?: string | null;
-    shiftId?: string | null;
-  };
-}) {
-  return NextResponse.json(buildMutationPayload(input), { status: 200 });
+  if (error) {
+    throw error;
+  }
+
+  return String(data ?? '').trim();
 }
 
 export function publishOpsMutation(
@@ -471,13 +466,26 @@ export function publishOpsMutation(
     entityId?: string | null;
     shiftId?: string | null;
     data?: Record<string, unknown>;
+    scopes?: string[];
   },
 ) {
-  return publishOpsEvent({
+  void publishOpsEvent({
     type: input.type,
     cafeId: ctx.cafeId,
     shiftId: input.shiftId ?? ctx.shiftId ?? null,
     entityId: input.entityId ?? null,
     data: input.data,
+    scopes: input.scopes ?? [],
+  }).catch(() => undefined);
+}
+
+export function kickOpsOutboxDispatch(
+  ctx: Pick<OpsActorContext, 'databaseKey' | 'cafeId'>,
+  input: { cafeId?: string | null; limit?: number } = {},
+) {
+  scheduleOpsOutboxDispatch({
+    databaseKey: ctx.databaseKey,
+    cafeId: input.cafeId ?? ctx.cafeId,
+    limit: input.limit,
   });
 }

@@ -8,7 +8,6 @@ import { opsClient } from '@/lib/ops/client';
 import type { ComplaintItemCandidate, ComplaintRecord, ComplaintsWorkspace, ItemIssueRecord } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
-import { OPS_SCOPE_COMPLAINTS } from '@/lib/ops/workspaceScopes';
 
 function complaintKindForAction(action: 'remake' | 'cancel_undelivered' | 'waive_delivered') {
   if (action === 'remake') return 'quality_issue' as const;
@@ -75,7 +74,6 @@ export default function ComplaintsPage() {
   const loader = useCallback(() => opsClient.complaintsWorkspace(), []);
   const { data, error } = useOpsWorkspace<ComplaintsWorkspace>(loader, {
     enabled: Boolean(shift),
-    scopes: [OPS_SCOPE_COMPLAINTS],
   });
 
   const itemById = useMemo(() => new Map((data?.items ?? []).map((item) => [item.orderItemId, item])), [data?.items]);

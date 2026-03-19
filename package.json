@@ -36,6 +36,13 @@
     "verify:archive-hardening": "node ./scripts/verify-archive-hardening-release.mjs",
     "smoke:archive-hardening": "node ./scripts/smoke-archive-hardening.mjs",
     "archive:plan": "node ./scripts/manage-reporting-archive-approval.mjs plan",
-    "archive:execute": "node ./scripts/manage-reporting-archive-approval.mjs execute"
+    "archive:execute": "node ./scripts/manage-reporting-archive-approval.mjs execute",
+    "dispatch:ops-outbox": "node ./scripts/dispatch-ops-outbox.mjs",
+    "load:ops:provision": "node ./scripts/load/provision-ops-fixtures.mjs",
+    "load:ops": "node ./scripts/load/run-ops-load.mjs",
+    "soak:ops": "node ./scripts/load/run-ops-soak.mjs",
+    "failure:ops": "node ./scripts/load/run-ops-failure-lab.mjs",
+    "report:capacity": "node ./scripts/load/build-capacity-report.mjs",
+    "verify:phase30": "node ./scripts/verify-phase30-load-lab.mjs"
   }
 }

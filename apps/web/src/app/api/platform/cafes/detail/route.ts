@@ -14,6 +14,8 @@ type BindingStatus = 'bound' | 'unbound' | 'invalid';
 type DatabaseBindingPayload = {
   database_key: string;
   binding_source: string;
+  cafe_load_tier?: 'small' | 'medium' | 'heavy' | 'enterprise';
+  load_units?: number;
 };
 
 function toBindingStatus(databaseKey: string | null | undefined): BindingStatus {
@@ -25,12 +27,14 @@ function toBindingStatus(databaseKey: string | null | undefined): BindingStatus 
 
 function toDatabaseBinding(value: unknown): DatabaseBindingPayload | null {
   if (!value || typeof value !== 'object') return null;
-  const row = value as { database_key?: string | null; binding_source?: string | null };
+  const row = value as { database_key?: string | null; binding_source?: string | null; cafe_load_tier?: 'small' | 'medium' | 'heavy' | 'enterprise'; load_units?: number | null };
   const databaseKey = typeof row.database_key === 'string' ? row.database_key.trim() : '';
   if (!databaseKey) return null;
   return {
     database_key: databaseKey,
     binding_source: row.binding_source?.trim() || 'unknown',
+    cafe_load_tier: row.cafe_load_tier,
+    load_units: typeof row.load_units === 'number' ? row.load_units : undefined,
   };
 }
 
@@ -60,6 +64,8 @@ export async function POST(request: Request) {
       ? {
           database_key: bindingRow.databaseKey,
           binding_source: bindingRow.bindingSource,
+          cafe_load_tier: bindingRow.cafeLoadTier,
+          load_units: bindingRow.loadUnits,
         }
       : null);
     const enriched =

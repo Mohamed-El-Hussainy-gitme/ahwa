@@ -347,4 +347,8 @@ export type OpsRealtimeEvent = {
   entityId: string | null;
   at: string;
   data?: Record<string, unknown>;
+  version: 1;
+  stream: string;
+  cursor: string | null;
+  scopes: string[];
 };

@@ -5,7 +5,7 @@ import {
   completeIdempotentMutation,
   jsonError,
   ok,
-  publishOpsMutation,
+  kickOpsOutboxDispatch,
   releaseIdempotentMutation,
   requireOpsActorContext,
   requireStationAccess,
@@ -41,19 +41,14 @@ export async function POST(req: Request) {
     }
     mutation = started.mutation;
 
-    await callOpsRpc<MarkReadyRpcResult>('ops_mark_partial_ready', {
+    await callOpsRpc<MarkReadyRpcResult>('ops_mark_partial_ready_with_outbox', {
       p_cafe_id: ctx.cafeId,
       p_order_item_id: normalizedOrderItemId,
       p_quantity: normalizedQuantity,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
     }, ctx.databaseKey);
 
-    publishOpsMutation(ctx, {
-      type: 'station.partial_ready',
-      entityId: item.id,
-      shiftId: item.shiftId,
-      data: { quantity: normalizedQuantity, stationCode: item.stationCode ?? '' },
-    });
+    kickOpsOutboxDispatch(ctx);
 
     const responseBody = { ok: true };
     await completeIdempotentMutation(ctx, mutation, responseBody);

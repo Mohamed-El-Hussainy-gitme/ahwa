@@ -8,7 +8,6 @@ import { ShiftRequired, AccessDenied } from '@/ui/AccessState';
 import { opsClient } from '@/lib/ops/client';
 import type { DeferredAgingBucket, DeferredCustomerStatus, DeferredCustomerSummary } from '@/lib/ops/types';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
-import { OPS_SCOPE_DEFERRED_CUSTOMERS } from '@/lib/ops/workspaceScopes';
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
@@ -62,7 +61,6 @@ export default function CustomersPage() {
 
   const loader = useCallback(() => opsClient.deferredCustomersWorkspace(), []);
   const { data, error } = useOpsWorkspace<{ items: DeferredCustomerSummary[] }>(loader, {
-    scopes: [OPS_SCOPE_DEFERRED_CUSTOMERS],
     enabled: can.owner || can.billing,
   });
 

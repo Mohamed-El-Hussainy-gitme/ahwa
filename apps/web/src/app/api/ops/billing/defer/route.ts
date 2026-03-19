@@ -5,7 +5,7 @@ import {
   completeIdempotentMutation,
   jsonError,
   ok,
-  publishOpsMutation,
+  kickOpsOutboxDispatch,
   releaseIdempotentMutation,
   requireBillingAccess,
   requireOpsActorContext,
@@ -52,7 +52,7 @@ export async function POST(req: Request) {
     }
     mutation = started.mutation;
 
-    const rpc = await callOpsRpc<DeferRpcResult>('ops_defer_selected_quantities', {
+    const rpc = await callOpsRpc<DeferRpcResult>('ops_defer_selected_quantities_with_outbox', {
       p_cafe_id: ctx.cafeId,
       p_shift_id: billing.shiftId,
       p_service_session_id: billing.serviceSessionId,
@@ -66,16 +66,7 @@ export async function POST(req: Request) {
       throw new Error('INVALID_RPC_RESPONSE:ops_defer_selected_quantities');
     }
 
-    publishOpsMutation(ctx, {
-      type: 'billing.deferred',
-      entityId: paymentId,
-      shiftId: billing.shiftId,
-      data: {
-        serviceSessionId: billing.serviceSessionId,
-        debtorName: normalizedDebtorName,
-        totalAmount: Number(rpc.total_amount ?? 0),
-      },
-    });
+    kickOpsOutboxDispatch(ctx);
 
     const responseBody = { ok: true };
     await completeIdempotentMutation(ctx, mutation, responseBody);

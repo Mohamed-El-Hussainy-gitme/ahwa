@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { enqueueOpsMutation, jsonError, kickOpsOutboxDispatch, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadSection, normalizeStationCode } from '@/app/api/ops/menu/_utils';
 import type { StationCode } from '@/lib/ops/types';
 
@@ -20,12 +20,13 @@ export async function POST(request: Request) {
       .eq('id', sectionId);
     if (error) throw error;
 
-    publishOpsMutation(ctx, {
+    await enqueueOpsMutation(ctx, {
       type: 'menu.section_updated',
       entityId: sectionId,
       data: { title, stationCode },
     });
 
+    kickOpsOutboxDispatch(ctx);
     return ok({ ok: true });
   } catch (error) {
     return jsonError(error, 400);

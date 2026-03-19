@@ -5,7 +5,7 @@ import {
   completeIdempotentMutation,
   jsonError,
   ok,
-  publishOpsMutation,
+  kickOpsOutboxDispatch,
   releaseIdempotentMutation,
   requireDeferredAccess,
   requireOpsActorContext,
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
     }
     mutation = started.mutation;
 
-    const rpc = await callOpsRpc<RepaymentRpcResult>('ops_record_repayment', {
+    const rpc = await callOpsRpc<RepaymentRpcResult>('ops_record_repayment_with_outbox', {
       p_cafe_id: ctx.cafeId,
       p_shift_id: shift.id,
       p_debtor_name: name,
@@ -60,12 +60,7 @@ export async function POST(req: Request) {
       throw new Error('INVALID_RPC_RESPONSE:ops_record_repayment');
     }
 
-    publishOpsMutation(ctx, {
-      type: 'deferred.repaid',
-      entityId: paymentId,
-      shiftId: String(shift.id),
-      data: { debtorName: name, amount: Number(rpc.repayment_amount ?? numericAmount), notes: repaymentNotes },
-    });
+    kickOpsOutboxDispatch(ctx);
 
     const responseBody = { ok: true };
     await completeIdempotentMutation(ctx, mutation, responseBody);

@@ -1,24 +1,16 @@
 import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/api/ops/_rpc';
 import {
   beginIdempotentMutation,
-  buildMutationPayload,
   type BegunIdempotentMutation,
   completeIdempotentMutation,
   jsonError,
-  mutationOk,
-  publishOpsMutation,
+  ok,
+  kickOpsOutboxDispatch,
   releaseIdempotentMutation,
   requireDeliveryAccess,
   requireDeliveryItemAccess,
   requireOpsActorContext,
 } from '@/app/api/ops/_helpers';
-import {
-  OPS_SCOPE_BILLING,
-  OPS_SCOPE_COMPLAINTS,
-  OPS_SCOPE_DASHBOARD,
-  OPS_SCOPE_NAV_SUMMARY,
-  OPS_SCOPE_WAITER,
-} from '@/lib/ops/workspaceScopes';
 
 type DeliverRequestBody = {
   orderItemId?: string;
@@ -31,14 +23,6 @@ type DeliverRpcResult = {
   replacement_delivered_qty?: number;
   quantity?: number;
 };
-
-const MUTATION_SCOPES = [
-  OPS_SCOPE_WAITER,
-  OPS_SCOPE_BILLING,
-  OPS_SCOPE_COMPLAINTS,
-  OPS_SCOPE_DASHBOARD,
-  OPS_SCOPE_NAV_SUMMARY,
-] as const;
 
 export async function POST(req: Request) {
   let mutation: BegunIdempotentMutation | null = null;
@@ -64,60 +48,18 @@ export async function POST(req: Request) {
     }
     mutation = started.mutation;
 
-    const rpc = await callOpsRpc<DeliverRpcResult>('ops_deliver_available_quantities', {
+    const rpc = await callOpsRpc<DeliverRpcResult>('ops_deliver_available_quantities_with_outbox', {
       p_cafe_id: ctx.cafeId,
       p_order_item_id: normalizedOrderItemId,
       p_quantity: normalizedQuantity,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
     }, ctx.databaseKey);
 
-    const appliedQuantity = Number(rpc.quantity ?? normalizedQuantity);
-    const deliveredQty = Number(rpc.delivered_qty ?? 0);
-    const replacementDeliveredQty = Number(rpc.replacement_delivered_qty ?? 0);
+    kickOpsOutboxDispatch(ctx);
 
-    publishOpsMutation(ctx, {
-      type: 'delivery.delivered',
-      entityId: item.id,
-      shiftId: item.shiftId,
-      data: {
-        quantity: appliedQuantity,
-        deliveredQty,
-        replacementDeliveredQty,
-        serviceSessionId: item.serviceSessionId ?? '',
-      },
-    });
-
-    const responseBody = buildMutationPayload({
-      data: {
-        orderItemId: item.id,
-        quantity: appliedQuantity,
-        deliveredQty,
-        replacementDeliveredQty,
-        serviceSessionId: item.serviceSessionId,
-      },
-      mutation: {
-        type: 'delivery.delivered',
-        scopes: [...MUTATION_SCOPES],
-        entityId: item.id,
-        shiftId: item.shiftId,
-      },
-    });
+    const responseBody = { ok: true };
     await completeIdempotentMutation(ctx, mutation, responseBody);
-    return mutationOk({
-      data: {
-        orderItemId: item.id,
-        quantity: appliedQuantity,
-        deliveredQty,
-        replacementDeliveredQty,
-        serviceSessionId: item.serviceSessionId,
-      },
-      mutation: {
-        type: 'delivery.delivered',
-        scopes: [...MUTATION_SCOPES],
-        entityId: item.id,
-        shiftId: item.shiftId,
-      },
-    });
+    return ok(responseBody);
   } catch (e) {
     if (mutation) {
       try {

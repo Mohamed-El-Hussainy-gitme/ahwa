@@ -1,11 +1,11 @@
-import { adminOps } from '@/app/api/ops/_server';
+import { callOpsRpc } from '@/app/api/ops/_rpc';
 import {
   beginIdempotentMutation,
   type BegunIdempotentMutation,
   completeIdempotentMutation,
   jsonError,
   ok,
-  publishOpsMutation,
+  kickOpsOutboxDispatch,
   releaseIdempotentMutation,
   requireDeferredAccess,
   requireOpsActorContext,
@@ -40,25 +40,17 @@ export async function POST(req: Request) {
     }
     mutation = started.mutation;
 
-    const admin = adminOps(ctx.databaseKey);
-    const payload: Record<string, unknown> = {
-      cafe_id: ctx.cafeId,
-      shift_id: shift.id,
-      debtor_name: name,
-      entry_kind: 'debt',
-      amount: numericAmount,
-      notes: normalizedNotes,
-    };
-    if (ctx.actorOwnerId) payload.by_owner_id = ctx.actorOwnerId;
-    else payload.by_staff_id = ctx.actorStaffId;
-    const insert = await admin.from('deferred_ledger_entries').insert(payload);
-    if (insert.error) throw insert.error;
+    await callOpsRpc<Record<string, unknown>>('ops_add_deferred_debt_with_outbox', {
+      p_cafe_id: ctx.cafeId,
+      p_shift_id: shift.id,
+      p_debtor_name: name,
+      p_amount: numericAmount,
+      p_notes: normalizedNotes,
+      p_by_staff_id: ctx.actorStaffId,
+      p_by_owner_id: ctx.actorOwnerId,
+    }, ctx.databaseKey);
 
-    publishOpsMutation(ctx, {
-      type: 'deferred.debt_added',
-      shiftId: String(shift.id),
-      data: { debtorName: name, amount: numericAmount },
-    });
+    kickOpsOutboxDispatch(ctx);
 
     const responseBody = { ok: true };
     await completeIdempotentMutation(ctx, mutation, responseBody);

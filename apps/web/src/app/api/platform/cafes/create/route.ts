@@ -25,6 +25,7 @@ export async function POST(request: Request) {
       subscriptionIsComplimentary?: boolean;
       subscriptionNotes?: string;
       databaseKey?: string;
+      cafeLoadTier?: 'small' | 'medium' | 'heavy' | 'enterprise';
     };
 
     if (
@@ -36,8 +37,9 @@ export async function POST(request: Request) {
       return platformFail(400, 'INVALID_INPUT', 'Cafe and owner fields are required.');
     }
 
-    if (!body.databaseKey?.trim()) {
-      return platformFail(400, 'DATABASE_KEY_REQUIRED', 'An explicit operational database binding is required.');
+    const cafeLoadTier = typeof body.cafeLoadTier === 'string' ? body.cafeLoadTier : 'small';
+    if (!['small', 'medium', 'heavy', 'enterprise'].includes(cafeLoadTier)) {
+      return platformFail(400, 'INVALID_INPUT', 'cafeLoadTier is invalid.');
     }
 
     const subscriptionAmountPaid = Number(body.subscriptionAmountPaid ?? 0);
@@ -61,6 +63,7 @@ export async function POST(request: Request) {
       subscriptionIsComplimentary: body.subscriptionIsComplimentary === true,
       subscriptionNotes: body.subscriptionNotes?.trim() || null,
       databaseKey: body.databaseKey?.trim() || '',
+      cafeLoadTier,
     });
 
     await mirrorOwnerToOperationalDatabase(created.cafeId, created.ownerUserId);

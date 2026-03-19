@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireBillingAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { jsonError, ok, kickOpsOutboxDispatch, requireBillingAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 type CloseSessionRpcResult = {
   ok?: boolean;
@@ -14,7 +14,7 @@ export async function POST(req: Request) {
     if (!normalizedServiceSessionId) throw new Error('INVALID_INPUT');
 
     const ctx = requireBillingAccess(await requireOpsActorContext());
-    const rpc = await callOpsRpc<CloseSessionRpcResult>('ops_close_service_session', {
+    const rpc = await callOpsRpc<CloseSessionRpcResult>('ops_close_service_session_with_outbox', {
       p_cafe_id: ctx.cafeId,
       p_service_session_id: normalizedServiceSessionId,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
@@ -24,10 +24,7 @@ export async function POST(req: Request) {
       throw new Error('SESSION_CLOSE_FAILED');
     }
 
-    publishOpsMutation(ctx, {
-      type: 'session.closed',
-      entityId: normalizedServiceSessionId,
-    });
+    kickOpsOutboxDispatch(ctx);
 
     return ok({ ok: true });
   } catch (e) {

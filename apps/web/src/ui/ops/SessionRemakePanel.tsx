@@ -9,8 +9,7 @@ type Props = {
   selectedQty: Record<string, number>;
   onChangeQty: (orderItemId: string, nextQty: number, maxQty: number) => void;
   onRemake: (item: SessionOrderItem, quantity: number, notes?: string) => void | Promise<void>;
-  busy?: boolean;
-  isBusy?: (orderItemId: string) => boolean;
+  busy: boolean;
   emptyLabel: string;
 };
 
@@ -20,8 +19,7 @@ export function SessionRemakePanel({
   selectedQty,
   onChangeQty,
   onRemake,
-  busy = false,
-  isBusy,
+  busy,
   emptyLabel,
 }: Props) {
   const [expandedByItem, setExpandedByItem] = useState<Record<string, boolean>>({});
@@ -42,17 +40,9 @@ export function SessionRemakePanel({
           const maxQty = item.availableRemakeQty;
           const quantity = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, Math.max(maxQty, 1)));
           const expanded = Boolean(expandedByItem[item.orderItemId]);
-          const itemBusy = busy || Boolean(isBusy?.(item.orderItemId));
           return (
             <div key={item.orderItemId} className="rounded-2xl border border-slate-200 p-3">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-semibold">{item.productName}</div>
-                {itemBusy ? (
-                  <div className="rounded-xl bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">
-                    جارٍ التثبيت
-                  </div>
-                ) : null}
-              </div>
+              <div className="font-semibold">{item.productName}</div>
               <div className="mt-1 text-xs text-slate-500">
                 تم تسليمه {item.qtyDelivered} • بديل مجاني مسلّم {item.qtyReplacementDelivered} • جاهز الآن {item.qtyReadyForDelivery}
               </div>
@@ -61,17 +51,15 @@ export function SessionRemakePanel({
               </div>
               <div className="mt-3 flex items-center justify-between">
                 <button
-                  disabled={itemBusy}
                   onClick={() => onChangeQty(item.orderItemId, quantity - 1, Math.max(maxQty, 1))}
-                  className="h-10 w-10 rounded-2xl border border-slate-200 disabled:opacity-40"
+                  className="h-10 w-10 rounded-2xl border border-slate-200"
                 >
                   -
                 </button>
                 <div className="text-lg font-bold">{quantity}</div>
                 <button
-                  disabled={itemBusy}
                   onClick={() => onChangeQty(item.orderItemId, quantity + 1, Math.max(maxQty, 1))}
-                  className="h-10 w-10 rounded-2xl bg-slate-900 text-white disabled:opacity-40"
+                  className="h-10 w-10 rounded-2xl bg-slate-900 text-white"
                 >
                   +
                 </button>
@@ -79,21 +67,20 @@ export function SessionRemakePanel({
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
                   type="button"
-                  disabled={itemBusy}
                   onClick={() => setExpandedByItem((state) => ({ ...state, [item.orderItemId]: !expanded }))}
                   className={[
-                    'rounded-2xl border px-3 py-3 text-sm font-semibold disabled:opacity-40',
+                    'rounded-2xl border px-3 py-3 text-sm font-semibold',
                     expanded ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-700',
                   ].join(' ')}
                 >
                   {expanded ? 'إخفاء السبب' : 'إضافة سبب'}
                 </button>
                 <button
-                  disabled={itemBusy || maxQty <= 0}
+                  disabled={busy || maxQty <= 0}
                   onClick={() => void submitRemake(item, quantity)}
                   className="rounded-2xl bg-amber-600 px-3 py-3 font-semibold text-white disabled:opacity-40"
                 >
-                  {itemBusy ? 'جارٍ التثبيت' : 'إعادة عمل مجانية'}
+                  إعادة عمل مجانية
                 </button>
               </div>
               {expanded ? (

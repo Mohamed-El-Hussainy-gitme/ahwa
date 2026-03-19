@@ -4,11 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OpsRealtimeEvent } from './types';
 import { subscribeOpsRealtime } from './realtime';
 import { subscribeOpsInvalidation } from './invalidation';
-import { matchesWorkspaceScopes, scopesForRealtimeEvent, type OpsWorkspaceScope } from './workspaceScopes';
 
 type WorkspaceOptions = {
   enabled?: boolean;
-  scopes?: OpsWorkspaceScope[];
   shouldReloadOnEvent?: (event: OpsRealtimeEvent) => boolean;
   staleTimeMs?: number;
   realtimeDebounceMs?: number;
@@ -29,12 +27,10 @@ function isStale(lastLoadedAt: number | null, staleTimeMs: number, hasError: boo
 export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceOptions = {}) {
   const {
     enabled = true,
-    scopes = [],
     shouldReloadOnEvent,
     staleTimeMs = DEFAULT_STALE_TIME_MS,
     realtimeDebounceMs = DEFAULT_REALTIME_DEBOUNCE_MS,
   } = options;
-  const scopeSignature = scopes.join('|');
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,18 +128,13 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
     const shouldRevalidate = () => isStale(lastLoadedAtRef.current, staleTimeMs, Boolean(errorRef.current));
 
     const unsubscribeRealtime = subscribeOpsRealtime((event) => {
-      const scopeMatch = !scopes.length || matchesWorkspaceScopes(scopes, scopesForRealtimeEvent(event));
-      const customMatch = shouldReloadOnEvent ? shouldReloadOnEvent(event) : true;
-      if (!scopeMatch || !customMatch) {
+      if (shouldReloadOnEvent && !shouldReloadOnEvent(event)) {
         return;
       }
       scheduleBackgroundReload();
     });
 
-    const unsubscribeInvalidation = subscribeOpsInvalidation((payload) => {
-      if (scopes.length && !matchesWorkspaceScopes(scopes, payload.scopes)) {
-        return;
-      }
+    const unsubscribeInvalidation = subscribeOpsInvalidation(() => {
       scheduleBackgroundReload();
     });
 
@@ -169,7 +160,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [clearReloadTimer, enabled, scheduleBackgroundReload, scopeSignature, shouldReloadOnEvent, staleTimeMs]);
+  }, [clearReloadTimer, enabled, realtimeDebounceMs, scheduleBackgroundReload, shouldReloadOnEvent, staleTimeMs]);
 
   return useMemo(
     () => ({ data, setData, loading, error, reload, lastLoadedAt }),
@@ -208,57 +199,4 @@ export function useOpsCommand<TArgs extends unknown[], TResult>(
   );
 
   return useMemo(() => ({ run, busy, error, setError }), [run, busy, error]);
-}
-
-export function useOpsPendingCommand<TKey extends string, TArgs extends unknown[], TResult>(
-  keyOf: (...args: TArgs) => TKey,
-  command: (...args: TArgs) => Promise<TResult>,
-  options: {
-    onSuccess?: (result: TResult, key: TKey) => void | Promise<void>;
-    onError?: (message: string, key: TKey) => void;
-  } = {},
-) {
-  const [pendingByKey, setPendingByKey] = useState<Record<string, number>>({});
-  const [error, setError] = useState<string | null>(null);
-
-  const run = useCallback(
-    async (...args: TArgs) => {
-      const key = keyOf(...args);
-      setPendingByKey((current) => ({ ...current, [key]: (current[key] ?? 0) + 1 }));
-      setError(null);
-      try {
-        const result = await command(...args);
-        await options.onSuccess?.(result, key);
-        return result;
-      } catch (commandError) {
-        const message = commandError instanceof Error ? commandError.message : 'REQUEST_FAILED';
-        setError(message);
-        options.onError?.(message, key);
-        throw commandError;
-      } finally {
-        setPendingByKey((current) => {
-          const remaining = (current[key] ?? 1) - 1;
-          if (remaining <= 0) {
-            const next = { ...current };
-            delete next[key];
-            return next;
-          }
-          return { ...current, [key]: remaining };
-        });
-      }
-    },
-    [command, keyOf, options],
-  );
-
-  const isPending = useCallback(
-    (key: TKey) => Boolean(pendingByKey[key]),
-    [pendingByKey],
-  );
-
-  const busy = Object.keys(pendingByKey).length > 0;
-
-  return useMemo(
-    () => ({ run, busy, error, setError, pendingByKey, isPending }),
-    [busy, error, isPending, pendingByKey, run],
-  );
 }

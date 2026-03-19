@@ -2,9 +2,11 @@ import type {
   PlatformBindingStatus,
   PlatformCafeDatabaseBinding,
   PlatformCafeListRow,
+  PlatformCafeLoadTier,
   PlatformCafeOwnerLabel,
   PlatformCafeOwnerRow,
   PlatformCafeSubscriptionRow,
+  PlatformDatabaseCapacityState,
   PlatformOperationalDatabaseOption,
   PlatformSubscriptionStatus,
 } from '@ahwa/shared';
@@ -49,6 +51,18 @@ function asSubscriptionStatus(value: unknown): PlatformSubscriptionStatus | null
     : null;
 }
 
+
+function asCafeLoadTier(value: unknown): PlatformCafeLoadTier | null {
+  return value === 'small' || value === 'medium' || value === 'heavy' || value === 'enterprise'
+    ? value
+    : null;
+}
+
+function asCapacityState(value: unknown): PlatformDatabaseCapacityState | null {
+  return value === 'healthy' || value === 'warning' || value === 'critical' || value === 'hot' || value === 'full' || value === 'draining' || value === 'inactive'
+    ? value
+    : null;
+}
 function asBindingStatus(value: unknown): PlatformBindingStatus | null {
   return value === 'bound' || value === 'unbound' || value === 'invalid' ? value : null;
 }
@@ -112,6 +126,8 @@ function normalizeDatabaseBinding(value: unknown): PlatformCafeDatabaseBinding |
   return {
     database_key: databaseKey,
     binding_source: asTrimmedString(value.binding_source) ?? 'unknown',
+    cafe_load_tier: asCafeLoadTier(value.cafe_load_tier) ?? undefined,
+    load_units: asNumber(value.load_units) ?? undefined,
   };
 }
 
@@ -187,6 +203,19 @@ function normalizeOperationalDatabaseOption(value: unknown): PlatformOperational
     is_active: isActive,
     is_accepting_new_cafes: isAccepting,
     cafe_count: asNumber(value.cafe_count) ?? 0,
+    total_load_units: asNumber(value.total_load_units) ?? undefined,
+    max_load_units: asNumber(value.max_load_units) ?? undefined,
+    warning_load_percent: asNumber(value.warning_load_percent) ?? undefined,
+    critical_load_percent: asNumber(value.critical_load_percent) ?? undefined,
+    load_percent: asNumber(value.load_percent) ?? undefined,
+    small_cafe_count: asNumber(value.small_cafe_count) ?? undefined,
+    medium_cafe_count: asNumber(value.medium_cafe_count) ?? undefined,
+    heavy_cafe_count: asNumber(value.heavy_cafe_count) ?? undefined,
+    enterprise_cafe_count: asNumber(value.enterprise_cafe_count) ?? undefined,
+    max_cafes: asNumber(value.max_cafes),
+    max_heavy_cafes: asNumber(value.max_heavy_cafes),
+    capacity_state: asCapacityState(value.capacity_state) ?? undefined,
+    scale_notes: asString(value.scale_notes),
   };
 }
 

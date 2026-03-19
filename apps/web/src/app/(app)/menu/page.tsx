@@ -7,7 +7,6 @@ import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import type { MenuWorkspace, OpsProduct, OpsSection, StationCode } from '@/lib/ops/types';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
-import { OPS_SCOPE_MENU } from '@/lib/ops/workspaceScopes';
 import { AccessDenied } from '@/ui/AccessState';
 
 const stationOptions: Array<{ value: StationCode; label: string }> = [
@@ -55,7 +54,7 @@ export default function MenuPage() {
   });
 
   const loader = useCallback(() => opsClient.menuWorkspace(), []);
-  const { data, error } = useOpsWorkspace<MenuWorkspace>(loader, { enabled: can.manageMenu, scopes: [OPS_SCOPE_MENU] });
+  const { data, error } = useOpsWorkspace<MenuWorkspace>(loader, { enabled: can.manageMenu });
 
   const activeSections = useMemo(() => (data?.sections ?? []).filter((section) => section.isActive !== false), [data?.sections]);
 

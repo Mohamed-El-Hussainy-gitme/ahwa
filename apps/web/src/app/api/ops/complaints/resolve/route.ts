@@ -1,5 +1,5 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
-import { jsonError, ok, publishOpsMutation, requireComplaintManagementAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { enqueueOpsMutation, jsonError, kickOpsOutboxDispatch, ok, requireComplaintManagementAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 type ResolutionKind = 'resolved' | 'dismissed';
 
@@ -45,7 +45,7 @@ export async function POST(req: Request) {
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
     }, ctx.databaseKey);
 
-    publishOpsMutation(ctx, {
+    await enqueueOpsMutation(ctx, {
       type: 'complaint.updated',
       entityId: complaintId,
       shiftId: resolved.shift_id ? String(resolved.shift_id) : ctx.shiftId,
@@ -54,6 +54,7 @@ export async function POST(req: Request) {
         resolutionKind: resolutionKind === 'resolved' ? null : 'dismissed',
       },
     });
+    kickOpsOutboxDispatch(ctx);
 
     return ok({ ok: true });
   } catch (e) {

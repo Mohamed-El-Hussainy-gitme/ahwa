@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { enqueueOpsMutation, jsonError, kickOpsOutboxDispatch, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { loadSection, nextProductSortOrder, normalizeStationCode } from '@/app/api/ops/menu/_utils';
 import type { StationCode } from '@/lib/ops/types';
 
@@ -37,11 +37,13 @@ export async function POST(request: Request) {
       .single();
     if (error) throw error;
 
-    publishOpsMutation(ctx, {
+    await enqueueOpsMutation(ctx, {
       type: 'menu.product_created',
       entityId: String(data.id),
       data: { sectionId, productName, stationCode, unitPrice, sortOrder },
     });
+
+    kickOpsOutboxDispatch(ctx);
 
     return ok({ productId: String(data.id) });
   } catch (error) {

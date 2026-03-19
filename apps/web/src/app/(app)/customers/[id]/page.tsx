@@ -9,7 +9,6 @@ import { ShiftRequired, AccessDenied } from '@/ui/AccessState';
 import { opsClient } from '@/lib/ops/client';
 import type { DeferredAgingBucket, DeferredCustomerLedgerWorkspace, DeferredCustomerStatus, DeferredLedgerEntry } from '@/lib/ops/types';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
-import { OPS_SCOPE_DEFERRED_LEDGER } from '@/lib/ops/workspaceScopes';
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
@@ -69,7 +68,6 @@ export default function CustomerLedgerPage() {
 
   const loader = useCallback(() => opsClient.deferredCustomerLedger(debtorName), [debtorName]);
   const { data, error } = useOpsWorkspace<DeferredCustomerLedgerWorkspace>(loader, {
-    scopes: [OPS_SCOPE_DEFERRED_LEDGER],
     enabled: Boolean(debtorName),
   });
 

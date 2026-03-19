@@ -11,6 +11,8 @@ export type CafeDatabaseBinding = {
   cafeId: string;
   databaseKey: string;
   bindingSource: string;
+  cafeLoadTier: 'small' | 'medium' | 'heavy' | 'enterprise';
+  loadUnits: number;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -40,6 +42,8 @@ type CafeBindingRpcRow = {
   cafe_id?: string | null;
   database_key?: string | null;
   binding_source?: string | null;
+  cafe_load_tier?: string | null;
+  load_units?: number | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -50,6 +54,17 @@ type OperationalDatabaseRpcRow = {
   description?: string | null;
   is_active?: boolean | null;
   is_accepting_new_cafes?: boolean | null;
+  cafe_count?: number | null;
+  total_load_units?: number | null;
+  max_load_units?: number | null;
+  warning_load_percent?: number | null;
+  critical_load_percent?: number | null;
+  load_percent?: number | null;
+  heavy_cafe_count?: number | null;
+  max_cafes?: number | null;
+  max_heavy_cafes?: number | null;
+  capacity_state?: string | null;
+  scale_notes?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -60,6 +75,15 @@ type OperationalDatabaseOption = {
   description: string | null;
   isActive: boolean;
   isAcceptingNewCafes: boolean;
+  cafeCount: number;
+  totalLoadUnits: number;
+  maxLoadUnits: number;
+  loadPercent: number;
+  heavyCafeCount: number;
+  maxCafes: number | null;
+  maxHeavyCafes: number | null;
+  capacityState: string | null;
+  scaleNotes: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -118,6 +142,11 @@ function parseCafeDatabaseBinding(
       typeof payload.binding_source === 'string' && payload.binding_source.trim()
         ? payload.binding_source.trim()
         : 'unknown',
+    cafeLoadTier:
+      payload.cafe_load_tier === 'medium' || payload.cafe_load_tier === 'heavy' || payload.cafe_load_tier === 'enterprise'
+        ? payload.cafe_load_tier
+        : 'small',
+    loadUnits: typeof payload.load_units === 'number' && Number.isFinite(payload.load_units) ? payload.load_units : 1,
     createdAt: typeof payload.created_at === 'string' ? payload.created_at : null,
     updatedAt: typeof payload.updated_at === 'string' ? payload.updated_at : null,
   };
@@ -152,6 +181,15 @@ function parseOperationalDatabaseOption(row: OperationalDatabaseRpcRow | null | 
     description: typeof row.description === 'string' ? row.description : null,
     isActive: !!row.is_active,
     isAcceptingNewCafes: !!row.is_accepting_new_cafes,
+    cafeCount: typeof row.cafe_count === 'number' && Number.isFinite(row.cafe_count) ? row.cafe_count : 0,
+    totalLoadUnits: typeof row.total_load_units === 'number' && Number.isFinite(row.total_load_units) ? row.total_load_units : 0,
+    maxLoadUnits: typeof row.max_load_units === 'number' && Number.isFinite(row.max_load_units) ? row.max_load_units : 400,
+    loadPercent: typeof row.load_percent === 'number' && Number.isFinite(row.load_percent) ? row.load_percent : 0,
+    heavyCafeCount: typeof row.heavy_cafe_count === 'number' && Number.isFinite(row.heavy_cafe_count) ? row.heavy_cafe_count : 0,
+    maxCafes: typeof row.max_cafes === 'number' && Number.isFinite(row.max_cafes) ? row.max_cafes : null,
+    maxHeavyCafes: typeof row.max_heavy_cafes === 'number' && Number.isFinite(row.max_heavy_cafes) ? row.max_heavy_cafes : null,
+    capacityState: typeof row.capacity_state === 'string' ? row.capacity_state : null,
+    scaleNotes: typeof row.scale_notes === 'string' ? row.scale_notes : null,
     createdAt: typeof row.created_at === 'string' ? row.created_at : null,
     updatedAt: typeof row.updated_at === 'string' ? row.updated_at : null,
   };
@@ -164,6 +202,15 @@ function operationalDatabasesFromEnv(): OperationalDatabaseOption[] {
     description: 'env-configured operational database',
     isActive: true,
     isAcceptingNewCafes: true,
+    cafeCount: 0,
+    totalLoadUnits: 0,
+    maxLoadUnits: 400,
+    loadPercent: 0,
+    heavyCafeCount: 0,
+    maxCafes: null,
+    maxHeavyCafes: null,
+    capacityState: 'healthy',
+    scaleNotes: null,
     createdAt: null,
     updatedAt: null,
   }));

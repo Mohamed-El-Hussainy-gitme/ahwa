@@ -1,5 +1,5 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { jsonError, ok, publishOpsMutation, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { enqueueOpsMutation, jsonError, kickOpsOutboxDispatch, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +18,8 @@ export async function POST(request: Request) {
       if (updateError) throw updateError;
     }
 
-    publishOpsMutation(ctx, { type: 'menu.sections_reordered', data: { sectionIds } });
+    await enqueueOpsMutation(ctx, { type: 'menu.sections_reordered', data: { sectionIds } });
+    kickOpsOutboxDispatch(ctx);
     return ok({ ok: true });
   } catch (error) {
     return jsonError(error, 400);

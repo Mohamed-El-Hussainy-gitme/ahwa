@@ -10,7 +10,18 @@ import type { OpsRealtimeEvent } from '@/lib/ops/types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+function lastEventCursorFromRequest(req: Request) {
+  const directHeader = req.headers.get('last-event-id');
+  if (directHeader && directHeader.trim()) {
+    return directHeader.trim();
+  }
+
+  const url = new URL(req.url);
+  const queryValue = url.searchParams.get('cursor');
+  return queryValue && queryValue.trim() ? queryValue.trim() : null;
+}
+
+export async function GET(req: Request) {
   let me;
   try {
     me = await getEnrichedRuntimeMeFromCookie();
@@ -34,34 +45,53 @@ export async function GET() {
 
   const cafeId = String(me.tenantId);
   const encoder = new TextEncoder();
-  let unsubscribe: (() => void) | null = null;
+  const abortController = new AbortController();
+  let cleanup: (() => void) | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
+  const lastCursor = lastEventCursorFromRequest(req);
 
   const stream = new ReadableStream<Uint8Array>({
-    start(controller) {
+    async start(controller) {
       const send = (event: OpsRealtimeEvent) => {
         if (event.cafeId !== cafeId) {
           return;
         }
         controller.enqueue(
-          encoder.encode(`event: ops\nid: ${event.id}\ndata: ${JSON.stringify(event)}\n\n`),
+          encoder.encode(`event: ops\nid: ${event.cursor ?? event.id}\ndata: ${JSON.stringify(event)}\n\n`),
         );
       };
 
       controller.enqueue(
-        encoder.encode(`event: ready\ndata: ${JSON.stringify({ cafeId, ok: true })}\n\n`),
+        encoder.encode(`event: ready\ndata: ${JSON.stringify({ cafeId, ok: true, cursor: lastCursor })}\n\n`),
       );
 
-      unsubscribe = subscribeOpsEvents(send);
+      try {
+        cleanup = await subscribeOpsEvents(
+          {
+            cafeId,
+            cursor: lastCursor,
+            signal: abortController.signal,
+            onError: () => {
+              controller.enqueue(encoder.encode(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false })}\n\n`));
+            },
+          },
+          send,
+        );
+      } catch (error) {
+        controller.error(error);
+        return;
+      }
+
       heartbeat = setInterval(() => {
         controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
       }, 15000);
     },
     cancel() {
+      abortController.abort();
       if (heartbeat) {
         clearInterval(heartbeat);
       }
-      unsubscribe?.();
+      cleanup?.();
     },
   });
 
@@ -70,6 +100,7 @@ export async function GET() {
       'Content-Type': 'text/event-stream; charset=utf-8',
       'Cache-Control': 'no-cache, no-transform',
       Connection: 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   });
 }

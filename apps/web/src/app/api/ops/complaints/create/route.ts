@@ -2,7 +2,8 @@ import { actorRpcParams, callOpsRpc, loadOrderItemMutationContext } from '@/app/
 import {
   jsonError,
   ok,
-  publishOpsMutation,
+  enqueueOpsMutation,
+  kickOpsOutboxDispatch,
   requireComplaintActionAccess,
   requireComplaintItemAccess,
   requireComplaintLogAccess,
@@ -105,7 +106,7 @@ export async function POST(req: Request) {
         throw new Error('CREATE_COMPLAINT_FAILED');
       }
 
-      publishOpsMutation(ctx, {
+      await enqueueOpsMutation(ctx, {
         type: 'complaint.created',
         entityId: complaintId,
         shiftId: created.shift_id ? String(created.shift_id) : ctx.shiftId,
@@ -117,6 +118,7 @@ export async function POST(req: Request) {
           mode: 'general',
         },
       });
+      kickOpsOutboxDispatch(ctx);
 
       return ok({ ok: true, complaintId });
     }
@@ -144,7 +146,7 @@ export async function POST(req: Request) {
     }
 
     const effectiveOrderItemId = created.order_item_id ? String(created.order_item_id) : orderItemId || null;
-    publishOpsMutation(ctx, {
+    await enqueueOpsMutation(ctx, {
       type: 'item_issue.created',
       entityId: itemIssueId,
       shiftId: created.shift_id ? String(created.shift_id) : ctx.shiftId,
@@ -157,6 +159,7 @@ export async function POST(req: Request) {
         status: created.status ? String(created.status) : 'logged',
       },
     });
+    kickOpsOutboxDispatch(ctx);
 
     if (effectiveOrderItemId && action !== 'none') {
       const resolvedQuantity = Number(created.resolved_quantity ?? quantity ?? 0);
@@ -166,7 +169,7 @@ export async function POST(req: Request) {
           ? 'station.cancelled'
           : 'billing.waived';
 
-      publishOpsMutation(ctx, {
+      await enqueueOpsMutation(ctx, {
         type: eventType,
         entityId: item.id,
         shiftId: item.shiftId,
@@ -177,6 +180,7 @@ export async function POST(req: Request) {
           itemIssueId,
         },
       });
+      kickOpsOutboxDispatch(ctx);
     }
 
     return ok({ ok: true, itemIssueId });

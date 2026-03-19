@@ -30,12 +30,13 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/platform/money', label: 'التحصيل والاشتراكات' },
       { href: '/platform/support', label: 'الدعم الفني' },
+      { href: '/platform/observability', label: 'مراقبة التشغيل' },
     ],
   },
   {
     title: 'الإعدادات',
     items: [
-      { href: '/platform/settings', label: 'سعة قاعدة البيانات' },
+      { href: '/platform/settings', label: 'سياسات الشاردات' },
     ],
   },
 ];
