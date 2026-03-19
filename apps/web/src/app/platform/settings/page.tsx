@@ -10,7 +10,7 @@ export default async function PlatformSettingsPage() {
   return (
     <PlatformChrome
       session={session}
-      title="إعدادات المنصة"
+      title="إعدادات المنصة" description="خصص سياسات السعة والشاردات بعناية، واستخدم هذه الصفحة للتغيير المدروس لا للمتابعة اليومية."
     >
       <PlatformSettingsPageClient />
     </PlatformChrome>

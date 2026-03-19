@@ -61,25 +61,15 @@ export default function PlatformOverviewPageClient() {
   }, [loadSupportCount]);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-wrap gap-2">
-        <button
-          type="button"
-          onClick={() => {
-            void loadSupportCount();
-            setRefreshRevision((value) => value + 1);
-          }}
-          className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
-        >
-          تحديث النظرة العامة
-        </button>
-      </div>
-      <PlatformPortfolioOverview
-        selectedCafeId={selectedCafeId}
-        onSelectCafe={(id) => router.push(`/platform/cafes?selected=${encodeURIComponent(id)}`)}
-        refreshRevision={refreshRevision}
-        supportNewCount={supportNewCount}
-      />
-    </div>
+    <PlatformPortfolioOverview
+      selectedCafeId={selectedCafeId}
+      onSelectCafe={(id) => router.push(`/platform/cafes?selected=${encodeURIComponent(id)}`)}
+      refreshRevision={refreshRevision}
+      supportNewCount={supportNewCount}
+      onRefreshRequested={() => {
+        void loadSupportCount();
+        setRefreshRevision((value) => value + 1);
+      }}
+    />
   );
 }

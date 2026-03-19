@@ -310,11 +310,13 @@ export default function PlatformPortfolioOverview({
   onSelectCafe,
   refreshRevision,
   supportNewCount = 0,
+  onRefreshRequested,
 }: {
   selectedCafeId: string;
   onSelectCafe: (id: string) => void;
   refreshRevision: number;
   supportNewCount?: number;
+  onRefreshRequested?: () => void;
 }) {
   const [data, setData] = useState<PlatformOverview | null>(null);
   const [loading, setLoading] = useState(false);
@@ -344,218 +346,301 @@ export default function PlatformPortfolioOverview({
     void load();
   }, [load, refreshRevision]);
 
-  const selectedCafe = useMemo(
-    () => data?.cafes.find((item) => item.id === selectedCafeId) ?? null,
-    [data, selectedCafeId],
-  );
+  const selectedCafe = useMemo(() => {
+    if (!data) return null;
+    return (
+      data.cafes.find((item) => item.id === selectedCafeId) ??
+      data.cafes.find((item) => item.id === data.attention_queue[0]?.id) ??
+      data.cafes[0] ??
+      null
+    );
+  }, [data, selectedCafeId]);
 
   const expiringSoon = useMemo(
-    () => (data?.cafes ?? [])
-      .filter((item) => item.current_subscription && item.current_subscription.countdown_seconds <= 86400 * 7 && item.current_subscription.effective_status !== 'expired')
-      .slice(0, 6),
+    () =>
+      (data?.cafes ?? [])
+        .filter(
+          (item) =>
+            item.current_subscription &&
+            item.current_subscription.countdown_seconds <= 86400 * 7 &&
+            item.current_subscription.effective_status !== 'expired',
+        )
+        .slice(0, 6),
     [data],
   );
 
-  return (
-    <section className="space-y-6 rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
-      <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
-        <div>
-          <div className="text-sm font-semibold text-indigo-600">Overview</div>
-          <h2 className="mt-1 text-2xl font-bold text-slate-900">النظرة العامة</h2>
-          
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => void load()} className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">تحديث النظرة العامة</button>
-          <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-700">
-            قاعدة البيانات: <strong>{data?.database_usage.database_name ?? '—'}</strong>
-            <div className="mt-1 text-xs text-slate-500">آخر تحديث: {formatDateTime(data?.generated_at)}</div>
-          </div>
-        </div>
-      </div>
+  const usagePercent = typeof data?.database_usage.usage_percent === 'number'
+    ? Math.max(0, Math.min(100, data.database_usage.usage_percent))
+    : 0;
 
+  return (
+    <div className="space-y-6">
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
-        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-          <div className="text-sm text-slate-500">إجمالي القهاوي</div>
-          <div className="mt-2 text-3xl font-bold text-slate-900">{data?.summary.cafes_total ?? 0}</div>
-          <div className="mt-2 text-xs text-slate-500">المفعلة: {data?.summary.cafes_active ?? 0}</div>
+      <section className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-sm text-slate-500">القهاوي النشطة</div>
+            <div className="mt-2 text-3xl font-bold text-slate-900">{data?.summary.cafes_active ?? 0}</div>
+            <div className="mt-2 text-xs text-slate-500">من أصل {data?.summary.cafes_total ?? 0} قهوة مسجلة</div>
+          </div>
+          <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
+            <div className="text-sm text-amber-800">يحتاج تدخل</div>
+            <div className="mt-2 text-3xl font-bold text-amber-900">{data?.summary.needs_attention ?? 0}</div>
+            <div className="mt-2 text-xs text-amber-700">متأخر أو خارج الطبيعي ويحتاج قرارًا سريعًا</div>
+          </div>
+          <div className="rounded-[24px] border border-sky-200 bg-sky-50 p-5 shadow-sm">
+            <div className="text-sm text-sky-800">رسائل دعم جديدة</div>
+            <div className="mt-2 text-3xl font-bold text-sky-900">{supportNewCount}</div>
+            <div className="mt-2 text-xs text-sky-700">البلاغات غير المفتوحة بعد</div>
+          </div>
+          <div className="rounded-[24px] border border-rose-200 bg-rose-50 p-5 shadow-sm">
+            <div className="text-sm text-rose-800">اشتراكات متعثرة</div>
+            <div className="mt-2 text-3xl font-bold text-rose-900">{(data?.summary.overdue ?? 0) + (data?.summary.suspended ?? 0)}</div>
+            <div className="mt-2 text-xs text-rose-700">معلق: {data?.summary.suspended ?? 0} • متأخر: {data?.summary.overdue ?? 0}</div>
+          </div>
         </div>
-        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-          <div className="text-sm text-slate-500">النشط الآن</div>
-          <div className="mt-2 text-3xl font-bold text-slate-900">{data?.summary.active_now ?? 0}</div>
-          <div className="mt-2 text-xs text-slate-500">ورديات مفتوحة: {data?.summary.open_shifts_now ?? 0}</div>
-        </div>
-        <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4">
-          <div className="text-sm text-amber-700">منتهي / متأخر</div>
-          <div className="mt-2 text-3xl font-bold text-amber-900">{(data?.summary.overdue ?? 0) + (data?.summary.suspended ?? 0)}</div>
-          <div className="mt-2 text-xs text-amber-700">معلق: {data?.summary.suspended ?? 0} • متأخر: {data?.summary.overdue ?? 0}</div>
-        </div>
-        <div className="rounded-3xl border border-sky-200 bg-sky-50 p-4">
-          <div className="text-sm text-sky-700">رسائل الدعم الجديدة</div>
-          <div className="mt-2 text-3xl font-bold text-sky-900">{supportNewCount}</div>
-          <div className="mt-2 text-xs text-sky-700">طلبات تحتاج فتحًا سريعًا</div>
-        </div>
-        <div className="rounded-3xl border border-slate-200 bg-slate-50 p-4">
-          <div className="text-sm text-slate-500">استخدام قاعدة البيانات</div>
-          <div className="mt-2 text-3xl font-bold text-slate-900">{data?.database_usage.used_pretty ?? '—'}</div>
-          <div className="mt-2 text-xs text-slate-500">{data?.database_usage.capacity_pretty ? `من ${data.database_usage.capacity_pretty} • ${data.database_usage.usage_percent ?? 0}%` : 'لا يوجد حد سعة مضبوط'}</div>
-        </div>
-      </div>
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.45fr)_400px]">
-        <div className="space-y-6">
-          <section className="rounded-3xl border border-slate-200 p-4">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <aside className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold text-indigo-600">صحة المنصة</div>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">قاعدة التشغيل الحالية</h2>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                void load();
+                onRefreshRequested?.();
+              }}
+              className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+            >
+              تحديث
+            </button>
+          </div>
+          <div className="mt-5 rounded-[20px] border border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="font-medium text-slate-700">قاعدة البيانات</span>
+              <span className="font-semibold text-slate-900">{data?.database_usage.database_name ?? '—'}</span>
+            </div>
+            <div className="mt-4 flex items-end justify-between gap-3">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">طابور المتابعة</h3>
-                <p className="mt-1 text-sm text-slate-500">الحالات التي تستحق قرارًا أو تواصلاً سريعًا.</p>
+                <div className="text-xs text-slate-500">المستخدم حاليًا</div>
+                <div className="mt-1 text-2xl font-bold text-slate-900">{data?.database_usage.used_pretty ?? '—'}</div>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">إجمالي ما يحتاج متابعة: {data?.summary.needs_attention ?? 0}</div>
+              <div className="text-left text-xs text-slate-500">
+                <div>{data?.database_usage.capacity_pretty ?? 'لا يوجد حد أعلى'}</div>
+                <div className="mt-1">آخر تحديث: {formatDateTime(data?.generated_at)}</div>
+              </div>
             </div>
-            <div className="overflow-x-auto rounded-3xl border border-slate-200">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50 text-slate-500">
-                  <tr>
-                    <th className="px-3 py-3 text-right font-medium">القهوة</th>
-                    <th className="px-3 py-3 text-right font-medium">الحالة</th>
-                    <th className="px-3 py-3 text-right font-medium">آخر نشاط</th>
-                    <th className="px-3 py-3 text-right font-medium">أسباب المتابعة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data?.attention_queue ?? []).map((item) => (
-                    <tr key={item.id} className="border-t border-slate-100 align-top">
-                      <td className="px-3 py-4">
-                        <button type="button" onClick={() => onSelectCafe(item.id)} className="text-right">
-                          <div className="font-semibold text-slate-900">{item.display_name}</div>
-                          <div className="mt-1 text-xs text-slate-500">{item.slug}</div>
-                        </button>
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${badgeClassForPayment(item.payment_state)}`}>{paymentLabel(item.payment_state)}</div>
-                        <div className={`mt-2 inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${badgeClassForUsage(item.usage_state)}`}>{usageLabel(item.usage_state)}</div>
-                      </td>
-                      <td className="px-3 py-4 text-slate-700">{formatDateTime(item.last_activity_at)}</td>
-                      <td className="px-3 py-4">
-                        <div className="flex flex-wrap gap-2">
-                          {item.attention_reasons.map((reason) => (
-                            <span key={reason} className="rounded-full border border-amber-200 bg-amber-50 px-2 py-1 text-[11px] font-semibold text-amber-700">{reasonLabel(reason)}</span>
-                          ))}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {data && data.attention_queue.length === 0 ? (
-                    <tr>
-                      <td colSpan={4} className="px-3 py-10 text-center text-slate-500">لا توجد عناصر تحتاج متابعة الآن.</td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
+            <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-200">
+              <div className="h-full rounded-full bg-indigo-600 transition-all" style={{ width: `${usagePercent}%` }} />
             </div>
-          </section>
+            <div className="mt-2 text-xs text-slate-500">نسبة الاستخدام: {typeof data?.database_usage.usage_percent === 'number' ? `${data.database_usage.usage_percent.toFixed(1)}%` : 'غير محسوبة'}</div>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2">
+            <div className="rounded-[20px] border border-slate-200 bg-white p-4">
+              <div className="text-xs text-slate-500">نشاط الآن</div>
+              <div className="mt-1 text-xl font-bold text-slate-900">{data?.summary.active_now ?? 0}</div>
+              <div className="mt-1 text-xs text-slate-500">ورديات مفتوحة: {data?.summary.open_shifts_now ?? 0}</div>
+            </div>
+            <div className="rounded-[20px] border border-slate-200 bg-white p-4">
+              <div className="text-xs text-slate-500">نشاط اليوم</div>
+              <div className="mt-1 text-xl font-bold text-slate-900">{data?.summary.active_today ?? 0}</div>
+              <div className="mt-1 text-xs text-slate-500">قهاوي غير نشطة: {data?.summary.inactive ?? 0}</div>
+            </div>
+          </div>
+        </aside>
+      </section>
 
-          <section className="rounded-3xl border border-slate-200 p-4">
-            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <section className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_360px]">
+        <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="text-sm font-semibold text-indigo-600">يحتاج تدخل الآن</div>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">طابور المتابعة التنفيذي</h2>
+            </div>
+            <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600">
+              {data?.summary.needs_attention ?? 0} عناصر متابعة
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {(data?.attention_queue ?? []).map((item) => (
+              <button
+                key={item.id}
+                type="button"
+                onClick={() => onSelectCafe(item.id)}
+                className="flex w-full flex-col gap-3 px-5 py-4 text-right transition hover:bg-slate-50 lg:flex-row lg:items-center lg:justify-between"
+              >
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-base font-semibold text-slate-900">{item.display_name}</div>
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClassForPayment(item.payment_state)}`}>
+                      {paymentLabel(item.payment_state)}
+                    </span>
+                    <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${badgeClassForUsage(item.usage_state)}`}>
+                      {usageLabel(item.usage_state)}
+                    </span>
+                  </div>
+                  <div className="mt-1 text-xs text-slate-500">{item.slug} • آخر نشاط: {formatDateTime(item.last_activity_at)}</div>
+                </div>
+                <div className="flex flex-1 flex-wrap gap-2 lg:justify-end">
+                  {item.attention_reasons.map((reason) => (
+                    <span key={reason} className="rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-[11px] font-semibold text-amber-700">
+                      {reasonLabel(reason)}
+                    </span>
+                  ))}
+                </div>
+              </button>
+            ))}
+            {data && data.attention_queue.length === 0 ? (
+              <div className="px-5 py-10 text-center text-sm text-slate-500">لا توجد عناصر تحتاج متابعة الآن.</div>
+            ) : null}
+            {!data && loading ? (
+              <div className="px-5 py-10 text-center text-sm text-slate-500">جارٍ تحميل الطابور...</div>
+            ) : null}
+          </div>
+        </section>
+
+        <aside className="space-y-6">
+          <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <h3 className="text-lg font-bold text-slate-900">آخر النشاط</h3>
-                <p className="mt-1 text-sm text-slate-500">جدول مختصر للوصول السريع إلى القهوة المناسبة.</p>
+                <div className="text-sm font-semibold text-indigo-600">القهوة المحددة</div>
+                <h3 className="mt-1 text-lg font-bold text-slate-900">ملخص سريع</h3>
               </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">نشاط اليوم: {data?.summary.active_today ?? 0}</div>
+              {selectedCafe ? (
+                <button
+                  type="button"
+                  onClick={() => onSelectCafe(selectedCafe.id)}
+                  className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700"
+                >
+                  فتح السجل
+                </button>
+              ) : null}
             </div>
-            <div className="overflow-x-auto rounded-3xl border border-slate-200">
-              <table className="min-w-full text-sm">
-                <thead className="bg-slate-50 text-slate-500">
-                  <tr>
-                    <th className="px-3 py-3 text-right font-medium">القهوة</th>
-                    <th className="px-3 py-3 text-right font-medium">الاشتراك</th>
-                    <th className="px-3 py-3 text-right font-medium">النشاط</th>
-                    <th className="px-3 py-3 text-right font-medium">آخر حركة</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(data?.cafes ?? []).slice(0, 12).map((cafe) => (
-                    <tr key={cafe.id} className={`border-t border-slate-100 align-top ${selectedCafe?.id === cafe.id ? 'bg-indigo-50/50' : 'bg-white'}`}>
-                      <td className="px-3 py-4">
-                        <button type="button" onClick={() => onSelectCafe(cafe.id)} className="text-right">
-                          <div className="font-semibold text-slate-900">{cafe.display_name}</div>
-                          <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
-                        </button>
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${badgeClassForPayment(cafe.payment_state)}`}>{paymentLabel(cafe.payment_state)}</div>
-                        {cafe.current_subscription ? <div className="mt-2 text-xs text-slate-500">{countdownLabel(cafe.current_subscription.countdown_seconds)}</div> : null}
-                      </td>
-                      <td className="px-3 py-4">
-                        <div className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${badgeClassForUsage(cafe.usage_state)}`}>{usageLabel(cafe.usage_state)}</div>
-                        <div className="mt-2 text-xs text-slate-500">{cafe.has_open_shift ? 'وردية مفتوحة الآن' : 'بدون وردية مفتوحة'}</div>
-                      </td>
-                      <td className="px-3 py-4 text-slate-700">{formatDateTime(cafe.last_activity_at)}</td>
-                    </tr>
-                  ))}
-                  {!loading && !data?.cafes.length ? (
-                    <tr>
-                      <td colSpan={4} className="px-3 py-10 text-center text-slate-500">لا توجد قهاوي لعرضها.</td>
-                    </tr>
-                  ) : null}
-                </tbody>
-              </table>
-            </div>
-          </section>
-        </div>
-
-        <section className="space-y-6">
-          <div className="rounded-3xl border border-slate-200 p-4">
-            <h3 className="text-lg font-bold text-slate-900">القهوة المختارة</h3>
             {selectedCafe ? (
-              <div className="mt-4 space-y-3 text-sm text-slate-700">
-                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="mt-4 space-y-4 text-sm text-slate-700">
+                <div className="rounded-[20px] border border-slate-200 bg-slate-50 p-4">
                   <div className="font-semibold text-slate-900">{selectedCafe.display_name}</div>
                   <div className="mt-1 text-xs text-slate-500">{selectedCafe.slug}</div>
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-4">
                     <div className="text-xs text-slate-500">الحالة</div>
                     <div className="mt-1 font-semibold text-slate-900">{selectedCafe.is_active ? 'مفعلة' : 'معطلة'}</div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-4">
                     <div className="text-xs text-slate-500">آخر نشاط</div>
                     <div className="mt-1 font-semibold text-slate-900">{formatDateTime(selectedCafe.last_activity_at)}</div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-4">
                     <div className="text-xs text-slate-500">الملاك النشطون</div>
                     <div className="mt-1 font-semibold text-slate-900">{selectedCafe.active_owner_count}/{selectedCafe.owner_count}</div>
                   </div>
-                  <div className="rounded-2xl border border-slate-200 bg-white p-4">
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-4">
                     <div className="text-xs text-slate-500">الوردية الحالية</div>
                     <div className="mt-1 font-semibold text-slate-900">{selectedCafe.has_open_shift ? 'مفتوحة الآن' : 'لا توجد'}</div>
                   </div>
                 </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassForPayment(selectedCafe.payment_state)}`}>
+                    {paymentLabel(selectedCafe.payment_state)}
+                  </span>
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassForUsage(selectedCafe.usage_state)}`}>
+                    {usageLabel(selectedCafe.usage_state)}
+                  </span>
+                </div>
               </div>
             ) : (
-              <div className="mt-4 rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">اختر قهوة من الجداول لعرض ملخصها هنا.</div>
+              <div className="mt-4 rounded-[20px] border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+                اختر قهوة من الطابور أو السجل لعرض ملخصها هنا.
+              </div>
             )}
-          </div>
+          </section>
 
-          <div className="rounded-3xl border border-slate-200 p-4">
-            <h3 className="text-lg font-bold text-slate-900">قريب الاستحقاق</h3>
+          <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-sm font-semibold text-indigo-600">استحقاقات قريبة</div>
+            <h3 className="mt-1 text-lg font-bold text-slate-900">خلال 7 أيام</h3>
             <div className="mt-4 space-y-3">
               {expiringSoon.map((cafe) => (
-                <button key={cafe.id} type="button" onClick={() => onSelectCafe(cafe.id)} className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-right">
+                <button
+                  key={cafe.id}
+                  type="button"
+                  onClick={() => onSelectCafe(cafe.id)}
+                  className="w-full rounded-[20px] border border-slate-200 bg-slate-50 p-4 text-right transition hover:border-slate-300 hover:bg-white"
+                >
                   <div className="font-semibold text-slate-900">{cafe.display_name}</div>
                   <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
                   <div className="mt-2 text-sm text-slate-700">حتى {formatDateTime(cafe.current_subscription?.ends_at)}</div>
                   <div className="mt-1 text-xs text-slate-500">{countdownLabel(cafe.current_subscription?.countdown_seconds ?? 0)}</div>
                 </button>
               ))}
-              {expiringSoon.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد استحقاقات قريبة خلال 7 أيام.</div> : null}
+              {expiringSoon.length === 0 ? (
+                <div className="rounded-[20px] border border-dashed border-slate-300 p-4 text-sm text-slate-500">
+                  لا توجد استحقاقات قريبة خلال 7 أيام.
+                </div>
+              ) : null}
             </div>
+          </section>
+        </aside>
+      </section>
+
+      <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
+        <div className="flex flex-col gap-3 border-b border-slate-200 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-indigo-600">سجل مختصر</div>
+            <h2 className="mt-1 text-lg font-bold text-slate-900">آخر النشاط على المحفظة</h2>
           </div>
-        </section>
-      </div>
-    </section>
+          <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600">
+            نشاط اليوم: {data?.summary.active_today ?? 0}
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="min-w-full text-right text-sm">
+            <thead className="sticky top-0 bg-slate-50 text-xs font-semibold text-slate-500">
+              <tr>
+                <th className="px-4 py-3">القهوة</th>
+                <th className="px-4 py-3">الاشتراك</th>
+                <th className="px-4 py-3">التشغيل</th>
+                <th className="px-4 py-3">آخر حركة</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(data?.cafes ?? []).slice(0, 12).map((cafe) => (
+                <tr key={cafe.id} className={selectedCafe?.id === cafe.id ? 'border-t border-slate-100 bg-indigo-50/50' : 'border-t border-slate-100 bg-white'}>
+                  <td className="px-4 py-4">
+                    <button type="button" onClick={() => onSelectCafe(cafe.id)} className="text-right">
+                      <div className="font-semibold text-slate-900">{cafe.display_name}</div>
+                      <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
+                    </button>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassForPayment(cafe.payment_state)}`}>
+                      {paymentLabel(cafe.payment_state)}
+                    </div>
+                    {cafe.current_subscription ? <div className="mt-2 text-xs text-slate-500">{countdownLabel(cafe.current_subscription.countdown_seconds)}</div> : null}
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassForUsage(cafe.usage_state)}`}>
+                      {usageLabel(cafe.usage_state)}
+                    </div>
+                    <div className="mt-2 text-xs text-slate-500">{cafe.has_open_shift ? 'وردية مفتوحة الآن' : 'بدون وردية مفتوحة'}</div>
+                  </td>
+                  <td className="px-4 py-4 text-slate-700">{formatDateTime(cafe.last_activity_at)}</td>
+                </tr>
+              ))}
+              {!loading && !data?.cafes.length ? (
+                <tr>
+                  <td colSpan={4} className="px-4 py-10 text-center text-slate-500">لا توجد قهاوي لعرضها.</td>
+                </tr>
+              ) : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
   );
 }

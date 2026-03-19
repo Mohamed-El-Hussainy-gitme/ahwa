@@ -15,7 +15,7 @@ export default async function PlatformCafeDetailPage({
   return (
     <PlatformChrome
       session={session}
-      title="تفاصيل القهوة"
+      title="تفاصيل القهوة" description="راجع الملاك، الاشتراك، التفعيل، وربط قاعدة التشغيل ثم اتخذ الإجراء المطلوب."
     >
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">

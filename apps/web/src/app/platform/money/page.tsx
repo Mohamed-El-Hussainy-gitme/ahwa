@@ -10,7 +10,7 @@ export default async function PlatformMoneyPage() {
   return (
     <PlatformChrome
       session={session}
-      title="التحصيل والاشتراكات"
+      title="التحصيل والاشتراكات" description="تابع الاستحقاقات القريبة والمتأخرة، وراجع آخر الاشتراكات والتحصيل من مكان واحد."
     >
       <MoneyFollowSection refreshKey={0} />
     </PlatformChrome>

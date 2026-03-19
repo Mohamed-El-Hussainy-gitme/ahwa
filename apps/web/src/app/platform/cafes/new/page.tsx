@@ -10,7 +10,7 @@ export default async function PlatformCreateCafePage() {
   return (
     <PlatformChrome
       session={session}
-      title="إنشاء قهوة"
+      title="إنشاء قهوة" description="أنشئ قهوة جديدة مع بيانات المالك والاشتراك وربط قاعدة التشغيل من شاشة واحدة."
     >
       <PlatformCreateCafePageClient />
     </PlatformChrome>

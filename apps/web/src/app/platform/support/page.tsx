@@ -10,7 +10,7 @@ export default async function PlatformSupportPage() {
   return (
     <PlatformChrome
       session={session}
-      title="الدعم الفني"
+      title="الدعم الفني" description="ابدأ بالعناصر الجديدة وعالية الأولوية، ثم فعّل الوصول المؤقت فقط عند الحاجة."
     >
       <SupportSection refreshKey={0} selectedCafeId="" />
     </PlatformChrome>

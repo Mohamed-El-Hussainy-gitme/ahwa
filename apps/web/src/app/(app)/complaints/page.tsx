@@ -98,21 +98,21 @@ export default function ComplaintsPage() {
   const effectiveItemSessionId = itemSessionId || sessions[0]?.id || '';
 
   useEffect(() => {
-  const firstSessionId = sessions[0]?.id ?? '';
+    const firstSessionId = sessions[0]?.id ?? '';
 
-  if (!firstSessionId) {
-    if (generalSessionId) setGeneralSessionId('');
-    if (itemSessionId) setItemSessionId('');
-    return;
-  }
+    if (!firstSessionId) {
+      if (generalSessionId) setGeneralSessionId('');
+      if (itemSessionId) setItemSessionId('');
+      return;
+    }
 
-  if (generalSessionId && !sessions.some((session) => session.id === generalSessionId)) {
-    setGeneralSessionId(firstSessionId);
-  }
-  if (itemSessionId && !sessions.some((session) => session.id === itemSessionId)) {
-    setItemSessionId(firstSessionId);
-  }
-}, [sessions, generalSessionId, itemSessionId]);
+    if (generalSessionId && !sessions.some((session) => session.id === generalSessionId)) {
+      setGeneralSessionId(firstSessionId);
+    }
+    if (itemSessionId && !sessions.some((session) => session.id === itemSessionId)) {
+      setItemSessionId(firstSessionId);
+    }
+  }, [sessions, generalSessionId, itemSessionId]);
 
   const sessionItems = useMemo(
     () => (data?.items ?? []).filter((item) => item.serviceSessionId === effectiveItemSessionId),

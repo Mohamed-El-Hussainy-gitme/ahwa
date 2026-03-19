@@ -13,7 +13,7 @@ export default async function PlatformSupportAccessPage({
   const [{ messageId }, session] = await Promise.all([params, requirePlatformAdminSession()]);
 
   return (
-    <PlatformChrome session={session} title="مساحة دعم القهوة">
+    <PlatformChrome session={session} title="مساحة دعم القهوة" description="أنت داخل مساحة دعم موقتة. راقب التغييرات وأنهِ المهمة ثم اخرج من الوصول.">
       <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           <Link href="/platform/support" className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">العودة إلى صندوق الدعم</Link>

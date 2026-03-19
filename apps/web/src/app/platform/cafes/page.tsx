@@ -10,7 +10,7 @@ export default async function PlatformCafesPage() {
   return (
     <PlatformChrome
       session={session}
-      title="سجل القهاوي"
+      title="سجل القهاوي" description="راجع حالة كل قهوة، ابحث سريعًا، ثم افتح التفاصيل أو إجراءات التفعيل من نفس السجل."
     >
       <PlatformCafesPageClient />
     </PlatformChrome>

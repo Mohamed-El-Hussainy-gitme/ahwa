@@ -10,7 +10,7 @@ export default async function PlatformOverviewPage() {
   return (
     <PlatformChrome
       session={session}
-      title="نظرة عامة"
+      title="نظرة عامة" description="ابدأ بالحالات التي تحتاج تدخل الآن، ثم انتقل إلى السجل أو الدعم من نفس الصفحة."
     >
       <PlatformOverviewPageClient />
     </PlatformChrome>

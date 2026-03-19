@@ -160,6 +160,19 @@ function subscriptionBadgeClass(status: SubscriptionStatus) {
   }
 }
 
+function subscriptionStatusLabel(status: SubscriptionStatus) {
+  switch (status) {
+    case 'trial':
+      return 'تجريبي';
+    case 'active':
+      return 'نشط';
+    case 'expired':
+      return 'منتهي';
+    case 'suspended':
+      return 'معلق';
+  }
+}
+
 function bindingStatusLabel(cafe: CafeRow) {
   switch (cafe.binding_status) {
     case 'bound':
@@ -192,10 +205,15 @@ export default function PlatformCafesPageClient() {
   const [loading, setLoading] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(searchParams.get('query') ?? '');
   const [statusFilter, setStatusFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   const selectedCafeId = searchParams.get('selected') ?? '';
+  const searchQuery = searchParams.get('query') ?? '';
+
+  useEffect(() => {
+    setSearch(searchQuery);
+  }, [searchQuery]);
 
   const loadCafes = useCallback(async () => {
     setLoading(true);
@@ -209,7 +227,8 @@ export default function PlatformCafesPageClient() {
       if (!response.ok || !isPlatformApiOk(payload)) {
         throw new Error(extractPlatformApiErrorMessage(payload, 'LOAD_CAFES_FAILED'));
       }
-      setCafes(extractCafeListItems(payload) as CafeRow[]);
+      const items = isCafeListResponse(payload) ? payload.items : extractCafeListItems(payload) as CafeRow[];
+      setCafes(items);
     } catch (loadError) {
       setError(loadError instanceof Error ? loadError.message : 'LOAD_CAFES_FAILED');
     } finally {
@@ -231,8 +250,18 @@ export default function PlatformCafesPageClient() {
     });
   }, [cafes, search, statusFilter]);
 
-  const expiringSoon = useMemo(
-    () => cafes.filter((cafe) => (cafe.current_subscription?.countdown_seconds ?? Number.MAX_SAFE_INTEGER) <= 7 * 86400),
+  const summary = useMemo(() => {
+    const active = cafes.filter((cafe) => cafe.is_active).length;
+    const inactive = cafes.length - active;
+    const expiringSoon = cafes.filter(
+      (cafe) => (cafe.current_subscription?.countdown_seconds ?? Number.MAX_SAFE_INTEGER) <= 7 * 86400,
+    ).length;
+    const invalidBinding = cafes.filter((cafe) => cafe.binding_status === 'invalid' || cafe.binding_status === 'unbound').length;
+    return { active, inactive, expiringSoon, invalidBinding };
+  }, [cafes]);
+
+  const expiringSoonList = useMemo(
+    () => cafes.filter((cafe) => (cafe.current_subscription?.countdown_seconds ?? Number.MAX_SAFE_INTEGER) <= 7 * 86400).slice(0, 6),
     [cafes],
   );
 
@@ -263,15 +292,50 @@ export default function PlatformCafesPageClient() {
     }
   }
 
+  function selectCafe(cafeId: string) {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set('selected', cafeId);
+    if (search.trim()) {
+      params.set('query', search.trim());
+    } else {
+      params.delete('query');
+    }
+    router.replace(`/platform/cafes?${params.toString()}`);
+  }
+
   return (
-    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.55fr)_380px]">
+    <div className="grid gap-6 xl:grid-cols-[minmax(0,1.5fr)_380px]">
       <section className="space-y-6">
         {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div> : null}
-        <div className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
+
+        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-sm text-slate-500">قهاوي مفعلة</div>
+            <div className="mt-2 text-3xl font-bold text-slate-900">{summary.active}</div>
+            <div className="mt-2 text-xs text-slate-500">من أصل {cafes.length} قهوة</div>
+          </div>
+          <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="text-sm text-slate-500">قهاوي معطلة</div>
+            <div className="mt-2 text-3xl font-bold text-slate-900">{summary.inactive}</div>
+            <div className="mt-2 text-xs text-slate-500">بحاجة مراجعة أو إعادة تفعيل</div>
+          </div>
+          <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
+            <div className="text-sm text-amber-800">استحقاقات قريبة</div>
+            <div className="mt-2 text-3xl font-bold text-amber-900">{summary.expiringSoon}</div>
+            <div className="mt-2 text-xs text-amber-700">تنتهي خلال 7 أيام</div>
+          </div>
+          <div className="rounded-[24px] border border-sky-200 bg-sky-50 p-5 shadow-sm">
+            <div className="text-sm text-sky-800">ربط يحتاج مراجعة</div>
+            <div className="mt-2 text-3xl font-bold text-sky-900">{summary.invalidBinding}</div>
+            <div className="mt-2 text-xs text-sky-700">غير مربوط أو به ربط غير صالح</div>
+          </div>
+        </section>
+
+        <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
-              <div className="text-sm font-semibold text-indigo-600">Cafes Registry</div>
-              <h2 className="mt-1 text-xl font-bold text-slate-900">سجل القهاوي</h2>
+              <div className="text-sm font-semibold text-indigo-600">سجل العملاء</div>
+              <h2 className="mt-1 text-xl font-bold text-slate-900">فلترة السجل واختيار القهوة</h2>
             </div>
             <div className="flex flex-wrap gap-2">
               <Link href="/platform/cafes/new" className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white">
@@ -293,7 +357,7 @@ export default function PlatformCafesPageClient() {
               />
             </label>
             <select
-              className="rounded-2xl border border-slate-200 px-4 py-3 text-sm"
+              className="rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm"
               value={statusFilter}
               onChange={(event) => setStatusFilter(event.target.value as 'all' | 'active' | 'inactive')}
             >
@@ -302,17 +366,16 @@ export default function PlatformCafesPageClient() {
               <option value="inactive">المعطلة فقط</option>
             </select>
           </div>
-        </div>
+        </section>
 
-        <div className="overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-sm">
+        <section className="overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="min-w-full text-right text-sm">
-              <thead className="bg-slate-50 text-xs font-semibold text-slate-500">
+              <thead className="sticky top-0 bg-slate-50 text-xs font-semibold text-slate-500">
                 <tr>
                   <th className="px-4 py-3">القهوة</th>
-                  <th className="px-4 py-3">المالك الرئيسي</th>
                   <th className="px-4 py-3">الاشتراك</th>
-                  <th className="px-4 py-3">التحصيل</th>
+                  <th className="px-4 py-3">الملاك</th>
                   <th className="px-4 py-3">آخر نشاط</th>
                   <th className="px-4 py-3">إجراءات</th>
                 </tr>
@@ -323,57 +386,43 @@ export default function PlatformCafesPageClient() {
                   const primaryOwner = cafe.owners?.[0] ?? null;
                   const isSelected = selectedCafe?.id === cafe.id;
                   return (
-                    <tr key={cafe.id} className={`border-t border-slate-100 ${isSelected ? 'bg-sky-50/60' : 'bg-white'}`}>
+                    <tr key={cafe.id} className={isSelected ? 'border-t border-slate-100 bg-indigo-50/50' : 'border-t border-slate-100 bg-white'}>
                       <td className="px-4 py-4">
-                        <button
-                          type="button"
-                          onClick={() => router.replace(`/platform/cafes?selected=${encodeURIComponent(cafe.id)}`)}
-                          className="text-right"
-                        >
+                        <button type="button" onClick={() => selectCafe(cafe.id)} className="text-right">
                           <div className="font-semibold text-slate-900">{cafe.display_name}</div>
                           <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
-                          <div className="mt-1 text-[11px] text-slate-400">{bindingStatusLabel(cafe)}</div>
-                        </button>
-                        <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                          <span className={`rounded-full border px-2 py-1 font-semibold ${cafeStatusBadgeClass(cafe.is_active)}`}>
-                            {cafe.is_active ? 'مفعلة' : 'معطلة'}
-                          </span>
-                          <span className={`rounded-full border px-2 py-1 font-semibold ${bindingBadgeClass(cafe.binding_status)}`}>
-                            {cafe.binding_status === 'bound' ? 'مربوط' : cafe.binding_status === 'invalid' ? 'ربط غير صالح' : 'غير مربوط'}
-                          </span>
-                          {subscription ? (
-                            <span className={`rounded-full border px-2 py-1 font-semibold ${subscriptionBadgeClass(subscription.effective_status)}`}>
-                              {subscription.effective_status}
+                          <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                            <span className={`rounded-full border px-2.5 py-1 font-semibold ${cafeStatusBadgeClass(cafe.is_active)}`}>
+                              {cafe.is_active ? 'مفعلة' : 'معطلة'}
                             </span>
-                          ) : (
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-600">بدون اشتراك</span>
-                          )}
-                        </div>
+                            <span className={`rounded-full border px-2.5 py-1 font-semibold ${bindingBadgeClass(cafe.binding_status)}`}>
+                              {cafe.binding_status === 'bound' ? 'مربوط' : cafe.binding_status === 'invalid' ? 'ربط غير صالح' : 'غير مربوط'}
+                            </span>
+                            {subscription ? (
+                              <span className={`rounded-full border px-2.5 py-1 font-semibold ${subscriptionBadgeClass(subscription.effective_status)}`}>
+                                {subscriptionStatusLabel(subscription.effective_status)}
+                              </span>
+                            ) : (
+                              <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 font-semibold text-slate-600">بدون اشتراك</span>
+                            )}
+                          </div>
+                        </button>
+                      </td>
+                      <td className="px-4 py-4 text-slate-700">
+                        {subscription ? (
+                          <>
+                            <div className="font-medium text-slate-900">حتى {formatDateTime(subscription.ends_at)}</div>
+                            <div className="mt-1 text-xs text-slate-500">{countdownLabel(subscription.countdown_seconds)}</div>
+                            <div className="mt-2 text-xs text-slate-500">{subscription.is_complimentary ? 'اشتراك مجاني' : `${amountLabel(subscription.amount_paid)} ج.م`}</div>
+                          </>
+                        ) : (
+                          '—'
+                        )}
                       </td>
                       <td className="px-4 py-4 text-slate-700">
                         <div className="font-medium text-slate-900">{primaryOwner?.full_name ?? '—'}</div>
                         <div className="mt-1 text-xs text-slate-500">{primaryOwner?.phone ?? 'لا يوجد مالك محدد'}</div>
                         <div className="mt-2 text-xs text-slate-500">{cafe.active_owner_count ?? 0}/{cafe.owner_count ?? 0} نشط</div>
-                      </td>
-                      <td className="px-4 py-4 text-slate-700">
-                        {subscription ? (
-                          <>
-                            <div>حتى {formatDateTime(subscription.ends_at)}</div>
-                            <div className="mt-1 text-xs text-slate-500">{countdownLabel(subscription.countdown_seconds)}</div>
-                          </>
-                        ) : (
-                          '—'
-                        )}
-                      </td>
-                      <td className="px-4 py-4 text-slate-700">
-                        {subscription ? (
-                          <>
-                            <div>{subscription.is_complimentary ? 'مجاني / استثنائي' : `${amountLabel(subscription.amount_paid)} ج.م`}</div>
-                            {subscription.notes ? <div className="mt-1 text-xs text-slate-500">{subscription.notes}</div> : null}
-                          </>
-                        ) : (
-                          '—'
-                        )}
                       </td>
                       <td className="px-4 py-4 text-slate-700">{formatDateTime(cafe.last_activity_at ?? cafe.created_at)}</td>
                       <td className="px-4 py-4">
@@ -396,60 +445,85 @@ export default function PlatformCafesPageClient() {
                 })}
                 {!loading && filteredCafes.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="px-4 py-10 text-center text-slate-500">لا توجد قهاوي مطابقة للبحث أو الفلاتر الحالية.</td>
+                    <td colSpan={5} className="px-4 py-10 text-center text-slate-500">لا توجد قهاوي مطابقة للبحث أو الفلاتر الحالية.</td>
                   </tr>
                 ) : null}
               </tbody>
             </table>
           </div>
           {loading ? <div className="border-t border-slate-100 px-4 py-4 text-sm text-slate-500">جارٍ تحميل السجل...</div> : null}
-        </div>
+        </section>
       </section>
 
-      <aside className="space-y-6">
+      <aside className="space-y-6 xl:sticky xl:top-4 xl:self-start">
         {selectedCafe ? (
-          <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="text-sm font-semibold text-indigo-600">Selected Cafe</div>
-            <h3 className="mt-1 text-lg font-bold text-slate-900">القهوة المحددة</h3>
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+          <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-indigo-600">القهوة المحددة</div>
+                <h3 className="mt-1 text-lg font-bold text-slate-900">ملف سريع</h3>
+              </div>
+              <Link href={`/platform/cafes/${selectedCafe.id}`} className="rounded-2xl border border-slate-300 bg-white px-3 py-2 text-xs font-medium text-slate-700">
+                فتح التفاصيل
+              </Link>
+            </div>
+            <div className="mt-4 rounded-[20px] border border-slate-200 bg-slate-50 p-4">
               <div className="font-semibold text-slate-900">{selectedCafe.display_name}</div>
               <div className="mt-1 text-xs text-slate-500">{selectedCafe.slug}</div>
-              <div className="mt-1 text-xs text-slate-400">قاعدة التشغيل: {bindingStatusLabel(selectedCafe)}</div>
-              <div className="mt-3 space-y-2 text-sm text-slate-700">
-                <div>المالك: {selectedCafe.owners?.[0]?.full_name ?? '—'}</div>
-                <div>آخر نشاط: {formatDateTime(selectedCafe.last_activity_at ?? selectedCafe.created_at)}</div>
-                <div>الاشتراك: {selectedCafe.current_subscription ? countdownLabel(selectedCafe.current_subscription.countdown_seconds) : 'بدون اشتراك'}</div>
+              <div className="mt-2 text-xs text-slate-400">قاعدة التشغيل: {bindingStatusLabel(selectedCafe)}</div>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
+              <div className="rounded-[20px] border border-slate-200 bg-white p-4">
+                <div className="text-xs text-slate-500">المالك الرئيسي</div>
+                <div className="mt-1 font-semibold text-slate-900">{selectedCafe.owners?.[0]?.full_name ?? '—'}</div>
+                <div className="mt-1 text-xs text-slate-500">{selectedCafe.owners?.[0]?.phone ?? 'لا يوجد'}</div>
               </div>
-              <div className="mt-4 flex gap-2">
-                <Link href={`/platform/cafes/${selectedCafe.id}`} className="flex-1 rounded-2xl bg-slate-900 px-4 py-2 text-center text-sm font-semibold text-white">
-                  فتح التفاصيل
-                </Link>
-                <Link href="/platform/money" className="flex-1 rounded-2xl border border-slate-300 px-4 py-2 text-center text-sm font-semibold text-slate-700">
-                  متابعة التحصيل
-                </Link>
+              <div className="rounded-[20px] border border-slate-200 bg-white p-4">
+                <div className="text-xs text-slate-500">آخر نشاط</div>
+                <div className="mt-1 font-semibold text-slate-900">{formatDateTime(selectedCafe.last_activity_at ?? selectedCafe.created_at)}</div>
               </div>
+              <div className="rounded-[20px] border border-slate-200 bg-white p-4">
+                <div className="text-xs text-slate-500">الاشتراك</div>
+                <div className="mt-1 font-semibold text-slate-900">{selectedCafe.current_subscription ? countdownLabel(selectedCafe.current_subscription.countdown_seconds) : 'بدون اشتراك'}</div>
+                {selectedCafe.current_subscription && !selectedCafe.current_subscription.is_complimentary ? (
+                  <div className="mt-1 text-xs text-slate-500">{amountLabel(selectedCafe.current_subscription.amount_paid)} ج.م</div>
+                ) : null}
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void submitToggleCafe(selectedCafe.id, !selectedCafe.is_active)}
+                className={`rounded-2xl px-4 py-2 text-sm font-semibold text-white ${selectedCafe.is_active ? 'bg-rose-600' : 'bg-emerald-600'} disabled:opacity-60`}
+              >
+                {selectedCafe.is_active ? 'تعطيل القهوة' : 'تفعيل القهوة'}
+              </button>
+              <Link href="/platform/money" className="rounded-2xl border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700">
+                متابعة التحصيل
+              </Link>
             </div>
           </section>
         ) : null}
 
-        <section className="rounded-[32px] border border-slate-200 bg-white p-5 shadow-sm">
-          <div className="text-sm font-semibold text-indigo-600">Focus Queue</div>
-          <h3 className="mt-1 text-lg font-bold text-slate-900">استحقاقات قريبة</h3>
+        <section className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
+          <div className="text-sm font-semibold text-indigo-600">استحقاقات قريبة</div>
+          <h3 className="mt-1 text-lg font-bold text-slate-900">أولوية الأسبوع</h3>
           <div className="mt-4 space-y-3">
-            {expiringSoon.slice(0, 8).map((cafe) => (
+            {expiringSoonList.map((cafe) => (
               <button
                 key={cafe.id}
                 type="button"
-                onClick={() => router.replace(`/platform/cafes?selected=${encodeURIComponent(cafe.id)}`)}
-                className="w-full rounded-2xl border border-slate-200 bg-slate-50 p-4 text-right"
+                onClick={() => selectCafe(cafe.id)}
+                className="w-full rounded-[20px] border border-slate-200 bg-slate-50 p-4 text-right transition hover:border-slate-300 hover:bg-white"
               >
                 <div className="font-semibold text-slate-900">{cafe.display_name}</div>
                 <div className="mt-1 text-xs text-slate-500">{cafe.slug}</div>
-                <div className="mt-2 text-sm text-slate-700">{formatDateTime(cafe.current_subscription?.ends_at)}</div>
+                <div className="mt-2 text-sm text-slate-700">حتى {formatDateTime(cafe.current_subscription?.ends_at)}</div>
                 <div className="mt-1 text-xs text-slate-500">{countdownLabel(cafe.current_subscription?.countdown_seconds ?? 0)}</div>
               </button>
             ))}
-            {expiringSoon.length === 0 ? <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد استحقاقات قريبة الآن.</div> : null}
+            {expiringSoonList.length === 0 ? <div className="rounded-[20px] border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا توجد استحقاقات قريبة الآن.</div> : null}
           </div>
         </section>
       </aside>
