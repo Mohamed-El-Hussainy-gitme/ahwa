@@ -5,6 +5,7 @@ import {
   completeIdempotentMutation,
   jsonError,
   ok,
+  publishOpsMutation,
   kickOpsOutboxDispatch,
   releaseIdempotentMutation,
   requireBillingAccess,
@@ -25,6 +26,9 @@ type DeferRequestBody = {
 type DeferRpcResult = {
   ok?: boolean;
   payment_id?: string;
+  outbox_event_id?: string;
+  total_quantity?: number;
+  total_amount?: number;
 };
 
 type CloseSessionRpcResult = {
@@ -72,6 +76,23 @@ export async function POST(req: Request) {
       sessionClosed = Boolean(closeRpc.ok);
     } catch {
       sessionClosed = false;
+    }
+
+    const outboxEventId = String(rpc.outbox_event_id ?? '').trim() || null;
+    if (outboxEventId) {
+      publishOpsMutation(ctx, {
+        id: outboxEventId,
+        type: 'billing.deferred',
+        entityId: paymentId,
+        shiftId: billing.shiftId,
+        data: {
+          serviceSessionId: billing.serviceSessionId,
+          debtorName: normalizedDebtorName,
+          totalAmount: Number(rpc.total_amount ?? 0),
+          totalQuantity: Number(rpc.total_quantity ?? billing.lines.reduce((total, line) => total + Number(line.quantity ?? 0), 0)),
+        },
+        scopes: ['waiter', 'billing', 'dashboard', 'nav-summary', 'deferred'],
+      });
     }
 
     kickOpsOutboxDispatch(ctx);

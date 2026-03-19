@@ -462,20 +462,25 @@ export async function enqueueOpsMutation(
 export function publishOpsMutation(
   ctx: Pick<OpsActorContext, 'cafeId' | 'shiftId'>,
   input: {
+    id?: string | null;
     type: string;
     entityId?: string | null;
     shiftId?: string | null;
     data?: Record<string, unknown>;
     scopes?: string[];
+    stream?: string | null;
   },
 ) {
   void publishOpsEvent({
+    id: input.id ?? null,
     type: input.type,
     cafeId: ctx.cafeId,
     shiftId: input.shiftId ?? ctx.shiftId ?? null,
     entityId: input.entityId ?? null,
     data: input.data,
     scopes: input.scopes ?? [],
+    stream: input.stream ?? 'ops',
+    cursor: input.id ?? null,
   }).catch(() => undefined);
 }
 

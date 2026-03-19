@@ -1,0 +1,172 @@
+'use client';
+
+import { useCallback, useEffect, useRef } from 'react';
+import type { ShiftRole } from '@/lib/authz/policy';
+import type { OpsRealtimeEvent, StationCode } from '@/lib/ops/types';
+
+const SOUND_COOLDOWN_MS = 1200;
+const MAX_SEEN_EVENTS = 256;
+
+type NotificationSignal = 'station-order' | 'waiter-ready';
+
+type UseOpsRealtimeNotificationsInput = {
+  enabled: boolean;
+  role: ShiftRole | null;
+  isOwner: boolean;
+};
+
+let cachedAudioContext: AudioContext | null = null;
+let unlockListenersAttached = false;
+
+function getAudioContext(): AudioContext | null {
+  if (typeof window === 'undefined') return null;
+  const WindowWithAudio = window as typeof window & {
+    webkitAudioContext?: typeof AudioContext;
+  };
+  const AudioContextCtor = window.AudioContext ?? WindowWithAudio.webkitAudioContext;
+  if (!AudioContextCtor) return null;
+  if (!cachedAudioContext) {
+    cachedAudioContext = new AudioContextCtor();
+  }
+  return cachedAudioContext;
+}
+
+async function unlockAudioContext() {
+  const context = getAudioContext();
+  if (!context) return;
+  if (context.state === 'suspended') {
+    try {
+      await context.resume();
+    } catch {
+      // Ignore browser autoplay failures until the next user gesture.
+    }
+  }
+}
+
+function ensureAudioUnlockListeners() {
+  if (typeof window === 'undefined' || unlockListenersAttached) return;
+  unlockListenersAttached = true;
+
+  const unlock = () => {
+    void unlockAudioContext();
+  };
+
+  window.addEventListener('pointerdown', unlock, { passive: true });
+  window.addEventListener('keydown', unlock);
+  window.addEventListener('touchstart', unlock, { passive: true });
+}
+
+function vibrate(pattern: number[]) {
+  if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') {
+    return;
+  }
+  try {
+    navigator.vibrate(pattern);
+  } catch {
+    // Ignore vibration failures.
+  }
+}
+
+function scheduleTone(context: AudioContext, startAt: number, frequency: number, durationMs: number, gainValue: number) {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(frequency, startAt);
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(gainValue, startAt + 0.01);
+  gain.gain.exponentialRampToValueAtTime(0.0001, startAt + durationMs / 1000);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(startAt);
+  oscillator.stop(startAt + durationMs / 1000 + 0.03);
+}
+
+async function playSignal(signal: NotificationSignal) {
+  const context = getAudioContext();
+  if (!context) return;
+  if (context.state === 'suspended') {
+    try {
+      await context.resume();
+    } catch {
+      return;
+    }
+  }
+
+  const now = context.currentTime + 0.01;
+  if (signal === 'station-order') {
+    scheduleTone(context, now, 880, 120, 0.08);
+    scheduleTone(context, now + 0.18, 1175, 140, 0.08);
+    vibrate([120, 70, 120]);
+    return;
+  }
+
+  scheduleTone(context, now, 1320, 120, 0.08);
+  scheduleTone(context, now + 0.15, 1760, 180, 0.08);
+  vibrate([90, 40, 90]);
+}
+
+function normalizeStationCode(value: unknown): StationCode | null {
+  return value === 'barista' || value === 'shisha' ? value : null;
+}
+
+function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, isOwner: boolean): NotificationSignal | null {
+  if (!role || isOwner) {
+    return null;
+  }
+
+  if (event.type === 'station.order_submitted') {
+    const stationCode = normalizeStationCode(event.data?.stationCode);
+    if (role === 'barista' && stationCode === 'barista') {
+      return 'station-order';
+    }
+    if (role === 'shisha' && stationCode === 'shisha') {
+      return 'station-order';
+    }
+    return null;
+  }
+
+  if (event.type === 'station.ready' && role === 'waiter') {
+    return 'waiter-ready';
+  }
+
+  return null;
+}
+
+export function useOpsRealtimeNotifications(input: UseOpsRealtimeNotificationsInput) {
+  const seenEventIdsRef = useRef<string[]>([]);
+  const seenEventIdsSetRef = useRef<Set<string>>(new Set());
+  const lastPlayedAtRef = useRef<Record<NotificationSignal, number>>({
+    'station-order': 0,
+    'waiter-ready': 0,
+  });
+
+  useEffect(() => {
+    if (input.enabled) {
+      ensureAudioUnlockListeners();
+    }
+  }, [input.enabled]);
+
+  return useCallback(async (event: OpsRealtimeEvent) => {
+    if (!input.enabled) return;
+    if (seenEventIdsSetRef.current.has(event.id)) return;
+
+    seenEventIdsSetRef.current.add(event.id);
+    seenEventIdsRef.current.push(event.id);
+    while (seenEventIdsRef.current.length > MAX_SEEN_EVENTS) {
+      const oldest = seenEventIdsRef.current.shift();
+      if (oldest) {
+        seenEventIdsSetRef.current.delete(oldest);
+      }
+    }
+
+    const signal = resolveSignalForEvent(event, input.role, input.isOwner);
+    if (!signal) return;
+
+    const now = Date.now();
+    if (now - lastPlayedAtRef.current[signal] < SOUND_COOLDOWN_MS) {
+      return;
+    }
+    lastPlayedAtRef.current[signal] = now;
+    await playSignal(signal);
+  }, [input.enabled, input.isOwner, input.role]);
+}

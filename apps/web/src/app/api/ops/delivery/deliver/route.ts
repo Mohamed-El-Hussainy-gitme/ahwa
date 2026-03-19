@@ -5,6 +5,7 @@ import {
   completeIdempotentMutation,
   jsonError,
   ok,
+  publishOpsMutation,
   kickOpsOutboxDispatch,
   releaseIdempotentMutation,
   requireDeliveryAccess,
@@ -22,6 +23,7 @@ type DeliverRpcResult = {
   delivered_qty?: number;
   replacement_delivered_qty?: number;
   quantity?: number;
+  outbox_event_id?: string;
 };
 
 export async function POST(req: Request) {
@@ -54,6 +56,23 @@ export async function POST(req: Request) {
       p_quantity: normalizedQuantity,
       ...actorRpcParams(ctx, 'p_by_staff_id', 'p_by_owner_id'),
     }, ctx.databaseKey);
+
+    const outboxEventId = String(rpc.outbox_event_id ?? '').trim() || null;
+    if (outboxEventId) {
+      publishOpsMutation(ctx, {
+        id: outboxEventId,
+        type: 'delivery.delivered',
+        entityId: normalizedOrderItemId,
+        shiftId: item.shiftId,
+        data: {
+          quantity: Number(rpc.quantity ?? normalizedQuantity),
+          deliveredQty: Number(rpc.delivered_qty ?? 0),
+          replacementDeliveredQty: Number(rpc.replacement_delivered_qty ?? 0),
+          serviceSessionId: item.serviceSessionId,
+        },
+        scopes: ['waiter', 'barista', 'shisha', 'billing', 'dashboard', 'nav-summary'],
+      });
+    }
 
     kickOpsOutboxDispatch(ctx);
 
