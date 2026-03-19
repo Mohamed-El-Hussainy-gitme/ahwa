@@ -258,7 +258,7 @@ export async function dispatchOpsOutboxAcrossConfiguredDatabases(limit?: number)
 }
 
 export function scheduleOpsOutboxDispatch(input: DispatchOpsOutboxBatchInput) {
-  const enabled = String(process.env.AHWA_OPS_OUTBOX_INLINE_DISPATCH_ENABLED ?? 'true').trim().toLowerCase();
+  const enabled = String(process.env.AHWA_OPS_OUTBOX_INLINE_DISPATCH_ENABLED ?? 'false').trim().toLowerCase();
   if (enabled === '0' || enabled === 'false' || enabled === 'off') {
     return;
   }
