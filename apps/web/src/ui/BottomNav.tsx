@@ -35,7 +35,8 @@ function buildTabs(input: {
 
   if (role === 'supervisor') {
     return [
-      { href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: summary?.readyForDelivery ?? 0 },
+      { href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: 0 },
+      { href: '/ready', label: 'جاهز', icon: '✅', badge: summary?.readyForDelivery ?? 0 },
       { href: '/orders', label: 'طلبات', icon: '🧾', badge: 0 },
       { href: '/billing', label: 'حساب', icon: '💵', badge: summary?.billableQty ?? 0 },
       { href: '/customers', label: 'آجل', icon: '👥', badge: summary?.deferredCustomerCount ?? 0 },
@@ -59,7 +60,8 @@ function buildTabs(input: {
 
   if (role === 'waiter') {
     return [
-      { href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: summary?.readyForDelivery ?? 0 },
+      { href: '/dashboard', label: 'الرئيسية', icon: '🏠', badge: 0 },
+      { href: '/ready', label: 'جاهز', icon: '✅', badge: summary?.readyForDelivery ?? 0 },
       { href: '/orders', label: 'الطلبات', icon: '🧾', badge: 0 },
     ];
   }

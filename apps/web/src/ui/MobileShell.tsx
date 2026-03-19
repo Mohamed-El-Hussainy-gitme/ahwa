@@ -166,6 +166,30 @@ function buildQuickMetrics(input: {
     ];
   }
 
+  if (pathname === '/ready') {
+    if (role === 'waiter' || role === 'supervisor') {
+      return [
+        {
+          key: 'ready-age',
+          label: 'أقدم جاهز',
+          value: formatMinutes(summary.queueHealth.oldestReadyMinutes),
+          href: '/ready#ready-panel',
+          tone: ageTone(summary.queueHealth.oldestReadyMinutes),
+        },
+        {
+          key: 'ready-count',
+          label: 'جاهز',
+          value: summary.readyForDelivery,
+          href: '/ready#ready-panel',
+          tone: countTone(summary.readyForDelivery, 'ready'),
+        },
+        sessionMetric,
+      ];
+    }
+
+    return [];
+  }
+
   if (pathname === '/dashboard') {
     if (role === 'barista') {
       return [
@@ -208,23 +232,7 @@ function buildQuickMetrics(input: {
     }
 
     if (role === 'waiter') {
-      return [
-        {
-          key: 'ready-age',
-          label: 'أقدم جاهز',
-          value: formatMinutes(summary.queueHealth.oldestReadyMinutes),
-          href: '/dashboard#ready-panel',
-          tone: ageTone(summary.queueHealth.oldestReadyMinutes),
-        },
-        {
-          key: 'ready-count',
-          label: 'جاهز',
-          value: summary.readyForDelivery,
-          href: '/dashboard#ready-panel',
-          tone: countTone(summary.readyForDelivery, 'ready'),
-        },
-        sessionMetric,
-      ];
+      return [sessionMetric];
     }
 
     if (role === 'owner' || role === 'supervisor') {
@@ -236,14 +244,14 @@ function buildQuickMetrics(input: {
           href: totalPending > 0 ? '/kitchen#queue-panel' : '/dashboard',
           tone: countTone(totalPending, 'pending'),
         },
-        {
-          key: 'ready-count',
-          label: 'جاهز',
-          value: summary.readyForDelivery,
-          href: role === 'supervisor' ? '/dashboard#ready-panel' : '/orders#ready-panel',
-          tone: countTone(summary.readyForDelivery, 'ready'),
-        },
         sessionMetric,
+        {
+          key: 'billing',
+          label: 'للحساب',
+          value: summary.billableQty,
+          href: '/billing',
+          tone: countTone(summary.billableQty, 'billing'),
+        },
       ];
     }
 

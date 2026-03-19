@@ -1,16 +1,13 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback } from 'react';
 import Link, { type LinkProps } from 'next/link';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { DashboardWorkspace, WaiterWorkspace } from '@/lib/ops/types';
-import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import type { DashboardWorkspace } from '@/lib/ops/types';
+import { useOpsWorkspace } from '@/lib/ops/hooks';
 import { useOpsChrome } from '@/lib/ops/chrome';
-import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
-import { clampPositive } from '@/ui/ops/sessionHelpers';
-import { applyDeliverToWaiterWorkspace } from '@/lib/ops/workspacePatches';
 
 type StatCard = {
   label: string;
@@ -112,6 +109,7 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
       ],
       actions: [
         { href: '/orders', label: 'الطلبات', description: 'الجلسات والمنيو وإرسال الطلبات.', tone: 'primary' },
+        { href: '/ready', label: 'جاهز', description: 'راجع الجاهز للتسليم وسلمه مباشرة.' },
         { href: '/billing', label: 'الحساب', description: 'تحصيل أو ترحيل إلى الآجل.' },
         { href: '/customers', label: 'دفتر الآجل', description: 'مراجعة الرصيد والسداد.' },
         { href: '/complaints', label: 'الشكاوى', description: 'تسجيل الشكوى وتنفيذ المعالجة.' },
@@ -157,6 +155,7 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
       ],
       actions: [
         { href: '/orders', label: 'الطلبات', description: 'الجلسات، المنيو، وإرسال الطلبات.', tone: 'primary' },
+        { href: '/ready', label: 'جاهز', description: 'راجع الجاهز للتسليم وسلمه للزبون.' },
         { href: '/support?source=in_app&page=/dashboard', label: 'الدعم', description: 'طلب مساعدة أو بلاغ تشغيل.', tone: 'support' },
       ],
     };
@@ -176,28 +175,9 @@ export default function DashboardPage() {
   const { summary } = useOpsChrome();
 
   const role: RoleView = can.owner ? 'owner' : effectiveRole ?? 'unassigned';
-  const showReadyOnDashboard = role === 'waiter' || role === 'supervisor';
   const config = buildRoleConfig(role, data ?? undefined, summary?.deferredCustomerCount ?? 0);
 
-  const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data: waiterWorkspace, setData: setWaiterWorkspace, error: readyError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
-    enabled: Boolean(shift) && showReadyOnDashboard,
-    pollIntervalMs: showReadyOnDashboard ? 1500 : undefined,
-  });
-  const [readySelection, setReadySelection] = useState<Record<string, number>>({});
-  const [readyCommandError, setReadyCommandError] = useState<string | null>(null);
-
-  const deliverCommand = useOpsCommand(
-    async (orderItemId: string, quantity: number) => {
-      await opsClient.deliver(orderItemId, quantity);
-      setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
-      setWaiterWorkspace((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
-    },
-    { onError: setReadyCommandError },
-  );
-
-  const readyItems = useMemo(() => waiterWorkspace?.readyItems ?? [], [waiterWorkspace?.readyItems]);
-  const effectiveError = readyCommandError ?? error ?? readyError ?? null;
+  const effectiveError = error ?? null;
 
   if (!shift) {
     return (
@@ -231,22 +211,6 @@ export default function DashboardPage() {
       <section className="space-y-4">
         <DashboardStatGrid cards={config.cards} />
 
-        {showReadyOnDashboard ? (
-          <section id="ready-panel">
-            <ReadyDeliveryPanel
-              title="جاهز"
-              items={readyItems}
-              selectedQty={readySelection}
-              onChangeQty={(orderItemId, nextQty, maxQty) => {
-                setReadySelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
-              }}
-              onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
-              busy={deliverCommand.busy}
-              emptyLabel="لا يوجد جاهز الآن"
-              compact
-            />
-          </section>
-        ) : null}
 
         <div>
           <div className="mb-3 text-right text-sm font-bold text-slate-800">تحركات سريعة</div>

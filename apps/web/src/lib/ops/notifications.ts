@@ -133,7 +133,7 @@ function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, 
     return null;
   }
 
-  if (event.type === 'station.ready' && (role === 'waiter' || role === 'supervisor') && pathname === '/dashboard') {
+  if (event.type === 'station.ready' && (role === 'waiter' || role === 'supervisor') && pathname === '/ready') {
     return 'waiter-ready';
   }
 
