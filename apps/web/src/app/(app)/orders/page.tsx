@@ -14,9 +14,8 @@ import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
-import { useOpsChrome } from '@/lib/ops/chrome';
-import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
+import { SessionContextStrip } from '@/ui/ops/SessionContextStrip';
 
 export default function OrdersPage() {
   const { can, shift } = useAuthz();
@@ -33,7 +32,6 @@ export default function OrdersPage() {
     enabled: Boolean(shift),
     pollIntervalMs: 1500,
   });
-  const { summary } = useOpsChrome();
   const previousReadyQtyRef = useRef(0);
 
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -52,6 +50,8 @@ export default function OrdersPage() {
     [data?.sessionItems, effectiveSessionId],
   );
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
+  const currentSessionLineCount = currentSessionItems.length;
+  const currentSessionReadyQty = currentSessionItems.reduce((sum, item) => sum + item.qtyReadyForDelivery, 0);
 
   const totalReadyForDelivery = (data?.readyItems ?? []).reduce((sum, item) => sum + item.qtyReadyForDelivery, 0);
 
@@ -150,6 +150,17 @@ export default function OrdersPage() {
     setDraft({});
   }
 
+  const contextStats = creatingNew
+    ? (draftQtyTotal > 0 ? [{ label: 'المحدد', value: draftQtyTotal, tone: 'emerald' as const }] : [])
+    : currentSessionLabel
+      ? [
+          { label: 'أصناف', value: currentSessionLineCount, tone: 'sky' as const },
+          { label: 'جاهز', value: currentSessionReadyQty, tone: 'emerald' as const },
+        ]
+      : sessions.length
+        ? [{ label: 'المفتوح', value: sessions.length, tone: 'sky' as const }]
+        : [];
+
   return (
     <MobileShell
       title="الطلبات"
@@ -167,6 +178,7 @@ export default function OrdersPage() {
               <div className="mt-1 text-xs text-slate-500">{draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر الأصناف ثم أرسل مرة واحدة'}</div>
             </div>
             <button
+              type="button"
               onClick={() => void submitCommand.run()}
               disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
               className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
@@ -182,18 +194,29 @@ export default function OrdersPage() {
           {effectiveError}
         </div>
       ) : null}
+
       <div className="space-y-3">
-        <QueueHealthStrip health={summary?.queueHealth ?? null} />
-        <div className="rounded-2xl border border-slate-200 p-3">
-          <div className="mb-2 flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-slate-700">الجلسات المفتوحة</div>
+        <SessionContextStrip
+          title={creatingNew ? 'جلسة جديدة' : currentSessionLabel || 'بدون جلسة'}
+          subtitle={creatingNew ? 'اختر الأصناف ثم أرسل' : currentSessionLabel ? 'الجلسة الحالية' : 'اختر جلسة أو افتح جديدة'}
+          stats={contextStats}
+          actions={[
+            { label: 'الجلسات', href: '#sessions-panel' },
+            { label: 'الجاهز', href: '#ready-panel' },
+            ...(canManageComplaintActions ? [{ label: 'أصناف الجلسة', href: '#session-items-panel' as const }] : []),
+            { label: 'المنيو', href: '#menu-panel' },
+          ]}
+        />
+
+        <section id="sessions-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-slate-800">الجلسات</div>
             <button
+              type="button"
               onClick={beginNewSession}
               className={[
-                'rounded-2xl px-3 py-2 text-sm font-semibold',
-                creatingNew
-                  ? 'bg-emerald-600 text-white'
-                  : 'border border-slate-200 bg-white text-slate-800',
+                'rounded-2xl px-3 py-2 text-sm font-semibold shadow-sm',
+                creatingNew ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-800',
               ].join(' ')}
             >
               + جلسة جديدة
@@ -204,12 +227,11 @@ export default function OrdersPage() {
             {sessions.map((session) => (
               <button
                 key={session.id}
+                type="button"
                 onClick={() => selectExistingSession(session.id)}
                 className={[
                   'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
-                  !creatingNew && effectiveSessionId === session.id
-                    ? 'border-slate-900 bg-slate-900 text-white'
-                    : 'border-slate-200 bg-white text-slate-800',
+                  !creatingNew && effectiveSessionId === session.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-800',
                 ].join(' ')}
               >
                 {session.label}
@@ -219,117 +241,114 @@ export default function OrdersPage() {
 
           {creatingNew ? (
             <div className="mt-3 space-y-2">
-              <div className="text-xs text-slate-500">ابدأ باسم الجلسة أو رقمها، ويمكن تركه فارغًا ليولد النظام اسمًا تلقائيًا. بعد ذلك اختر الأصناف واضغط إرسال.</div>
               <input
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="اسم أو رقم الجلسة الجديدة"
                 className="w-full rounded-2xl border border-slate-200 px-3 py-3 text-right"
               />
-            </div>
-          ) : currentSessionLabel ? (
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-sm text-slate-700">
-              الجلسة الحالية: <span className="font-semibold">{currentSessionLabel}</span>
+              <div className="text-xs text-slate-500">يمكن ترك الاسم فارغًا ليولده النظام تلقائيًا.</div>
             </div>
           ) : null}
 
           {!sessions.length && !creatingNew ? (
             <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              لا توجد جلسات مفتوحة الآن. اضغط "جلسة جديدة" ثم ابدأ بإضافة الطلبات.
+              لا توجد جلسات مفتوحة الآن.
             </div>
           ) : null}
 
           {!sections.length ? (
             <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              لا توجد أقسام منيو متاحة الآن. راجع المنيو من شاشة الإدارة.
+              لا توجد أقسام منيو متاحة الآن.
             </div>
           ) : null}
 
           {!creatingNew && effectiveSessionId ? (
-            <InlineSessionComplaintComposer
-              sessionId={effectiveSessionId}
-              sessionLabel={currentSessionLabel}
-              busy={submitCommand.busy}
-              onSubmit={async ({ serviceSessionId, complaintKind, notes }) => {
-                await opsClient.createComplaint({
-                  mode: 'general',
-                  serviceSessionId,
-                  complaintKind,
-                  notes,
-                  action: 'none',
-                });
-              }}
-            />
+            <div className="mt-3">
+              <InlineSessionComplaintComposer
+                sessionId={effectiveSessionId}
+                sessionLabel={currentSessionLabel}
+                busy={submitCommand.busy}
+                onSubmit={async ({ serviceSessionId, complaintKind, notes }) => {
+                  await opsClient.createComplaint({
+                    mode: 'general',
+                    serviceSessionId,
+                    complaintKind,
+                    notes,
+                    action: 'none',
+                  });
+                }}
+              />
+            </div>
           ) : null}
-        </div>
+        </section>
 
-        <div className="rounded-2xl border border-slate-200 p-3">
-          <div className="mb-2 flex gap-2 overflow-x-auto pb-1">
+        <section id="ready-panel">
+          <ReadyDeliveryPanel
+            title="جاهز للتسليم"
+            items={data?.readyItems ?? []}
+            selectedQty={readySelection}
+            onChangeQty={(orderItemId, nextQty, maxQty) => {
+              setReadySelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
+            }}
+            onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
+            busy={deliverCommand.busy}
+            emptyLabel="لا يوجد جاهز للتسليم"
+          />
+        </section>
+
+        {canManageComplaintActions ? (
+          <section id="session-items-panel">
+            <SessionRemakePanel
+              title="أصناف الجلسة الحالية"
+              items={currentSessionItems}
+              selectedQty={remakeSelection}
+              onChangeQty={(orderItemId, nextQty, maxQty) => {
+                setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
+              }}
+              onRemake={(item, quantity) => remakeCommand.run(item, quantity)}
+              busy={remakeCommand.busy}
+              emptyLabel={effectiveSessionId ? 'لا توجد أصناف في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
+            />
+          </section>
+        ) : null}
+
+        <section id="menu-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 text-right text-sm font-semibold text-slate-800">المنيو</div>
+          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
             {sections.map((section) => (
               <button
                 key={section.id}
+                type="button"
                 onClick={() => setSelectedSectionId(section.id)}
                 className={[
                   'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
-                  effectiveSelectedSectionId === section.id
-                    ? 'border-emerald-600 bg-emerald-600 text-white'
-                    : 'border-slate-200 bg-slate-50',
+                  effectiveSelectedSectionId === section.id ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-slate-50 text-slate-700',
                 ].join(' ')}
               >
                 {section.title}
               </button>
             ))}
           </div>
+
           <div className="grid grid-cols-2 gap-2">
             {filteredProducts.map((product) => (
               <div key={product.id} className="rounded-2xl border border-slate-200 p-3">
                 <div className="text-sm font-semibold text-slate-900">{product.name}</div>
                 <div className="mt-1 text-xs text-slate-500">{product.unitPrice}</div>
                 <div className="mt-3 flex items-center justify-between">
-                  <button
-                    onClick={() => dec(product.id)}
-                    className="h-10 w-10 rounded-2xl border border-slate-200"
-                  >
+                  <button type="button" onClick={() => dec(product.id)} className="h-10 w-10 rounded-2xl border border-slate-200">
                     -
                   </button>
                   <div className="text-lg font-bold">{draft[product.id] ?? 0}</div>
-                  <button
-                    onClick={() => inc(product.id)}
-                    className="h-10 w-10 rounded-2xl bg-slate-900 text-white"
-                  >
+                  <button type="button" onClick={() => inc(product.id)} className="h-10 w-10 rounded-2xl bg-slate-900 text-white">
                     +
                   </button>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-
-        <ReadyDeliveryPanel
-          title="جاهز للتسليم"
-          items={data?.readyItems ?? []}
-          selectedQty={readySelection}
-          onChangeQty={(orderItemId, nextQty, maxQty) => {
-            setReadySelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
-          }}
-          onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
-          busy={deliverCommand.busy}
-          emptyLabel="لا يوجد جاهز للتسليم"
-        />
-
-        {canManageComplaintActions ? (
-          <SessionRemakePanel
-            title="أصناف الجلسة الحالية"
-            items={currentSessionItems}
-            selectedQty={remakeSelection}
-            onChangeQty={(orderItemId, nextQty, maxQty) => {
-              setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
-            }}
-            onRemake={(item, quantity) => remakeCommand.run(item, quantity)}
-            busy={remakeCommand.busy}
-            emptyLabel={effectiveSessionId ? 'لا توجد أصناف في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
-          />
-        ) : null}
+        </section>
       </div>
     </MobileShell>
   );

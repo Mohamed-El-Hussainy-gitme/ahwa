@@ -9,9 +9,8 @@ import type { StationQueueItem, StationWorkspace } from '@/lib/ops/types';
 import { applyReadyToStationWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
-import { useOpsChrome } from '@/lib/ops/chrome';
-import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
+import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 
 export default function KitchenPage() {
   const { can, shift } = useAuthz();
@@ -22,7 +21,6 @@ export default function KitchenPage() {
     enabled: Boolean(shift),
     pollIntervalMs: 1500,
   });
-  const { summary } = useOpsChrome();
   const previousWaitingQtyRef = useRef(0);
   const readyCommand = useOpsCommand(
     async (item: StationQueueItem, quantity: number) => {
@@ -65,46 +63,50 @@ export default function KitchenPage() {
           {localError ?? error}
         </div>
       ) : null}
-      <QueueHealthStrip health={summary?.queueHealth ?? null} className="mb-3" />
-      <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-        انتظار الباريستا الآن: <span className="font-semibold">{totalWaiting}</span>
-      </div>
-      <div className="space-y-2">
+
+      <section id="queue-panel" className="space-y-3">
         {(data?.queue ?? []).map((item) => {
           const qty = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, item.qtyWaiting));
           return (
-            <div key={item.orderItemId} className="rounded-2xl border border-slate-200 p-3">
-              <div className="font-semibold">
-                {item.sessionLabel} • {item.productName}
+            <div key={item.orderItemId} className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 text-right">
+                  <div className="text-xs font-semibold text-slate-500">{item.sessionLabel}</div>
+                  <div className="mt-1 text-base font-bold text-slate-900">{item.productName}</div>
+                </div>
+                <div className="rounded-2xl bg-slate-900 px-3 py-2 text-center text-white">
+                  <div className="text-[10px] font-semibold text-white/70">الكمية</div>
+                  <div className="text-xl font-black leading-none">{item.qtyWaiting}</div>
+                </div>
               </div>
-              <div className="mt-1 text-xs text-slate-500">بانتظار {item.qtyWaiting} • أصلي {item.qtyWaitingOriginal} • إعادة {item.qtyWaitingReplacement}</div>
-              <div className="mt-3 flex items-center justify-between">
-                <button
-                  onClick={() => setQty(item.orderItemId, qty - 1, item.qtyWaiting)}
-                  className="h-10 w-10 rounded-2xl border border-slate-200"
-                >
-                  -
-                </button>
-                <div className="text-lg font-bold">{qty}</div>
-                <button
-                  onClick={() => setQty(item.orderItemId, qty + 1, item.qtyWaiting)}
-                  className="h-10 w-10 rounded-2xl bg-slate-900 text-white"
-                >
-                  +
-                </button>
-              </div>
+
+              {item.qtyWaitingReplacement > 0 ? (
+                <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
+                  <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">إعادة مجانية {item.qtyWaitingReplacement}</span>
+                </div>
+              ) : null}
+
+              <QuantityStepper
+                label="تجهيز الآن"
+                value={qty}
+                onDecrement={() => setQty(item.orderItemId, qty - 1, item.qtyWaiting)}
+                onIncrement={() => setQty(item.orderItemId, qty + 1, item.qtyWaiting)}
+              />
+
               <div className="mt-3 grid grid-cols-2 gap-2">
                 <button
+                  type="button"
                   disabled={readyCommand.busy}
                   onClick={() => void readyCommand.run(item, qty)}
-                  className="rounded-2xl border border-slate-200 px-3 py-3 font-semibold"
+                  className="rounded-2xl border border-slate-200 px-3 py-3 font-semibold text-slate-700 disabled:opacity-40"
                 >
                   تجهيز المحدد
                 </button>
                 <button
+                  type="button"
                   disabled={readyCommand.busy}
                   onClick={() => void readyCommand.run(item, item.qtyWaiting)}
-                  className="rounded-2xl bg-slate-900 px-3 py-3 font-semibold text-white"
+                  className="rounded-2xl bg-slate-900 px-3 py-3 font-semibold text-white disabled:opacity-40"
                 >
                   تجهيز الكل
                 </button>
@@ -112,8 +114,8 @@ export default function KitchenPage() {
             </div>
           );
         })}
-        {!data?.queue?.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">لا يوجد طلبات للباريستا الآن. عندما تصل طلبات جديدة ستظهر هنا مباشرة.</div> : null}
-      </div>
+        {!data?.queue?.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">لا يوجد طلبات للباريستا الآن.</div> : null}
+      </section>
     </MobileShell>
   );
 }
