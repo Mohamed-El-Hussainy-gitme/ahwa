@@ -80,7 +80,7 @@ export async function POST(req: Request) {
 
     const outboxEventId = String(rpc.outbox_event_id ?? '').trim() || null;
     if (outboxEventId) {
-      publishOpsMutation(ctx, {
+      await publishOpsMutation(ctx, {
         id: outboxEventId,
         type: 'billing.deferred',
         entityId: paymentId,
@@ -89,7 +89,7 @@ export async function POST(req: Request) {
           serviceSessionId: billing.serviceSessionId,
           debtorName: normalizedDebtorName,
           totalAmount: Number(rpc.total_amount ?? 0),
-          totalQuantity: Number(rpc.total_quantity ?? billing.lines.reduce((total, line) => total + Number(line.quantity ?? 0), 0)),
+          totalQuantity: Number(rpc.total_quantity ?? billing.lines.reduce((total, line) => total + Number(line.qty ?? 0), 0)),
         },
         scopes: ['waiter', 'billing', 'dashboard', 'nav-summary', 'deferred'],
       });

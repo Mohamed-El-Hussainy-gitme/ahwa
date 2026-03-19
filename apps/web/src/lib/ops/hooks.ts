@@ -10,6 +10,8 @@ type WorkspaceOptions = {
   shouldReloadOnEvent?: (event: OpsRealtimeEvent) => boolean;
   staleTimeMs?: number;
   realtimeDebounceMs?: number;
+  pollIntervalMs?: number;
+  pollWhenHidden?: boolean;
 };
 
 type ReloadMode = 'manual' | 'background';
@@ -30,6 +32,8 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
     shouldReloadOnEvent,
     staleTimeMs = DEFAULT_STALE_TIME_MS,
     realtimeDebounceMs = DEFAULT_REALTIME_DEBOUNCE_MS,
+    pollIntervalMs = 0,
+    pollWhenHidden = false,
   } = options;
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
@@ -118,6 +122,23 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
   useEffect(() => {
     void runReload('manual');
   }, [runReload]);
+
+  useEffect(() => {
+    if (!enabled || pollIntervalMs <= 0) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      if (!pollWhenHidden && document.visibilityState !== 'visible') {
+        return;
+      }
+      void runReload('background');
+    }, pollIntervalMs);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [enabled, pollIntervalMs, pollWhenHidden, runReload]);
 
   useEffect(() => {
     if (!enabled) {

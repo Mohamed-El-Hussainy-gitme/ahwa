@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
@@ -16,6 +16,7 @@ import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { useOpsChrome } from '@/lib/ops/chrome';
 import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
+import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 
 export default function ShishaPage() {
   const { can, shift, effectiveRole } = useAuthz();
@@ -33,11 +34,15 @@ export default function ShishaPage() {
   const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
   const { data: stationData, setData: setStationData, error: stationError } = useOpsWorkspace<StationWorkspace>(stationLoader, {
     enabled: Boolean(shift),
+    pollIntervalMs: 1500,
   });
   const { data: orderData, setData: setOrderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
+    pollIntervalMs: 1500,
   });
   const { summary } = useOpsChrome();
+  const previousQueueQtyRef = useRef(0);
+  const previousReadyQtyRef = useRef(0);
 
   const queue = stationData?.queue ?? [];
   const sessions = orderData?.sessions ?? [];
@@ -55,6 +60,31 @@ export default function ShishaPage() {
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const currentSessionLabel = sessions.find((session) => session.id === effectiveSessionId)?.label ?? '';
   const canManageComplaintActions = can.owner || can.billing;
+
+  const totalQueueWaiting = (stationData?.queue ?? []).reduce((sum, item) => sum + item.qtyWaiting, 0);
+  const totalReadyForDelivery = (orderData?.readyItems ?? []).filter((item) => item.stationCode === 'shisha').reduce((sum, item) => sum + item.qtyReadyForDelivery, 0);
+
+  useEffect(() => {
+    if (document.visibilityState !== 'visible') {
+      previousQueueQtyRef.current = totalQueueWaiting;
+      return;
+    }
+    if (effectiveRole === 'shisha' && totalQueueWaiting > previousQueueQtyRef.current) {
+      void playOpsNotificationSignal('station-order');
+    }
+    previousQueueQtyRef.current = totalQueueWaiting;
+  }, [effectiveRole, totalQueueWaiting]);
+
+  useEffect(() => {
+    if (document.visibilityState !== 'visible') {
+      previousReadyQtyRef.current = totalReadyForDelivery;
+      return;
+    }
+    if (effectiveRole === 'waiter' && totalReadyForDelivery > previousReadyQtyRef.current) {
+      void playOpsNotificationSignal('waiter-ready');
+    }
+    previousReadyQtyRef.current = totalReadyForDelivery;
+  }, [effectiveRole, totalReadyForDelivery]);
 
   const readyCommand = useOpsCommand(
     async (item: StationQueueItem, quantity: number) => {

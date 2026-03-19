@@ -122,7 +122,7 @@ export async function POST(req: Request) {
         data: eventData,
         scopes: [stationCode, 'dashboard', 'nav-summary'],
       });
-      publishOpsMutation(ctx, {
+      await publishOpsMutation(ctx, {
         id: eventId,
         type: 'station.order_submitted',
         entityId: orderId,

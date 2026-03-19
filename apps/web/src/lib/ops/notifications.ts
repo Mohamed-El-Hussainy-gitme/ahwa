@@ -6,8 +6,9 @@ import type { OpsRealtimeEvent, StationCode } from '@/lib/ops/types';
 
 const SOUND_COOLDOWN_MS = 1200;
 const MAX_SEEN_EVENTS = 256;
+const globalSignalLastPlayedAt: Record<OpsNotificationSignal, number> = { 'station-order': 0, 'waiter-ready': 0 };
 
-type NotificationSignal = 'station-order' | 'waiter-ready';
+export type OpsNotificationSignal = 'station-order' | 'waiter-ready';
 
 type UseOpsRealtimeNotificationsInput = {
   enabled: boolean;
@@ -81,7 +82,13 @@ function scheduleTone(context: AudioContext, startAt: number, frequency: number,
   oscillator.stop(startAt + durationMs / 1000 + 0.03);
 }
 
-async function playSignal(signal: NotificationSignal) {
+export async function playOpsNotificationSignal(signal: OpsNotificationSignal) {
+  const now = Date.now();
+  if (now - globalSignalLastPlayedAt[signal] < SOUND_COOLDOWN_MS) {
+    return;
+  }
+  globalSignalLastPlayedAt[signal] = now;
+
   const context = getAudioContext();
   if (!context) return;
   if (context.state === 'suspended') {
@@ -92,16 +99,16 @@ async function playSignal(signal: NotificationSignal) {
     }
   }
 
-  const now = context.currentTime + 0.01;
+  const startAt = context.currentTime + 0.01;
   if (signal === 'station-order') {
-    scheduleTone(context, now, 880, 120, 0.08);
-    scheduleTone(context, now + 0.18, 1175, 140, 0.08);
+    scheduleTone(context, startAt, 880, 120, 0.08);
+    scheduleTone(context, startAt + 0.18, 1175, 140, 0.08);
     vibrate([120, 70, 120]);
     return;
   }
 
-  scheduleTone(context, now, 1320, 120, 0.08);
-  scheduleTone(context, now + 0.15, 1760, 180, 0.08);
+  scheduleTone(context, startAt, 1320, 120, 0.08);
+  scheduleTone(context, startAt + 0.15, 1760, 180, 0.08);
   vibrate([90, 40, 90]);
 }
 
@@ -109,7 +116,7 @@ function normalizeStationCode(value: unknown): StationCode | null {
   return value === 'barista' || value === 'shisha' ? value : null;
 }
 
-function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, isOwner: boolean): NotificationSignal | null {
+function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, isOwner: boolean): OpsNotificationSignal | null {
   if (!role || isOwner) {
     return null;
   }
@@ -135,7 +142,7 @@ function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, 
 export function useOpsRealtimeNotifications(input: UseOpsRealtimeNotificationsInput) {
   const seenEventIdsRef = useRef<string[]>([]);
   const seenEventIdsSetRef = useRef<Set<string>>(new Set());
-  const lastPlayedAtRef = useRef<Record<NotificationSignal, number>>({
+  const lastPlayedAtRef = useRef<Record<OpsNotificationSignal, number>>({
     'station-order': 0,
     'waiter-ready': 0,
   });
@@ -167,6 +174,6 @@ export function useOpsRealtimeNotifications(input: UseOpsRealtimeNotificationsIn
       return;
     }
     lastPlayedAtRef.current[signal] = now;
-    await playSignal(signal);
+    await playOpsNotificationSignal(signal);
   }, [input.enabled, input.isOwner, input.role]);
 }

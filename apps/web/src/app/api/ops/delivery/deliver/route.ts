@@ -59,7 +59,7 @@ export async function POST(req: Request) {
 
     const outboxEventId = String(rpc.outbox_event_id ?? '').trim() || null;
     if (outboxEventId) {
-      publishOpsMutation(ctx, {
+      await publishOpsMutation(ctx, {
         id: outboxEventId,
         type: 'delivery.delivered',
         entityId: normalizedOrderItemId,

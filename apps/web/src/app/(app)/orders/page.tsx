@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
@@ -16,6 +16,7 @@ import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { useOpsChrome } from '@/lib/ops/chrome';
 import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
+import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 
 export default function OrdersPage() {
   const { can, shift } = useAuthz();
@@ -30,8 +31,10 @@ export default function OrdersPage() {
   const loader = useCallback(() => opsClient.waiterWorkspace(), []);
   const { data, setData, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
     enabled: Boolean(shift),
+    pollIntervalMs: 1500,
   });
   const { summary } = useOpsChrome();
+  const previousReadyQtyRef = useRef(0);
 
   const [commandError, setCommandError] = useState<string | null>(null);
 
@@ -49,6 +52,19 @@ export default function OrdersPage() {
     [data?.sessionItems, effectiveSessionId],
   );
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
+
+  const totalReadyForDelivery = (data?.readyItems ?? []).reduce((sum, item) => sum + item.qtyReadyForDelivery, 0);
+
+  useEffect(() => {
+    if (document.visibilityState !== 'visible') {
+      previousReadyQtyRef.current = totalReadyForDelivery;
+      return;
+    }
+    if (!can.owner && totalReadyForDelivery > previousReadyQtyRef.current) {
+      void playOpsNotificationSignal('waiter-ready');
+    }
+    previousReadyQtyRef.current = totalReadyForDelivery;
+  }, [can.owner, totalReadyForDelivery]);
 
   const submitCommand = useOpsCommand(
     async () => {

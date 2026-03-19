@@ -459,7 +459,7 @@ export async function enqueueOpsMutation(
   return String(data ?? '').trim();
 }
 
-export function publishOpsMutation(
+export async function publishOpsMutation(
   ctx: Pick<OpsActorContext, 'cafeId' | 'shiftId'>,
   input: {
     id?: string | null;
@@ -471,7 +471,7 @@ export function publishOpsMutation(
     stream?: string | null;
   },
 ) {
-  void publishOpsEvent({
+  return publishOpsEvent({
     id: input.id ?? null,
     type: input.type,
     cafeId: ctx.cafeId,

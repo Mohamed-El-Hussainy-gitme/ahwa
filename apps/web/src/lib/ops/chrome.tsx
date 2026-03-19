@@ -18,6 +18,7 @@ export type OpsChromeState = {
 const OpsChromeContext = createContext<OpsChromeState | null>(null);
 const SUMMARY_STALE_TIME_MS = 15_000;
 const SUMMARY_DEBOUNCE_MS = 150;
+const SUMMARY_POLL_INTERVAL_MS = 2000;
 const PATCHABLE_SUMMARY_EVENTS = new Set(['station.order_submitted', 'station.ready', 'delivery.delivered', 'billing.settled', 'billing.deferred', 'session.opened', 'session.resumed', 'session.closed']);
 
 function toPositiveInteger(value: unknown) {
@@ -193,6 +194,21 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     void runReload('manual');
   }, [runReload, shift?.id]);
+
+  useEffect(() => {
+    if (!enabled) return;
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+      void runReload('background');
+    }, SUMMARY_POLL_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(interval);
+    };
+  }, [enabled, runReload]);
 
   useEffect(() => {
     if (!enabled) return;

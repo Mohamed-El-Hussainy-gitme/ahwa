@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
@@ -11,6 +11,7 @@ import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { useOpsChrome } from '@/lib/ops/chrome';
 import { QueueHealthStrip } from '@/ui/ops/QueueHealthStrip';
+import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 
 export default function KitchenPage() {
   const { can, shift } = useAuthz();
@@ -19,8 +20,10 @@ export default function KitchenPage() {
   const loader = useCallback(() => opsClient.stationWorkspace('barista'), []);
   const { data, setData, error } = useOpsWorkspace<StationWorkspace>(loader, {
     enabled: Boolean(shift),
+    pollIntervalMs: 1500,
   });
   const { summary } = useOpsChrome();
+  const previousWaitingQtyRef = useRef(0);
   const readyCommand = useOpsCommand(
     async (item: StationQueueItem, quantity: number) => {
       await opsClient.markReady(item.orderItemId, quantity);
@@ -34,6 +37,19 @@ export default function KitchenPage() {
   if (!can.kitchen && !can.owner) return <AccessDenied title="الباريستا" />;
 
   const totalWaiting = (data?.queue ?? []).reduce((sum, item) => sum + item.qtyWaiting, 0);
+
+  useEffect(() => {
+    if (document.visibilityState !== 'visible') {
+      previousWaitingQtyRef.current = totalWaiting;
+      return;
+    }
+
+    if (!can.owner && totalWaiting > previousWaitingQtyRef.current) {
+      void playOpsNotificationSignal('station-order');
+    }
+
+    previousWaitingQtyRef.current = totalWaiting;
+  }, [can.owner, totalWaiting]);
 
   function setQty(orderItemId: string, qty: number, max: number) {
     setSelectedQty((state) => ({
