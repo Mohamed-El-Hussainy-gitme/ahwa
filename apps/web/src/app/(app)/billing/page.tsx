@@ -10,6 +10,7 @@ import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { applyBillingToWorkspace } from '@/lib/ops/workspacePatches';
 import { StickyActionBar } from '@/ui/StickyActionBar';
+import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 
 export default function BillingPage() {
   const { can, shift } = useAuthz();
@@ -35,14 +36,13 @@ export default function BillingPage() {
       .filter((item) => item.quantity > 0);
   }, [current?.items, selectedQty]);
 
-
   const settleCommand = useOpsCommand(
     async () => {
       const currentSessionId = effectiveSessionId;
       const selected = allocations();
       await opsClient.settleAndClose(selected);
       setSelectedQty({});
-      setData((current) => applyBillingToWorkspace(current, currentSessionId, selected, 'settle'));
+      setData((currentWorkspace) => applyBillingToWorkspace(currentWorkspace, currentSessionId, selected, 'settle'));
     },
     { onError: setLocalError },
   );
@@ -54,7 +54,7 @@ export default function BillingPage() {
       await opsClient.deferAndClose(debtorName, selected);
       setSelectedQty({});
       setDebtorName('');
-      setData((current) => applyBillingToWorkspace(current, currentSessionId, selected, 'defer'));
+      setData((currentWorkspace) => applyBillingToWorkspace(currentWorkspace, currentSessionId, selected, 'defer'));
     },
     { onError: setLocalError },
   );
@@ -118,88 +118,133 @@ export default function BillingPage() {
           {effectiveError}
         </div>
       ) : null}
-      <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-        {(data?.sessions ?? []).map((session) => (
-          <button
-            key={session.sessionId}
-            onClick={() => setSessionId(session.sessionId)}
-            className={[
-              'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
-              effectiveSessionId === session.sessionId
-                ? 'border-slate-900 bg-slate-900 text-white'
-                : 'border-slate-200 bg-white',
-            ].join(' ')}
-          >
-            {session.sessionLabel}
-          </button>
-        ))}
-      </div>
-      {!(data?.sessions ?? []).length ? (
-        <div className="mb-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-          لا توجد جلسات جاهزة للحساب الآن. سيظهر هنا أي شيء جاهز للتحصيل أو الترحيل إلى الآجل.
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold text-slate-800">الجلسات للحساب</div>
+          {(data?.sessions?.length ?? 0) > 0 ? (
+            <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{data?.sessions.length}</div>
+          ) : null}
         </div>
-      ) : null}
-      <div className="space-y-2">
-        {(current?.items ?? []).map((item) => (
-          <div key={item.orderItemId} className="rounded-2xl border border-slate-200 p-3">
-            <div className="font-semibold">{item.productName}</div>
-            <div className="mt-1 text-xs text-slate-500">جاهز للحساب {item.qtyBillable} • مُسقط {item.qtyWaived}</div>
-            <div className="mt-3 flex items-center justify-between">
+
+        {(data?.sessions ?? []).length ? (
+          <div className="grid grid-cols-2 gap-2">
+            {(data?.sessions ?? []).map((session) => (
               <button
-                onClick={() => setQty(item.orderItemId, (selectedQty[item.orderItemId] ?? 0) - 1)}
-                className="h-10 w-10 rounded-2xl border border-slate-200"
-              >
-                -
-              </button>
-              <div className="text-lg font-bold">{selectedQty[item.orderItemId] ?? 0}</div>
-              <button
-                onClick={() =>
-                  setQty(
-                    item.orderItemId,
-                    Math.min((selectedQty[item.orderItemId] ?? 0) + 1, item.qtyBillable),
-                  )
-                }
-                className="h-10 w-10 rounded-2xl bg-slate-900 text-white"
-              >
-                +
-              </button>
-            </div>
-          </div>
-        ))}
-        {!current?.items?.length ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">لا يوجد عناصر جاهزة للحساب في هذه الجلسة. اختر جلسة أخرى أو انتظر اكتمال التسليم.</div>
-        ) : null}
-      </div>
-      <input
-        value={debtorName}
-        onChange={(e) => setDebtorName(e.target.value)}
-        placeholder="اسم الأجل"
-        className="mt-3 w-full rounded-2xl border border-slate-200 px-3 py-3 text-right"
-      />
-      {(data?.deferredNames?.length ?? 0) > 0 ? (
-        <div className="mt-2">
-          <div className="mb-2 text-right text-xs font-semibold text-slate-500">اختيار سريع من دفتر الأجل</div>
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {data?.deferredNames.map((name) => (
-              <button
-                key={name}
-                type="button"
-                onClick={() => setDebtorName(name)}
+                key={session.sessionId}
+                onClick={() => setSessionId(session.sessionId)}
                 className={[
-                  'rounded-2xl border px-3 py-2 text-sm whitespace-nowrap',
-                  debtorName === name
-                    ? 'border-amber-600 bg-amber-600 text-white'
-                    : 'border-slate-200 bg-slate-50 text-slate-800',
+                  'rounded-2xl border px-3 py-3 text-right',
+                  effectiveSessionId === session.sessionId ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-800',
                 ].join(' ')}
               >
-                {name}
+                <div className="truncate text-sm font-bold">{session.sessionLabel}</div>
+                <div className={['mt-1 text-xs', effectiveSessionId === session.sessionId ? 'text-slate-200' : 'text-slate-500'].join(' ')}>
+                  {session.totalBillableQty} صنف • {session.totalBillableAmount} ج
+                </div>
               </button>
             ))}
           </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+            لا توجد جلسات جاهزة للحساب الآن.
+          </div>
+        )}
+      </section>
+
+      {current ? (
+        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+          <div className="flex items-center justify-between gap-3">
+            <div className="min-w-0 text-right">
+              <div className="text-sm font-bold text-slate-900">{current.sessionLabel}</div>
+              <div className="mt-1 text-xs text-slate-500">الجلسة الحالية للحساب</div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 text-xs font-semibold">
+              <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">للحساب {current.totalBillableQty}</span>
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">{current.totalBillableAmount} ج</span>
+            </div>
+          </div>
         </div>
       ) : null}
+
+      <section className="mt-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="mb-3 text-right text-sm font-semibold text-slate-800">الأصناف الجاهزة للحساب</div>
+
+        {current?.items?.length ? (
+          <div className="grid grid-cols-2 gap-2">
+            {current.items.map((item) => {
+              const selected = selectedQty[item.orderItemId] ?? 0;
+
+              return (
+                <div key={item.orderItemId} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0 text-right">
+                      <div className="text-sm font-bold text-slate-900">{item.productName}</div>
+                      <div className="mt-1 text-xs text-slate-500">{item.unitPrice} ج</div>
+                    </div>
+                    <div className="rounded-2xl bg-emerald-600 px-2 py-1 text-center text-white">
+                      <div className="text-[9px] font-semibold text-white/80">للحساب</div>
+                      <div className="text-lg font-black leading-none">{item.qtyBillable}</div>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold">
+                    {item.qtyDelivered > 0 ? <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-700">مسلّم {item.qtyDelivered}</span> : null}
+                    {item.qtyWaived > 0 ? <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">مسقط {item.qtyWaived}</span> : null}
+                    {item.qtyDeferred > 0 ? <span className="rounded-full bg-violet-50 px-2 py-1 text-violet-700">آجل {item.qtyDeferred}</span> : null}
+                    {item.qtyPaid > 0 ? <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">مدفوع {item.qtyPaid}</span> : null}
+                  </div>
+
+                  <QuantityStepper
+                    compact
+                    label="تحديد"
+                    value={selected}
+                    onDecrement={() => setQty(item.orderItemId, selected - 1)}
+                    onIncrement={() => setQty(item.orderItemId, Math.min(selected + 1, item.qtyBillable))}
+                  />
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+            لا يوجد عناصر جاهزة للحساب في هذه الجلسة.
+          </div>
+        )}
+      </section>
+
+      <section className="mt-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="text-right text-sm font-semibold text-slate-800">الترحيل إلى الآجل</div>
+        <input
+          value={debtorName}
+          onChange={(e) => setDebtorName(e.target.value)}
+          placeholder="اسم الأجل"
+          className="mt-3 w-full rounded-2xl border border-slate-200 px-3 py-3 text-right"
+        />
+        {(data?.deferredNames?.length ?? 0) > 0 ? (
+          <div className="mt-2">
+            <div className="mb-2 text-right text-xs font-semibold text-slate-500">اختيار سريع</div>
+            <div className="flex gap-2 overflow-x-auto pb-1">
+              {data?.deferredNames.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => setDebtorName(name)}
+                  className={[
+                    'rounded-2xl border px-3 py-2 text-sm whitespace-nowrap',
+                    debtorName === name ? 'border-amber-600 bg-amber-600 text-white' : 'border-slate-200 bg-slate-50 text-slate-800',
+                  ].join(' ')}
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-        تُغلق الجلسة تلقائيًا عندما تنتهي كل كمياتها المسلّمة والمسددة/المرحلة، ولا يوجد زر قفل يدوي هنا.
+        تُغلق الجلسة تلقائيًا عندما تنتهي كل الكميات المسلّمة والمسددة أو المرحلة.
       </div>
     </MobileShell>
   );

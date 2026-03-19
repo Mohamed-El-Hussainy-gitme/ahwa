@@ -5,9 +5,37 @@ type Props = {
   value: number;
   onDecrement: () => void;
   onIncrement: () => void;
+  compact?: boolean;
 };
 
-export function QuantityStepper({ label, value, onDecrement, onIncrement }: Props) {
+export function QuantityStepper({ label, value, onDecrement, onIncrement, compact = false }: Props) {
+  if (compact) {
+    return (
+      <div className="mt-2 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-2 py-2">
+        <button
+          type="button"
+          onClick={onDecrement}
+          className="h-8 w-8 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-700"
+        >
+          -
+        </button>
+
+        <div className="text-center leading-tight">
+          <div className="text-[10px] font-semibold text-slate-500">{label}</div>
+          <div className="text-base font-black text-slate-900">{value}</div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onIncrement}
+          className="h-8 w-8 rounded-xl bg-slate-900 text-sm font-bold text-white"
+        >
+          +
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-3 flex items-center justify-between rounded-2xl border border-slate-200 bg-white px-3 py-2">
       <button
