@@ -391,7 +391,7 @@ export default function ShishaPage() {
               onChangeQty={(orderItemId, nextQty, maxQty) => {
                 setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
               }}
-              onRemake={(item, quantity) => remakeCommand.run(item, quantity)}
+              onRemake={(item, quantity, notes) => remakeCommand.run(item, quantity, notes)}
               busy={remakeCommand.busy}
               emptyLabel={effectiveSessionId ? 'لا توجد أصناف شيشة في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
             />

@@ -80,7 +80,7 @@ export const opsClient = {
     quantity?: number;
     notes?: string;
     action?: 'none' | 'remake' | 'cancel_undelivered' | 'waive_delivered';
-  }) => mutate(post<{ ok: true; complaintId?: string; itemIssueId?: string }>('/api/ops/complaints/create', input)),
+  }) => mutate(post<{ ok: true; complaintId?: string; itemIssueId?: string }>('/api/ops/complaints/create', input), { invalidate: true }),
 
   resolveComplaint: (input: {
     complaintId: string;
