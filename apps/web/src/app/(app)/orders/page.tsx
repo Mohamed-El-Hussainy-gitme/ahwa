@@ -11,7 +11,6 @@ import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
-import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 
@@ -156,16 +155,32 @@ export default function OrdersPage() {
       title="الطلبات"
       topRight={
         <div className="flex gap-2">
-          {(can.owner || can.billing) ? <Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link> : null}
-          <Link href="/support?source=in_app&page=/orders" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>
+          {can.owner || can.billing ? (
+            <Link
+              href="/complaints"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+            >
+              شكاوى
+            </Link>
+          ) : null}
+          <Link
+            href="/support?source=in_app&page=/orders"
+            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+          >
+            دعم
+          </Link>
         </div>
       }
       stickyFooter={
         <StickyActionBar>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 text-right">
-              <div className="text-sm font-semibold text-slate-900">{creatingNew ? 'جلسة جديدة' : currentSessionLabel || 'اختر جلسة'}</div>
-              <div className="mt-1 text-xs text-slate-500">{draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر الأصناف ثم أرسل مرة واحدة'}</div>
+              <div className="text-sm font-semibold text-slate-900">
+                {creatingNew ? 'جلسة جديدة' : currentSessionLabel || 'اختر جلسة'}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر الأصناف ثم أرسل مرة واحدة'}
+              </div>
             </div>
             <button
               type="button"
@@ -199,7 +214,11 @@ export default function OrdersPage() {
         <section id="sessions-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              {sessions.length ? <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">{sessions.length}</div> : null}
+              {sessions.length ? (
+                <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                  {sessions.length}
+                </div>
+              ) : null}
               <div className="text-sm font-semibold text-slate-800">الجلسات المفتوحة</div>
             </div>
             <button
@@ -220,11 +239,18 @@ export default function OrdersPage() {
                   onClick={() => selectExistingSession(session.id)}
                   className={[
                     'rounded-2xl border px-3 py-3 text-right',
-                    !creatingNew && effectiveSessionId === session.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-800',
+                    !creatingNew && effectiveSessionId === session.id
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-slate-50 text-slate-800',
                   ].join(' ')}
                 >
                   <div className="truncate text-sm font-bold">{session.label}</div>
-                  <div className={['mt-1 text-xs', !creatingNew && effectiveSessionId === session.id ? 'text-slate-200' : 'text-slate-500'].join(' ')}>
+                  <div
+                    className={[
+                      'mt-1 text-xs',
+                      !creatingNew && effectiveSessionId === session.id ? 'text-slate-200' : 'text-slate-500',
+                    ].join(' ')}
+                  >
                     جاهز {session.readyCount} • للحساب {session.billableCount}
                   </div>
                 </button>
@@ -250,45 +276,9 @@ export default function OrdersPage() {
             </div>
           ) : null}
 
-          {!creatingNew && effectiveSessionId ? (
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-              <div className="flex items-center justify-between gap-3">
-                <div className="min-w-0 text-right">
-                  <div className="text-sm font-bold text-slate-900">{currentSessionLabel}</div>
-                  <div className="mt-1 text-xs text-slate-500">الجلسة الحالية للطلب والتسليم</div>
-                </div>
-                <div className="flex flex-wrap justify-end gap-2 text-xs font-semibold">
-                  <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">أصناف {currentSessionItems.length}</span>
-                  <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">
-                    جاهز {currentSessionItems.reduce((sum, item) => sum + item.qtyReadyForDelivery, 0)}
-                  </span>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
           {!sections.length ? (
             <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
               لا توجد أقسام منيو متاحة الآن.
-            </div>
-          ) : null}
-
-          {!creatingNew && effectiveSessionId ? (
-            <div className="mt-3">
-              <InlineSessionComplaintComposer
-                sessionId={effectiveSessionId}
-                sessionLabel={currentSessionLabel}
-                busy={submitCommand.busy}
-                onSubmit={async ({ serviceSessionId, complaintKind, notes }) => {
-                  await opsClient.createComplaint({
-                    mode: 'general',
-                    serviceSessionId,
-                    complaintKind,
-                    notes,
-                    action: 'none',
-                  });
-                }}
-              />
             </div>
           ) : null}
         </section>
@@ -297,9 +287,13 @@ export default function OrdersPage() {
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="text-sm font-semibold text-slate-800">المنيو</div>
             {creatingNew ? (
-              <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">جلسة جديدة</div>
+              <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                جلسة جديدة
+              </div>
             ) : currentSessionLabel ? (
-              <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">{currentSessionLabel}</div>
+              <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                {currentSessionLabel}
+              </div>
             ) : null}
           </div>
 
@@ -311,7 +305,9 @@ export default function OrdersPage() {
                 onClick={() => setSelectedSectionId(section.id)}
                 className={[
                   'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
-                  effectiveSelectedSectionId === section.id ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-slate-50 text-slate-700',
+                  effectiveSelectedSectionId === section.id
+                    ? 'border-emerald-600 bg-emerald-600 text-white'
+                    : 'border-slate-200 bg-slate-50 text-slate-700',
                 ].join(' ')}
               >
                 {section.title}
@@ -325,11 +321,19 @@ export default function OrdersPage() {
                 <div className="text-sm font-semibold text-slate-900">{product.name}</div>
                 <div className="mt-1 text-xs text-slate-500">{product.unitPrice} ج</div>
                 <div className="mt-3 flex items-center justify-between">
-                  <button type="button" onClick={() => dec(product.id)} className="h-10 w-10 rounded-2xl border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => dec(product.id)}
+                    className="h-10 w-10 rounded-2xl border border-slate-200"
+                  >
                     -
                   </button>
                   <div className="text-lg font-bold">{draft[product.id] ?? 0}</div>
-                  <button type="button" onClick={() => inc(product.id)} className="h-10 w-10 rounded-2xl bg-slate-900 text-white">
+                  <button
+                    type="button"
+                    onClick={() => inc(product.id)}
+                    className="h-10 w-10 rounded-2xl bg-slate-900 text-white"
+                  >
                     +
                   </button>
                 </div>
