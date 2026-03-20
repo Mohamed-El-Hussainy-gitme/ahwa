@@ -6,17 +6,20 @@ import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import type { SessionOrderItem, StationQueueItem, StationWorkspace, WaiterWorkspace } from '@/lib/ops/types';
-import { appendOrTouchSession, applyDeliverToWaiterWorkspace, applyReadyToStationWorkspace, applyReadyToWaiterWorkspace } from '@/lib/ops/workspacePatches';
+import {
+  appendOrTouchSession,
+  applyDeliverToWaiterWorkspace,
+  applyReadyToStationWorkspace,
+  applyReadyToWaiterWorkspace,
+} from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
-import { InlineSessionComplaintComposer } from '@/ui/ops/InlineSessionComplaintComposer';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
-import { SessionContextStrip } from '@/ui/ops/SessionContextStrip';
 
 export default function ShishaPage() {
   const { can, shift, effectiveRole } = useAuthz();
@@ -29,27 +32,35 @@ export default function ShishaPage() {
   const [creatingNew, setCreatingNew] = useState(false);
   const [selectedSectionId, setSelectedSectionId] = useState('');
   const [draft, setDraft] = useState<Record<string, number>>({});
+  const [sessionWarning, setSessionWarning] = useState<string | null>(null);
 
   const stationLoader = useCallback(() => opsClient.stationWorkspace('shisha'), []);
   const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data: stationData, setData: setStationData, error: stationError } = useOpsWorkspace<StationWorkspace>(stationLoader, {
-    enabled: Boolean(shift),
-    pollIntervalMs: 1500,
-  });
+
+  const { data: stationData, setData: setStationData, error: stationError } = useOpsWorkspace<StationWorkspace>(
+    stationLoader,
+    {
+      enabled: Boolean(shift),
+      pollIntervalMs: 1500,
+    },
+  );
+
   const { data: orderData, setData: setOrderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
     pollIntervalMs: 1500,
   });
+
   const previousQueueQtyRef = useRef(0);
-  const previousReadyQtyRef = useRef(0);
 
   const queue = stationData?.queue ?? [];
   const sessions = orderData?.sessions ?? [];
   const sections = (orderData?.sections ?? []).filter((section) => section.stationCode === 'shisha');
   const products = (orderData?.products ?? []).filter((product) => product.stationCode === 'shisha');
-  const effectiveSessionId = !creatingNew ? (sessionId || sessions[0]?.id || '') : '';
+  const effectiveSessionId = !creatingNew ? sessionId || sessions[0]?.id || '' : '';
   const effectiveSelectedSectionId = selectedSectionId || sections[0]?.id || '';
-  const filteredProducts = products.filter((product) => !effectiveSelectedSectionId || product.sectionId === effectiveSelectedSectionId);
+  const filteredProducts = products.filter(
+    (product) => !effectiveSelectedSectionId || product.sectionId === effectiveSelectedSectionId,
+  );
   const readyItems = readyItemsForStation(orderData?.readyItems ?? [], 'shisha');
   const currentSessionItems = useMemo(
     () => sessionItemsForSession(orderData?.sessionItems ?? [], effectiveSessionId, 'shisha'),
@@ -58,12 +69,9 @@ export default function ShishaPage() {
   const draftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const currentSessionLabel = sessions.find((session) => session.id === effectiveSessionId)?.label ?? '';
-  const currentSessionLineCount = currentSessionItems.length;
-  const currentSessionReadyQty = currentSessionItems.reduce((sum, item) => sum + item.qtyReadyForDelivery, 0);
   const canManageComplaintActions = can.owner || can.billing;
 
   const totalQueueWaiting = queue.reduce((sum, item) => sum + item.qtyWaiting, 0);
-  const totalReadyForDelivery = readyItems.reduce((sum, item) => sum + item.qtyReadyForDelivery, 0);
 
   useEffect(() => {
     if (document.visibilityState !== 'visible') {
@@ -77,15 +85,10 @@ export default function ShishaPage() {
   }, [effectiveRole, totalQueueWaiting]);
 
   useEffect(() => {
-    if (document.visibilityState !== 'visible') {
-      previousReadyQtyRef.current = totalReadyForDelivery;
-      return;
+    if (creatingNew || effectiveSessionId) {
+      setSessionWarning(null);
     }
-    if (effectiveRole === 'waiter' && totalReadyForDelivery > previousReadyQtyRef.current) {
-      void playOpsNotificationSignal('waiter-ready');
-    }
-    previousReadyQtyRef.current = totalReadyForDelivery;
-  }, [effectiveRole, totalReadyForDelivery]);
+  }, [creatingNew, effectiveSessionId]);
 
   const readyCommand = useOpsCommand(
     async (item: StationQueueItem, quantity: number) => {
@@ -152,6 +155,11 @@ export default function ShishaPage() {
     return <AccessDenied title="الشيشة" message="هذه الصفحة للشيشة أو المشرف أو المعلم فقط." />;
   }
 
+  function warnSessionRequired() {
+    setSessionWarning('اختر جلسة شيشة أو أنشئ جلسة جديدة أولًا ثم أضف الأصناف.');
+    document.getElementById('sessions-panel')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
   function setQueueQty(orderItemId: string, qty: number, max: number) {
     setQueueSelection((state) => ({
       ...state,
@@ -160,6 +168,10 @@ export default function ShishaPage() {
   }
 
   function inc(id: string) {
+    if (!creatingNew && !effectiveSessionId) {
+      warnSessionRequired();
+      return;
+    }
     setDraft((state) => ({ ...state, [id]: (state[id] ?? 0) + 1 }));
   }
 
@@ -177,6 +189,7 @@ export default function ShishaPage() {
     setSessionId(nextSessionId);
     setCreatingNew(false);
     setLabel('');
+    setSessionWarning(null);
   }
 
   function beginNewSession() {
@@ -184,35 +197,42 @@ export default function ShishaPage() {
     setSessionId('');
     setLabel('');
     setDraft({});
+    setSessionWarning(null);
   }
 
   const effectiveError = localError ?? stationError ?? orderError;
-  const contextStats = creatingNew
-    ? (draftQtyTotal > 0 ? [{ label: 'المحدد', value: draftQtyTotal, tone: 'emerald' as const }] : [])
-    : currentSessionLabel
-      ? [
-          { label: 'أصناف', value: currentSessionLineCount, tone: 'sky' as const },
-          { label: 'جاهز', value: currentSessionReadyQty, tone: 'emerald' as const },
-        ]
-      : sessions.length
-        ? [{ label: 'المفتوح', value: sessions.length, tone: 'sky' as const }]
-        : [];
 
   return (
     <MobileShell
       title="الشيشة"
       topRight={
         <div className="flex gap-2">
-          {(can.owner || can.billing) ? <Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link> : null}
-          <Link href="/support?source=in_app&page=/shisha" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>
+          {can.owner || can.billing ? (
+            <Link
+              href="/complaints"
+              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+            >
+              شكاوى
+            </Link>
+          ) : null}
+          <Link
+            href="/support?source=in_app&page=/shisha"
+            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+          >
+            دعم
+          </Link>
         </div>
       }
       stickyFooter={
         <StickyActionBar>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 text-right">
-              <div className="text-sm font-semibold text-slate-900">{creatingNew ? 'جلسة شيشة جديدة' : currentSessionLabel || 'اختر جلسة شيشة'}</div>
-              <div className="mt-1 text-xs text-slate-500">{draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر أصناف الشيشة ثم أرسل مرة واحدة'}</div>
+              <div className="text-sm font-semibold text-slate-900">
+                {creatingNew ? 'جلسة شيشة جديدة' : currentSessionLabel || 'اختر جلسة شيشة'}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">
+                {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر أصناف الشيشة ثم أرسل مرة واحدة'}
+              </div>
             </div>
             <button
               type="button"
@@ -232,50 +252,63 @@ export default function ShishaPage() {
         </div>
       ) : null}
 
-      <div className="space-y-3">
-        <SessionContextStrip
-          title={creatingNew ? 'جلسة شيشة جديدة' : currentSessionLabel || 'بدون جلسة'}
-          subtitle={creatingNew ? 'اختر الأصناف ثم أرسل' : currentSessionLabel ? 'الجلسة الحالية' : 'اختر جلسة أو افتح جديدة'}
-          stats={contextStats}
-          actions={[
-            { label: 'الجلسات', href: '#sessions-panel' },
-            { label: 'الانتظار', href: '#queue-panel' },
-            { label: 'الجاهز', href: '#ready-panel' },
-            ...(canManageComplaintActions ? [{ label: 'أصناف الجلسة', href: '#session-items-panel' as const }] : []),
-            { label: 'المنيو', href: '#menu-panel' },
-          ]}
-        />
+      {sessionWarning ? (
+        <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+          {sessionWarning}
+        </div>
+      ) : null}
 
+      <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs font-semibold text-slate-600">
+        اختر جلسة شيشة أو أنشئ جلسة جديدة ثم أضف الأصناف.
+      </div>
+
+      <div className="space-y-3">
         <section id="sessions-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-slate-800">جلسات الشيشة</div>
+            <div className="flex items-center gap-2">
+              {sessions.length ? (
+                <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                  {sessions.length}
+                </div>
+              ) : null}
+              <div className="text-sm font-semibold text-slate-800">جلسات الشيشة المفتوحة</div>
+            </div>
             <button
               type="button"
               onClick={beginNewSession}
-              className={[
-                'rounded-2xl px-3 py-2 text-sm font-semibold shadow-sm',
-                creatingNew ? 'bg-emerald-600 text-white' : 'border border-slate-200 bg-white text-slate-800',
-              ].join(' ')}
+              className="rounded-2xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm"
             >
               + جلسة شيشة جديدة
             </button>
           </div>
 
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {sessions.map((session) => (
-              <button
-                key={session.id}
-                type="button"
-                onClick={() => selectExistingSession(session.id)}
-                className={[
-                  'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
-                  !creatingNew && effectiveSessionId === session.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-white text-slate-800',
-                ].join(' ')}
-              >
-                {session.label}
-              </button>
-            ))}
-          </div>
+          {sessions.length ? (
+            <div className="grid grid-cols-2 gap-2">
+              {sessions.map((session) => (
+                <button
+                  key={session.id}
+                  type="button"
+                  onClick={() => selectExistingSession(session.id)}
+                  className={[
+                    'rounded-2xl border px-3 py-3 text-right',
+                    !creatingNew && effectiveSessionId === session.id
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-slate-50 text-slate-800',
+                  ].join(' ')}
+                >
+                  <div className="truncate text-sm font-bold">{session.label}</div>
+                  <div
+                    className={[
+                      'mt-1 text-xs',
+                      !creatingNew && effectiveSessionId === session.id ? 'text-slate-200' : 'text-slate-500',
+                    ].join(' ')}
+                  >
+                    جاهز {session.readyCount} • للحساب {session.billableCount}
+                  </div>
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           {creatingNew ? (
             <div className="mt-3 space-y-2">
@@ -295,24 +328,70 @@ export default function ShishaPage() {
             </div>
           ) : null}
 
-          {!creatingNew && effectiveSessionId ? (
-            <div className="mt-3">
-              <InlineSessionComplaintComposer
-                sessionId={effectiveSessionId}
-                sessionLabel={currentSessionLabel}
-                busy={submitCommand.busy}
-                onSubmit={async ({ serviceSessionId, complaintKind, notes }) => {
-                  await opsClient.createComplaint({
-                    mode: 'general',
-                    serviceSessionId,
-                    complaintKind,
-                    notes,
-                    action: 'none',
-                  });
-                }}
-              />
+          {!sections.length ? (
+            <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+              لا توجد أقسام منيو شيشة متاحة الآن.
             </div>
           ) : null}
+        </section>
+
+        <section id="menu-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <div className="text-sm font-semibold text-slate-800">منيو الشيشة</div>
+            {creatingNew ? (
+              <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                جلسة جديدة
+              </div>
+            ) : currentSessionLabel ? (
+              <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
+                {currentSessionLabel}
+              </div>
+            ) : null}
+          </div>
+
+          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
+            {sections.map((section) => (
+              <button
+                key={section.id}
+                type="button"
+                onClick={() => setSelectedSectionId(section.id)}
+                className={[
+                  'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
+                  effectiveSelectedSectionId === section.id
+                    ? 'border-emerald-600 bg-emerald-600 text-white'
+                    : 'border-slate-200 bg-slate-50 text-slate-700',
+                ].join(' ')}
+              >
+                {section.title}
+              </button>
+            ))}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2">
+            {filteredProducts.map((product) => (
+              <div key={product.id} className="rounded-2xl border border-slate-200 p-3">
+                <div className="text-sm font-semibold text-slate-900">{product.name}</div>
+                <div className="mt-1 text-xs text-slate-500">{product.unitPrice}</div>
+                <div className="mt-3 flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() => dec(product.id)}
+                    className="h-10 w-10 rounded-2xl border border-slate-200"
+                  >
+                    -
+                  </button>
+                  <div className="text-lg font-bold">{draft[product.id] ?? 0}</div>
+                  <button
+                    type="button"
+                    onClick={() => inc(product.id)}
+                    className="h-10 w-10 rounded-2xl bg-slate-900 text-white"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
         </section>
 
         <section id="queue-panel" className="space-y-3">
@@ -333,7 +412,9 @@ export default function ShishaPage() {
 
                 {item.qtyWaitingReplacement > 0 ? (
                   <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                    <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">إعادة مجانية {item.qtyWaitingReplacement}</span>
+                    <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
+                      إعادة مجانية {item.qtyWaitingReplacement}
+                    </span>
                   </div>
                 ) : null}
 
@@ -365,7 +446,12 @@ export default function ShishaPage() {
               </div>
             );
           })}
-          {!queue.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">لا يوجد طلبات شيشة الآن.</div> : null}
+
+          {!queue.length ? (
+            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+              لا يوجد طلبات شيشة الآن.
+            </div>
+          ) : null}
         </section>
 
         <section id="ready-panel">
@@ -379,6 +465,7 @@ export default function ShishaPage() {
             onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
             busy={deliverCommand.busy}
             emptyLabel="لا يوجد شيشة جاهزة للتسليم"
+            compact
           />
         </section>
 
@@ -394,46 +481,10 @@ export default function ShishaPage() {
               onRemake={(item, quantity, notes) => remakeCommand.run(item, quantity, notes)}
               busy={remakeCommand.busy}
               emptyLabel={effectiveSessionId ? 'لا توجد أصناف شيشة في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
+              compact
             />
           </section>
-        ) : (
-          <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-            الإعادة المجانية أو إسقاط الحساب متاحة للمشرف أو المعلم فقط.
-          </div>
-        )}
-
-        <section id="menu-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-3 text-right text-sm font-semibold text-slate-800">منيو الشيشة</div>
-          <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
-            {sections.map((section) => (
-              <button
-                key={section.id}
-                type="button"
-                onClick={() => setSelectedSectionId(section.id)}
-                className={[
-                  'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
-                  effectiveSelectedSectionId === section.id ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-200 bg-slate-50 text-slate-700',
-                ].join(' ')}
-              >
-                {section.title}
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2">
-            {filteredProducts.map((product) => (
-              <div key={product.id} className="rounded-2xl border border-slate-200 p-3">
-                <div className="text-sm font-semibold text-slate-900">{product.name}</div>
-                <div className="mt-1 text-xs text-slate-500">{product.unitPrice}</div>
-                <div className="mt-3 flex items-center justify-between">
-                  <button type="button" onClick={() => dec(product.id)} className="h-10 w-10 rounded-2xl border border-slate-200">-</button>
-                  <div className="text-lg font-bold">{draft[product.id] ?? 0}</div>
-                  <button type="button" onClick={() => inc(product.id)} className="h-10 w-10 rounded-2xl bg-slate-900 text-white">+</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
+        ) : null}
       </div>
     </MobileShell>
   );
