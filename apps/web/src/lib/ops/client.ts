@@ -17,6 +17,7 @@ import type {
 } from './types';
 
 import { apiGet, apiPost } from '@/lib/http/client';
+import { buildBillingReceiptApiUrl, type BillingAllocationInput } from './billing';
 import { invalidateOpsWorkspaces } from './invalidation';
 
 const post = apiPost;
@@ -39,7 +40,7 @@ export const opsClient = {
   billingWorkspace: () => post<BillingWorkspace>('/api/ops/workspaces/billing'),
   complaintsWorkspace: () => post<ComplaintsWorkspace>('/api/ops/workspaces/complaints'),
   menuWorkspace: () => post<MenuWorkspace>('/api/ops/workspaces/menu'),
-  billingReceipt: (paymentId: string) => get<BillingReceipt>(`/api/ops/billing/receipt?paymentId=${encodeURIComponent(paymentId)}`),
+  billingReceipt: (input: { paymentId?: string | null; sessionId?: string | null; allocations?: BillingAllocationInput[]; debtorName?: string | null }) => get<BillingReceipt>(buildBillingReceiptApiUrl(input)),
   reportsWorkspace: () => post<ReportsWorkspace>('/api/ops/workspaces/reports'),
   deferredCustomersWorkspace: () =>
     post<{ items: DeferredCustomerSummary[] }>('/api/ops/workspaces/deferred-customers'),

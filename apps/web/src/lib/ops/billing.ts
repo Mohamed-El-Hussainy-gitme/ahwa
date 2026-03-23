@@ -12,6 +12,11 @@ export type BillingTotals = {
   total: number;
 };
 
+export type BillingAllocationInput = {
+  orderItemId: string;
+  quantity: number;
+};
+
 function roundMoney(value: number) {
   return Number.isFinite(value) ? Math.round(value * 100) / 100 : 0;
 }
@@ -43,7 +48,78 @@ export function computeBillingTotals(subtotal: number, settings: Partial<Billing
   };
 }
 
+export function serializeBillingAllocations(allocations: BillingAllocationInput[]): string {
+  return allocations
+    .map((allocation) => ({
+      orderItemId: String(allocation.orderItemId ?? '').trim(),
+      quantity: Number(allocation.quantity ?? 0),
+    }))
+    .filter((allocation) => allocation.orderItemId && Number.isInteger(allocation.quantity) && allocation.quantity > 0)
+    .map((allocation) => `${allocation.orderItemId}:${allocation.quantity}`)
+    .join(',');
+}
+
+export function parseBillingAllocations(serialized: string | null | undefined): BillingAllocationInput[] {
+  const normalized = String(serialized ?? '').trim();
+  if (!normalized) return [];
+
+  const byOrderItemId = new Map<string, number>();
+
+  for (const entry of normalized.split(',')) {
+    const [rawOrderItemId, rawQuantity] = entry.split(':');
+    const orderItemId = String(rawOrderItemId ?? '').trim();
+    const quantity = Number(rawQuantity ?? 0);
+    if (!orderItemId || !Number.isInteger(quantity) || quantity <= 0) {
+      throw new Error('INVALID_RECEIPT_ALLOCATIONS');
+    }
+    byOrderItemId.set(orderItemId, (byOrderItemId.get(orderItemId) ?? 0) + quantity);
+  }
+
+  return Array.from(byOrderItemId.entries()).map(([orderItemId, quantity]) => ({ orderItemId, quantity }));
+}
+
 export function buildBillingReceiptUrl(paymentId: string) {
   const normalized = String(paymentId ?? '').trim();
   return normalized ? `/billing/receipt?paymentId=${encodeURIComponent(normalized)}` : '';
+}
+
+export function buildBillingReceiptApiUrl(input: {
+  paymentId?: string | null;
+  sessionId?: string | null;
+  allocations?: BillingAllocationInput[];
+  debtorName?: string | null;
+}) {
+  const params = new URLSearchParams();
+  const paymentId = String(input.paymentId ?? '').trim();
+  if (paymentId) {
+    params.set('paymentId', paymentId);
+  } else {
+    const sessionId = String(input.sessionId ?? '').trim();
+    const allocations = serializeBillingAllocations(input.allocations ?? []);
+    if (sessionId) params.set('sessionId', sessionId);
+    if (allocations) params.set('allocations', allocations);
+    const debtorName = String(input.debtorName ?? '').trim();
+    if (debtorName) params.set('debtorName', debtorName);
+    params.set('preview', '1');
+  }
+  return `/api/ops/billing/receipt?${params.toString()}`;
+}
+
+export function buildBillingPreviewUrl(sessionId: string, allocations: BillingAllocationInput[], debtorName?: string | null) {
+  const normalizedSessionId = String(sessionId ?? '').trim();
+  const serializedAllocations = serializeBillingAllocations(allocations);
+  if (!normalizedSessionId || !serializedAllocations) return '';
+
+  const params = new URLSearchParams({
+    preview: '1',
+    sessionId: normalizedSessionId,
+    allocations: serializedAllocations,
+  });
+
+  const normalizedDebtorName = String(debtorName ?? '').trim();
+  if (normalizedDebtorName) {
+    params.set('debtorName', normalizedDebtorName);
+  }
+
+  return `/billing/receipt?${params.toString()}`;
 }

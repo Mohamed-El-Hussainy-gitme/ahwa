@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import { useMemo } from 'react';
 import { useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
+import { parseBillingAllocations } from '@/lib/ops/billing';
 import type { BillingReceipt } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
 import { AccessDenied } from '@/ui/AccessState';
@@ -37,6 +39,8 @@ function paymentKindLabel(kind: BillingReceipt['paymentKind']) {
       return 'سداد';
     case 'adjustment':
       return 'تسوية';
+    case 'preview':
+      return 'شيك قبل التحصيل';
     case 'cash':
     default:
       return 'كاش';
@@ -47,9 +51,30 @@ export default function BillingReceiptPage() {
   const { can, shift } = useAuthz();
   const searchParams = useSearchParams();
   const paymentId = String(searchParams.get('paymentId') ?? '').trim();
-  const loader = useCallback(() => opsClient.billingReceipt(paymentId), [paymentId]);
+  const previewSessionId = String(searchParams.get('sessionId') ?? '').trim();
+  const previewDebtorName = String(searchParams.get('debtorName') ?? '').trim();
+  const previewAllocationsParam = String(searchParams.get('allocations') ?? '').trim();
+
+  const previewAllocations = useMemo(() => {
+    try {
+      return parseBillingAllocations(previewAllocationsParam);
+    } catch {
+      return [];
+    }
+  }, [previewAllocationsParam]);
+
+  const loader = useCallback(
+    () =>
+      opsClient.billingReceipt({
+        paymentId: paymentId || undefined,
+        sessionId: paymentId ? undefined : previewSessionId,
+        allocations: paymentId ? undefined : previewAllocations,
+        debtorName: paymentId ? undefined : previewDebtorName || undefined,
+      }),
+    [paymentId, previewSessionId, previewAllocations, previewDebtorName],
+  );
   const { data, error } = useOpsWorkspace<BillingReceipt>(loader, {
-    enabled: Boolean(paymentId) && (can.owner || can.billing),
+    enabled: Boolean(paymentId) || (Boolean(previewSessionId) && previewAllocations.length > 0 && (can.owner || can.billing)),
     shouldReloadOnEvent: () => false,
   });
 
@@ -60,6 +85,8 @@ export default function BillingReceiptPage() {
   if (!can.owner && !can.billing) {
     return <AccessDenied title="بون الفاتورة" />;
   }
+
+  const isPreview = data?.mode === 'preview' || (!paymentId && Boolean(previewSessionId));
 
   return (
     <>
@@ -95,26 +122,26 @@ export default function BillingReceiptPage() {
       `}</style>
 
       <PrintPageFrame
-        title="بون الفاتورة"
-        exportFilename={data ? `receipt-${data.paymentId}` : 'receipt'}
-        subtitle={data ? `${data.cafeName} • ${data.sessionLabel}` : 'جاري تحميل البون...'}
+        title={isPreview ? 'شيك الحساب' : 'بون الفاتورة'}
+        exportFilename={data ? `${data.mode === 'preview' ? 'check' : 'receipt'}-${data.paymentId ?? data.sessionId}` : isPreview ? 'check' : 'receipt'}
+        subtitle={data ? `${data.cafeName} • ${data.sessionLabel}` : isPreview ? 'جاري تحميل شيك الحساب...' : 'جاري تحميل البون...'}
         shellClassName="receipt-print-shell w-full max-w-[26rem]"
         contentClassName="receipt-print-root rounded-[28px] px-5 py-5"
         titleClassName="text-center"
         subtitleClassName="text-center"
       >
-        {!paymentId ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">رقم الفاتورة غير موجود.</div> : null}
+        {!paymentId && (!previewSessionId || previewAllocations.length === 0) ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">بيانات الشيك غير مكتملة.</div> : null}
         {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-        {!data && !error && paymentId ? <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-neutral-500">جاري تجهيز البون القابل للطباعة...</div> : null}
+        {!data && !error && (paymentId || previewSessionId) ? <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-neutral-500">{isPreview ? 'جاري تجهيز شيك الحساب القابل للطباعة...' : 'جاري تجهيز البون القابل للطباعة...'}</div> : null}
         {data ? (
           <div className="space-y-4 text-[13px] leading-6 text-neutral-900">
             <section className="border-b border-dashed pb-3 text-center">
               <div className="text-xl font-black tracking-tight">{data.cafeName}</div>
-              <div className="mt-1 text-[12px] text-neutral-500">فاتورة / Receipt</div>
+              <div className="mt-1 text-[12px] text-neutral-500">{data.mode === 'preview' ? 'شيك / Guest Check' : 'فاتورة / Receipt'}</div>
             </section>
 
             <section className="space-y-1 border-b border-dashed pb-3 text-[12px]">
-              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">رقم الفاتورة</span><span className="font-semibold">{data.paymentId}</span></div>
+              {data.paymentId ? <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">رقم الفاتورة</span><span className="font-semibold">{data.paymentId}</span></div> : <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">المستند</span><span className="font-semibold">شيك قبل التحصيل</span></div>}
               <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">التاريخ</span><span className="font-semibold">{formatDateTime(data.createdAt)}</span></div>
               <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">نوع العملية</span><span className="font-semibold">{paymentKindLabel(data.paymentKind)}</span></div>
               <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">الجلسة</span><span className="font-semibold">{data.sessionLabel}</span></div>
@@ -157,8 +184,8 @@ export default function BillingReceiptPage() {
             ) : null}
 
             <section className="border-t border-dashed pt-3 text-center text-[11px] text-neutral-500">
-              <div>شكراً لزيارتكم</div>
-              <div>نتمنى لكم وقتاً سعيداً</div>
+              <div>{data.mode === 'preview' ? 'هذا الشيك للعرض قبل تسجيل الدفع.' : 'شكراً لزيارتكم'}</div>
+              <div>{data.mode === 'preview' ? 'بعد المراجعة سجّل التحصيل أو الترحيل من شاشة الحساب.' : 'نتمنى لكم وقتاً سعيداً'}</div>
             </section>
           </div>
         ) : null}
