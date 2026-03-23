@@ -40,7 +40,7 @@ function paymentKindLabel(kind: BillingReceipt['paymentKind']) {
     case 'adjustment':
       return 'تسوية';
     case 'preview':
-      return 'شيك قبل التحصيل';
+      return 'شيك';
     case 'cash':
     default:
       return 'كاش';
@@ -122,9 +122,9 @@ export default function BillingReceiptPage() {
       `}</style>
 
       <PrintPageFrame
-        title={isPreview ? 'شيك الحساب' : 'بون الفاتورة'}
+        title={isPreview ? 'شيك' : 'بون الفاتورة'}
         exportFilename={data ? `${data.mode === 'preview' ? 'check' : 'receipt'}-${data.paymentId ?? data.sessionId}` : isPreview ? 'check' : 'receipt'}
-        subtitle={data ? `${data.cafeName} • ${data.sessionLabel}` : isPreview ? 'جاري تحميل شيك الحساب...' : 'جاري تحميل البون...'}
+        subtitle={data ? `${data.cafeName} • ${data.sessionLabel}` : isPreview ? 'جاري تحميل الشيك...' : 'جاري تحميل البون...'}
         shellClassName="receipt-print-shell w-full max-w-[26rem]"
         contentClassName="receipt-print-root rounded-[28px] px-5 py-5"
         titleClassName="text-center"
@@ -132,7 +132,7 @@ export default function BillingReceiptPage() {
       >
         {!paymentId && (!previewSessionId || previewAllocations.length === 0) ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">بيانات الشيك غير مكتملة.</div> : null}
         {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-        {!data && !error && (paymentId || previewSessionId) ? <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-neutral-500">{isPreview ? 'جاري تجهيز شيك الحساب القابل للطباعة...' : 'جاري تجهيز البون القابل للطباعة...'}</div> : null}
+        {!data && !error && (paymentId || previewSessionId) ? <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-neutral-500">{isPreview ? 'جاري تجهيز الشيك...' : 'جاري تجهيز البون...'}</div> : null}
         {data ? (
           <div className="space-y-4 text-[13px] leading-6 text-neutral-900">
             <section className="border-b border-dashed pb-3 text-center">
@@ -141,7 +141,7 @@ export default function BillingReceiptPage() {
             </section>
 
             <section className="space-y-1 border-b border-dashed pb-3 text-[12px]">
-              {data.paymentId ? <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">رقم الفاتورة</span><span className="font-semibold">{data.paymentId}</span></div> : <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">المستند</span><span className="font-semibold">شيك قبل التحصيل</span></div>}
+              {data.paymentId ? <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">رقم الفاتورة</span><span className="font-semibold">{data.paymentId}</span></div> : <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">المستند</span><span className="font-semibold">شيك</span></div>}
               <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">التاريخ</span><span className="font-semibold">{formatDateTime(data.createdAt)}</span></div>
               <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">نوع العملية</span><span className="font-semibold">{paymentKindLabel(data.paymentKind)}</span></div>
               <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">الجلسة</span><span className="font-semibold">{data.sessionLabel}</span></div>
@@ -184,8 +184,8 @@ export default function BillingReceiptPage() {
             ) : null}
 
             <section className="border-t border-dashed pt-3 text-center text-[11px] text-neutral-500">
-              <div>{data.mode === 'preview' ? 'هذا الشيك للعرض قبل تسجيل الدفع.' : 'شكراً لزيارتكم'}</div>
-              <div>{data.mode === 'preview' ? 'بعد المراجعة سجّل التحصيل أو الترحيل من شاشة الحساب.' : 'نتمنى لكم وقتاً سعيداً'}</div>
+              <div>شكراً لزيارتكم</div>
+              <div>نتمنى لكم وقتاً سعيداً</div>
             </section>
           </div>
         ) : null}

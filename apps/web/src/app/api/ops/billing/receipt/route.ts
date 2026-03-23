@@ -229,7 +229,7 @@ export async function GET(req: Request) {
       sessionLabel: sessionMeta.sessionLabel,
       cafeName: sessionMeta.cafeName,
       debtorName: previewDebtorName,
-      notes: 'شيك قبل تسجيل التحصيل أو الترحيل.',
+      notes: null,
       createdAt: new Date().toISOString(),
       actorLabel,
       totals,

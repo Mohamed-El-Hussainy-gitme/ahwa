@@ -86,7 +86,19 @@ export default function BillingPage() {
     return sum + item.quantity * Number(match?.unitPrice ?? 0);
   }, 0);
   const previewTotals = computeBillingTotals(selectedSubtotal, data?.billingSettings);
-  const previewReceiptUrl = buildBillingPreviewUrl(effectiveSessionId, selectedAllocations, debtorName);
+  const printableAllocations = (current?.items ?? [])
+    .map((item) => ({
+      orderItemId: item.orderItemId,
+      quantity: item.qtyBillable,
+    }))
+    .filter((item) => item.quantity > 0);
+  const printableQtyTotal = printableAllocations.reduce((sum, item) => sum + item.quantity, 0);
+  const printableSubtotal = printableAllocations.reduce((sum, item) => {
+    const match = current?.items.find((candidate) => candidate.orderItemId === item.orderItemId);
+    return sum + item.quantity * Number(match?.unitPrice ?? 0);
+  }, 0);
+  const printableTotals = computeBillingTotals(printableSubtotal, data?.billingSettings);
+  const previewReceiptUrl = buildBillingPreviewUrl(effectiveSessionId, printableAllocations, debtorName);
 
   return (
     <MobileShell
@@ -106,7 +118,7 @@ export default function BillingPage() {
                 <div className="mt-1 text-xs text-slate-500">
                   {selectedQtyTotal > 0
                     ? `المحدد ${selectedQtyTotal} • قبل الإضافات ${formatMoney(previewTotals.subtotal)} ج • النهائي ${formatMoney(previewTotals.total)} ج`
-                    : 'حدد البنود ثم اطبع الشيك قبل تسجيل التحصيل أو الترحيل'}
+                    : 'حدد البنود المطلوبة للتحصيل أو الترحيل'}
                 </div>
               </div>
             </div>
@@ -118,20 +130,20 @@ export default function BillingPage() {
               </div>
             ) : null}
 
-            {selectedQtyTotal > 0 ? (
+            {current && printableQtyTotal > 0 ? (
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-sm">
                 <div className="text-right text-sky-900">
-                  <div className="font-semibold">اطبع الشيك أولًا قبل تسجيل الحساب.</div>
-                  <div className="mt-1 text-xs text-sky-700">هذا الشيك يعرض نفس الكميات المحددة للحساب ولا يغيّر منطق الـ split.</div>
+                  <div className="font-semibold">الفاتورة كاملة</div>
+                  <div className="mt-1 text-xs text-sky-700">{formatMoney(printableTotals.total)} ج • {printableQtyTotal} صنف</div>
                 </div>
-                <Link href={previewReceiptUrl} target="_blank" className="rounded-2xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white">طباعة الشيك</Link>
+                <Link href={previewReceiptUrl} target="_blank" className="rounded-2xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white">طباعة الفاتورة</Link>
               </div>
             ) : null}
 
             {lastTotals ? (
               <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
                 <div className="text-right text-emerald-800">
-                  <div className="font-semibold">تم تسجيل العملية بعد الشيك.</div>
+                  <div className="font-semibold">تم تسجيل العملية.</div>
                   <div className="mt-1 text-xs">الإجمالي النهائي {formatMoney(lastTotals.total)} ج</div>
                 </div>
                 {lastReceiptUrl ? <Link href={lastReceiptUrl} target="_blank" className="rounded-2xl border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-800">عرض المستند النهائي</Link> : null}
@@ -291,10 +303,6 @@ export default function BillingPage() {
           </div>
         ) : null}
       </section>
-
-      <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-        طباعة الشيك أصبحت قبل الحساب، ثم بعد المراجعة يتم تسجيل التحصيل أو الترحيل. تقسيم الحساب حسب الكميات المحددة بقي كما هو ولم يتم المساس بمنطقه.
-      </div>
     </MobileShell>
   );
 }
