@@ -34,6 +34,7 @@ export default function BillingPage() {
     () => data?.sessions.find((session) => session.sessionId === effectiveSessionId) ?? null,
     [data, effectiveSessionId],
   );
+
   const allocations = useCallback(() => {
     return (current?.items ?? [])
       .map((item) => ({
@@ -86,12 +87,14 @@ export default function BillingPage() {
     return sum + item.quantity * Number(match?.unitPrice ?? 0);
   }, 0);
   const previewTotals = computeBillingTotals(selectedSubtotal, data?.billingSettings);
+
   const printableAllocations = (current?.items ?? [])
     .map((item) => ({
       orderItemId: item.orderItemId,
       quantity: item.qtyBillable,
     }))
     .filter((item) => item.quantity > 0);
+
   const printableQtyTotal = printableAllocations.reduce((sum, item) => sum + item.quantity, 0);
   const printableSubtotal = printableAllocations.reduce((sum, item) => {
     const match = current?.items.find((candidate) => candidate.orderItemId === item.orderItemId);
@@ -105,8 +108,15 @@ export default function BillingPage() {
       title="الحساب"
       topRight={
         <div className="flex gap-2">
-          <Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">شكاوى</Link>
-          <Link href="/support?source=in_app&page=/billing" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>
+          <Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">
+            شكاوى
+          </Link>
+          <Link
+            href="/support?source=in_app&page=/billing"
+            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
+          >
+            دعم
+          </Link>
         </div>
       }
       stickyFooter={
@@ -125,18 +135,16 @@ export default function BillingPage() {
 
             {(data?.billingSettings.taxEnabled || data?.billingSettings.serviceEnabled) && selectedQtyTotal > 0 ? (
               <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
-                {data?.billingSettings.taxEnabled ? <div>ضريبة: {formatMoney(previewTotals.taxAmount)} ج ({formatMoney(data.billingSettings.taxRate)}%)</div> : null}
-                {data?.billingSettings.serviceEnabled ? <div>خدمة: {formatMoney(previewTotals.serviceAmount)} ج ({formatMoney(data.billingSettings.serviceRate)}%)</div> : null}
-              </div>
-            ) : null}
-
-            {current && printableQtyTotal > 0 ? (
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-sm">
-                <div className="text-right text-sky-900">
-                  <div className="font-semibold">الفاتورة كاملة</div>
-                  <div className="mt-1 text-xs text-sky-700">{formatMoney(printableTotals.total)} ج • {printableQtyTotal} صنف</div>
-                </div>
-                <Link href={previewReceiptUrl} target="_blank" className="rounded-2xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white">طباعة الفاتورة</Link>
+                {data?.billingSettings.taxEnabled ? (
+                  <div>
+                    ضريبة: {formatMoney(previewTotals.taxAmount)} ج ({formatMoney(data.billingSettings.taxRate)}%)
+                  </div>
+                ) : null}
+                {data?.billingSettings.serviceEnabled ? (
+                  <div>
+                    خدمة: {formatMoney(previewTotals.serviceAmount)} ج ({formatMoney(data.billingSettings.serviceRate)}%)
+                  </div>
+                ) : null}
               </div>
             ) : null}
 
@@ -146,7 +154,15 @@ export default function BillingPage() {
                   <div className="font-semibold">تم تسجيل العملية.</div>
                   <div className="mt-1 text-xs">الإجمالي النهائي {formatMoney(lastTotals.total)} ج</div>
                 </div>
-                {lastReceiptUrl ? <Link href={lastReceiptUrl} target="_blank" className="rounded-2xl border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-800">عرض المستند النهائي</Link> : null}
+                {lastReceiptUrl ? (
+                  <Link
+                    href={lastReceiptUrl}
+                    target="_blank"
+                    className="rounded-2xl border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-800"
+                  >
+                    عرض المستند النهائي
+                  </Link>
+                ) : null}
               </div>
             ) : null}
 
@@ -215,16 +231,36 @@ export default function BillingPage() {
 
       {current ? (
         <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 text-right">
               <div className="text-sm font-bold text-slate-900">{current.sessionLabel}</div>
               <div className="mt-1 text-xs text-slate-500">الجلسة الحالية للحساب</div>
             </div>
+
             <div className="flex flex-wrap justify-end gap-2 text-xs font-semibold">
               <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">للحساب {current.totalBillableQty}</span>
               <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">{current.totalBillableAmount} ج</span>
             </div>
           </div>
+
+          {printableQtyTotal > 0 ? (
+            <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-white p-3">
+              <div className="text-right">
+                <div className="text-sm font-semibold text-slate-900">الفاتورة الكاملة</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {formatMoney(printableTotals.total)} ج • {printableQtyTotal} صنف
+                </div>
+              </div>
+
+              <Link
+                href={previewReceiptUrl}
+                target="_blank"
+                className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white"
+              >
+                طباعة الفاتورة
+              </Link>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
