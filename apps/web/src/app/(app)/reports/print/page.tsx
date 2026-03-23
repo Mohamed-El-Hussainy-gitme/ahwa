@@ -15,9 +15,7 @@ function formatMoney(value: number) {
 }
 
 function salesHint(totals: ReportTotals) {
-  return totals.salesReconciliationGap > 0
-    ? `تمت مواءمة البيع مع التحصيل (+${formatMoney(totals.salesReconciliationGap)} ج).`
-    : null;
+  return totals.extrasTotal > 0 ? `+${formatMoney(totals.extrasTotal)} ج ضريبة + خدمة` : null;
 }
 
 function shiftKindLabel(kind: string) {
@@ -140,13 +138,13 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
             <tr className="border-b bg-neutral-50 text-right">
               <th className="px-3 py-2">العامل</th>
               <th className="px-3 py-2">التسليم</th>
-              <th className="px-3 py-2">التحصيل</th>
+              <th className="px-3 py-2">البيع</th>
               <th className="px-3 py-2">الشكاوى/الملاحظات</th>
             </tr>
           </thead>
           <tbody>
             {topStaff.map((row) => (
-              <tr key={row.actorLabel} className="border-b">
+              <tr key={row.actorKey} className="border-b">
                 <td className="px-3 py-2">{row.actorLabel}</td>
                 <td className="px-3 py-2">{row.deliveredQty}</td>
                 <td className="px-3 py-2">{formatMoney(row.paymentTotal)} ج</td>

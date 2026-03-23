@@ -19,31 +19,37 @@ function formatMoney(value: number) {
   }).format(value ?? 0);
 }
 
-function formatDateTime(value: string) {
-  return new Date(value).toLocaleString('ar-EG', {
+function formatReceiptDate(value: string) {
+  return new Date(value).toLocaleDateString('en-GB', {
     year: 'numeric',
     month: '2-digit',
     day: '2-digit',
+  });
+}
+
+function formatReceiptTime(value: string) {
+  return new Date(value).toLocaleTimeString('en-GB', {
     hour: '2-digit',
     minute: '2-digit',
+    hour12: false,
   });
 }
 
 function paymentKindLabel(kind: BillingReceipt['paymentKind']) {
   switch (kind) {
     case 'deferred':
-      return 'آجل';
+      return 'Deferred';
     case 'mixed':
-      return 'مختلط';
+      return 'Mixed';
     case 'repayment':
-      return 'سداد';
+      return 'Repayment';
     case 'adjustment':
-      return 'تسوية';
+      return 'Adjustment';
     case 'preview':
-      return 'شيك';
+      return 'Check';
     case 'cash':
     default:
-      return 'كاش';
+      return 'Cash';
   }
 }
 
@@ -122,9 +128,9 @@ export default function BillingReceiptPage() {
       `}</style>
 
       <PrintPageFrame
-        title={isPreview ? 'شيك' : 'بون الفاتورة'}
-        exportFilename={data ? `${data.mode === 'preview' ? 'check' : 'receipt'}-${data.paymentId ?? data.sessionId}` : isPreview ? 'check' : 'receipt'}
-        subtitle={data ? `${data.cafeName} • ${data.sessionLabel}` : isPreview ? 'جاري تحميل الشيك...' : 'جاري تحميل البون...'}
+        title={isPreview ? 'Guest Check' : 'Sales Receipt'}
+        exportFilename={data ? `${data.mode === 'preview' ? 'guest-check' : 'sales-receipt'}-${data.paymentId ?? data.sessionId}` : isPreview ? 'guest-check' : 'sales-receipt'}
+        subtitle={data ? `${data.cafeName} • ${data.sessionLabel}` : isPreview ? 'Loading guest check...' : 'Loading sales receipt...'}
         shellClassName="receipt-print-shell w-full max-w-[26rem]"
         contentClassName="receipt-print-root rounded-[28px] px-5 py-5"
         titleClassName="text-center"
@@ -132,60 +138,61 @@ export default function BillingReceiptPage() {
       >
         {!paymentId && (!previewSessionId || previewAllocations.length === 0) ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">بيانات الشيك غير مكتملة.</div> : null}
         {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-        {!data && !error && (paymentId || previewSessionId) ? <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-neutral-500">{isPreview ? 'جاري تجهيز الشيك...' : 'جاري تجهيز البون...'}</div> : null}
+        {!data && !error && (paymentId || previewSessionId) ? <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-neutral-500">{isPreview ? 'Loading guest check...' : 'Loading sales receipt...'}</div> : null}
         {data ? (
           <div className="space-y-4 text-[13px] leading-6 text-neutral-900">
             <section className="border-b border-dashed pb-3 text-center">
               <div className="text-xl font-black tracking-tight">{data.cafeName}</div>
-              <div className="mt-1 text-[12px] text-neutral-500">{data.mode === 'preview' ? 'شيك / Guest Check' : 'فاتورة / Receipt'}</div>
+              <div className="mt-1 text-[12px] font-semibold uppercase tracking-[0.16em] text-neutral-500">{data.mode === 'preview' ? 'Guest Check' : 'Sales Receipt'}</div>
             </section>
 
             <section className="space-y-1 border-b border-dashed pb-3 text-[12px]">
-              {data.paymentId ? <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">رقم الفاتورة</span><span className="font-semibold">{data.paymentId}</span></div> : <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">المستند</span><span className="font-semibold">شيك</span></div>}
-              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">التاريخ</span><span className="font-semibold">{formatDateTime(data.createdAt)}</span></div>
-              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">نوع العملية</span><span className="font-semibold">{paymentKindLabel(data.paymentKind)}</span></div>
-              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">الجلسة</span><span className="font-semibold">{data.sessionLabel}</span></div>
-              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">المستخدم</span><span className="font-semibold">{data.actorLabel}</span></div>
-              {data.debtorName ? <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">اسم الآجل</span><span className="font-semibold">{data.debtorName}</span></div> : null}
+              {data.paymentId ? <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">Receipt No.</span><span className="font-semibold">{data.paymentId}</span></div> : <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">Document</span><span className="font-semibold">Check</span></div>}
+              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">Date</span><span className="font-semibold">{formatReceiptDate(data.createdAt)}</span></div>
+              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">Time</span><span className="font-semibold">{formatReceiptTime(data.createdAt)}</span></div>
+              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">Session</span><span className="font-semibold">{data.sessionLabel}</span></div>
+              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">Type</span><span className="font-semibold">{paymentKindLabel(data.paymentKind)}</span></div>
+              <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">Cashier</span><span className="font-semibold">{data.actorLabel}</span></div>
+              {data.debtorName ? <div className="flex items-center justify-between gap-2"><span className="text-neutral-500">Debtor</span><span className="font-semibold">{data.debtorName}</span></div> : null}
             </section>
 
             <section>
               <div className="mb-2 flex items-center justify-between text-[11px] font-bold uppercase tracking-[0.18em] text-neutral-500">
-                <span>البيان</span>
-                <span>الإجمالي</span>
+                <span>Items</span>
+                <span>Total</span>
               </div>
               <div className="border-y border-dashed">
                 {data.lines.map((line) => (
                   <div key={`${line.orderItemId}-${line.quantity}`} className="flex items-start justify-between gap-3 border-b border-dashed py-2 last:border-b-0">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 flex-1 text-right">
                       <div className="truncate font-semibold">{line.productName}</div>
                       <div className="text-[11px] text-neutral-500">
-                        {line.quantity} × {formatMoney(line.unitPrice)} ج
+                        {line.quantity} x {formatMoney(line.unitPrice)}
                       </div>
                     </div>
-                    <div className="shrink-0 whitespace-nowrap font-semibold tabular-nums">{formatMoney(line.lineAmount)} ج</div>
+                    <div className="shrink-0 whitespace-nowrap font-semibold tabular-nums">{formatMoney(line.lineAmount)}</div>
                   </div>
                 ))}
               </div>
             </section>
 
             <section className="space-y-1 border-t border-dashed pt-3 text-[12px]">
-              <div className="flex items-center justify-between gap-2"><span>الإجمالي قبل الإضافات</span><span className="font-semibold tabular-nums">{formatMoney(data.totals.subtotal)} ج</span></div>
-              {data.settings.taxEnabled || data.totals.taxAmount > 0 ? <div className="flex items-center justify-between gap-2"><span>ضريبة ({formatMoney(data.settings.taxRate)}%)</span><span className="font-semibold tabular-nums">{formatMoney(data.totals.taxAmount)} ج</span></div> : null}
-              {data.settings.serviceEnabled || data.totals.serviceAmount > 0 ? <div className="flex items-center justify-between gap-2"><span>خدمة ({formatMoney(data.settings.serviceRate)}%)</span><span className="font-semibold tabular-nums">{formatMoney(data.totals.serviceAmount)} ج</span></div> : null}
-              <div className="mt-2 flex items-center justify-between border-t border-dashed pt-2 text-base font-black"><span>الإجمالي النهائي</span><span className="tabular-nums">{formatMoney(data.totals.total)} ج</span></div>
+              <div className="flex items-center justify-between gap-2"><span>Subtotal</span><span className="font-semibold tabular-nums">{formatMoney(data.totals.subtotal)}</span></div>
+              {data.settings.taxEnabled || data.totals.taxAmount > 0 ? <div className="flex items-center justify-between gap-2"><span>Tax + ({formatMoney(data.settings.taxRate)}%)</span><span className="font-semibold tabular-nums">{formatMoney(data.totals.taxAmount)}</span></div> : null}
+              {data.settings.serviceEnabled || data.totals.serviceAmount > 0 ? <div className="flex items-center justify-between gap-2"><span>Service + ({formatMoney(data.settings.serviceRate)}%)</span><span className="font-semibold tabular-nums">{formatMoney(data.totals.serviceAmount)}</span></div> : null}
+              <div className="mt-2 flex items-center justify-between border-t border-dashed pt-2 text-base font-black"><span>Total</span><span className="tabular-nums">{formatMoney(data.totals.total)}</span></div>
             </section>
 
             {data.notes ? (
               <section className="border-t border-dashed pt-3 text-[12px]">
-                <div className="mb-1 text-neutral-500">ملاحظات</div>
+                <div className="mb-1 text-neutral-500">Notes</div>
                 <div>{data.notes}</div>
               </section>
             ) : null}
 
             <section className="border-t border-dashed pt-3 text-center text-[11px] text-neutral-500">
-              <div>شكراً لزيارتكم</div>
-              <div>نتمنى لكم وقتاً سعيداً</div>
+              <div>شكرا لزيارتكم</div>
+              <div>نتمنى لكم وقتا سعيدا</div>
             </section>
           </div>
         ) : null}

@@ -46,6 +46,9 @@ type PaymentRow = {
   shift_id: string;
   payment_kind: string | null;
   total_amount: number | string | null;
+  subtotal_amount: number | string | null;
+  tax_amount: number | string | null;
+  service_amount: number | string | null;
   by_staff_id: string | null;
   by_owner_id: string | null;
 };
@@ -172,6 +175,9 @@ function emptyTotals(): ReportTotals {
     salesReconciliationGap: 0,
     cashSales: 0,
     deferredSales: 0,
+    taxTotal: 0,
+    serviceTotal: 0,
+    extrasTotal: 0,
     repaymentTotal: 0,
     complaintTotal: 0,
     complaintOpen: 0,
@@ -221,6 +227,9 @@ function addTotals(target: ReportTotals, source: ReportTotals) {
   target.salesReconciliationGap += source.salesReconciliationGap;
   target.cashSales += source.cashSales;
   target.deferredSales += source.deferredSales;
+  target.taxTotal += source.taxTotal;
+  target.serviceTotal += source.serviceTotal;
+  target.extrasTotal += source.extrasTotal;
   target.repaymentTotal += source.repaymentTotal;
   target.complaintTotal += source.complaintTotal;
   target.complaintOpen += source.complaintOpen;
@@ -288,8 +297,9 @@ function mergeProductRows(target: ProductReportRow, source: ProductReportRow) {
   target.netSales += source.netSales;
 }
 
-function createStaffRow(actorLabel: string): StaffPerformanceRow {
+function createStaffRow(actorKey: string, actorLabel: string): StaffPerformanceRow {
   return {
+    actorKey,
     actorLabel,
     submittedQty: 0,
     readyQty: 0,
@@ -308,6 +318,7 @@ function createStaffRow(actorLabel: string): StaffPerformanceRow {
 }
 
 function mergeStaffRows(target: StaffPerformanceRow, source: StaffPerformanceRow) {
+  if (!target.actorLabel && source.actorLabel) target.actorLabel = source.actorLabel;
   target.submittedQty += source.submittedQty;
   target.readyQty += source.readyQty;
   target.deliveredQty += source.deliveredQty;
@@ -351,6 +362,12 @@ function sortShifts(rows: ReportShiftRow[]): ReportShiftRow[] {
   );
 }
 
+function actorKeyFromIds(row: { by_staff_id?: string | null; by_owner_id?: string | null }): string | null {
+  if (row.by_owner_id) return `owner:${String(row.by_owner_id)}`;
+  if (row.by_staff_id) return `staff:${String(row.by_staff_id)}`;
+  return null;
+}
+
 function actorLabelFromIds(
   row: { by_staff_id?: string | null; by_owner_id?: string | null },
   maps: ActorMaps,
@@ -358,6 +375,16 @@ function actorLabelFromIds(
   if (row.by_owner_id) return maps.ownerNames.get(String(row.by_owner_id)) ?? 'owner';
   if (row.by_staff_id) return maps.staffNames.get(String(row.by_staff_id)) ?? 'staff';
   return null;
+}
+
+function resolveActorFromIds(
+  row: { by_staff_id?: string | null; by_owner_id?: string | null },
+  maps: ActorMaps,
+): { actorKey: string; actorLabel: string } | null {
+  const actorKey = actorKeyFromIds(row);
+  const actorLabel = actorLabelFromIds(row, maps);
+  if (!actorKey || !actorLabel) return null;
+  return { actorKey, actorLabel };
 }
 
 function createEmptyDayRow(businessDate: string): ReportBusinessDayRow {
@@ -381,7 +408,7 @@ function buildPeriodReport(input: {
   const totals = emptyTotals();
   const daysByDate = new Map<string, ReportBusinessDayRow>();
   const productsById = new Map<string, ProductReportRow>();
-  const staffByLabel = new Map<string, StaffPerformanceRow>();
+  const staffByKey = new Map<string, StaffPerformanceRow>();
   const complaints: ReportComplaintEntry[] = [];
   const itemIssues: ReportItemIssueEntry[] = [];
 
@@ -400,9 +427,9 @@ function buildPeriodReport(input: {
     }
 
     for (const staff of input.staffByShift.get(row.shiftId)?.values() ?? []) {
-      const current = staffByLabel.get(staff.actorLabel) ?? createStaffRow(staff.actorLabel);
+      const current = staffByKey.get(staff.actorKey) ?? createStaffRow(staff.actorKey, staff.actorLabel);
       mergeStaffRows(current, staff);
-      staffByLabel.set(staff.actorLabel, current);
+      staffByKey.set(staff.actorKey, current);
     }
 
     complaints.push(...(input.complaintsByShift.get(row.shiftId) ?? []));
@@ -418,7 +445,7 @@ function buildPeriodReport(input: {
     days: Array.from(daysByDate.values()).sort((left, right) => right.businessDate.localeCompare(left.businessDate)),
     shifts,
     products: sortProducts(Array.from(productsById.values())),
-    staff: sortStaff(Array.from(staffByLabel.values())),
+    staff: sortStaff(Array.from(staffByKey.values())),
     complaints: sortComplaintEntries(complaints).slice(0, 80),
     itemIssues: sortComplaintEntries(itemIssues).slice(0, 80),
   };
@@ -487,6 +514,9 @@ function parseSnapshotShiftRow(snapshot: any, fallback: ShiftRow): ReportShiftRo
     salesReconciliationGap: toNumber(totals.sales_gap),
     cashSales: toNumber(totals.cash_total),
     deferredSales: toNumber(totals.deferred_total),
+    taxTotal: toNumber(totals.tax_total),
+    serviceTotal: toNumber(totals.service_total),
+    extrasTotal: toNumber(totals.extras_total ?? (toNumber(totals.tax_total) + toNumber(totals.service_total))),
     repaymentTotal: toNumber(totals.repayment_total),
     complaintTotal: toNumber(totals.complaint_total),
     complaintOpen: toNumber(totals.complaint_open),
@@ -533,12 +563,14 @@ function parseSnapshotProducts(snapshot: any): Map<string, ProductReportRow> {
 }
 
 function parseSnapshotStaff(snapshot: any): Map<string, StaffPerformanceRow> {
-  const byLabel = new Map<string, StaffPerformanceRow>();
+  const byKey = new Map<string, StaffPerformanceRow>();
   const staffRows = Array.isArray(snapshot?.staff) ? snapshot.staff : [];
   for (const raw of staffRows) {
     const actorLabel = toStringValue(raw?.actor_label);
-    if (!actorLabel) continue;
-    byLabel.set(actorLabel, {
+    const actorKey = toStringValue(raw?.actor_key, actorLabel);
+    if (!actorKey || !actorLabel) continue;
+    byKey.set(actorKey, {
+      actorKey,
       actorLabel,
       submittedQty: toNumber(raw?.submitted_qty),
       readyQty: toNumber(raw?.ready_qty),
@@ -555,7 +587,7 @@ function parseSnapshotStaff(snapshot: any): Map<string, StaffPerformanceRow> {
       itemIssueCount: toNumber(raw?.item_issue_count),
     });
   }
-  return byLabel;
+  return byKey;
 }
 
 function parseSnapshotComplaintEntries(snapshot: any, fallback: ShiftRow): ReportComplaintEntry[] {
@@ -732,7 +764,7 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
       .in('shift_id', shiftIds),
     adminOps(databaseKey)
       .from('payments')
-      .select('shift_id, payment_kind, total_amount, by_staff_id, by_owner_id')
+      .select('shift_id, payment_kind, total_amount, subtotal_amount, tax_amount, service_amount, by_staff_id, by_owner_id')
       .eq('cafe_id', cafeId)
       .in('shift_id', shiftIds),
     adminOps(databaseKey)
@@ -818,21 +850,33 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     const shiftId = String(row.shift_id ?? '');
     const shift = shiftMap.get(shiftId);
     if (!shift) continue;
-    const amount = toNumber(row.total_amount);
+    const totalAmount = toNumber(row.total_amount);
+    const saleAmount = toNumber(row.subtotal_amount ?? row.total_amount);
+    const taxAmount = toNumber(row.tax_amount);
+    const serviceAmount = toNumber(row.service_amount);
+    const extrasAmount = roundMoney(taxAmount + serviceAmount);
     const paymentKind = String(row.payment_kind ?? '');
-    if (paymentKind === 'cash' || paymentKind === 'mixed') shift.cashSales += amount;
-    if (paymentKind === 'deferred') shift.deferredSales += amount;
-    if (paymentKind === 'repayment') shift.repaymentTotal += amount;
+    const isCashLike = paymentKind === 'cash' || paymentKind === 'mixed';
+    const isDeferred = paymentKind === 'deferred';
+    const isSale = isCashLike || isDeferred;
+    if (isCashLike) shift.cashSales += saleAmount;
+    if (isDeferred) shift.deferredSales += saleAmount;
+    if (isSale) {
+      shift.taxTotal += taxAmount;
+      shift.serviceTotal += serviceAmount;
+      shift.extrasTotal += extrasAmount;
+    }
+    if (paymentKind === 'repayment') shift.repaymentTotal += totalAmount;
 
-    const actorLabel = actorLabelFromIds({ by_staff_id: row.by_staff_id, by_owner_id: row.by_owner_id }, actorMaps);
-    if (!actorLabel) continue;
+    const actor = resolveActorFromIds({ by_staff_id: row.by_staff_id, by_owner_id: row.by_owner_id }, actorMaps);
+    if (!actor) continue;
     const shiftStaff = staffByShift.get(shiftId) ?? new Map<string, StaffPerformanceRow>();
-    const staff = shiftStaff.get(actorLabel) ?? createStaffRow(actorLabel);
-    staff.paymentTotal += amount;
-    if (paymentKind === 'cash' || paymentKind === 'mixed') staff.cashSales += amount;
-    if (paymentKind === 'deferred') staff.deferredSales += amount;
-    if (paymentKind === 'repayment') staff.repaymentTotal += amount;
-    shiftStaff.set(actorLabel, staff);
+    const staff = shiftStaff.get(actor.actorKey) ?? createStaffRow(actor.actorKey, actor.actorLabel);
+    if (isSale) staff.paymentTotal += saleAmount;
+    if (isCashLike) staff.cashSales += saleAmount;
+    if (isDeferred) staff.deferredSales += saleAmount;
+    if (paymentKind === 'repayment') staff.repaymentTotal += totalAmount;
+    shiftStaff.set(actor.actorKey, staff);
     staffByShift.set(shiftId, shiftStaff);
   }
 
@@ -860,12 +904,12 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     if (resolutionKind === 'remake') shift.complaintRemake += 1;
     if (resolutionKind === 'cancel_undelivered') shift.complaintCancel += 1;
     if (resolutionKind === 'waive_delivered') shift.complaintWaive += 1;
-    const actorLabel = actorLabelFromIds({ by_staff_id: row.created_by_staff_id, by_owner_id: row.created_by_owner_id }, actorMaps);
-    if (actorLabel) {
+    const actor = resolveActorFromIds({ by_staff_id: row.created_by_staff_id, by_owner_id: row.created_by_owner_id }, actorMaps);
+    if (actor) {
       const shiftStaff = staffByShift.get(shiftId) ?? new Map<string, StaffPerformanceRow>();
-      const staff = shiftStaff.get(actorLabel) ?? createStaffRow(actorLabel);
+      const staff = shiftStaff.get(actor.actorKey) ?? createStaffRow(actor.actorKey, actor.actorLabel);
       staff.complaintCount += 1;
-      shiftStaff.set(actorLabel, staff);
+      shiftStaff.set(actor.actorKey, staff);
       staffByShift.set(shiftId, shiftStaff);
     }
     const details = complaintsByShift.get(shiftId) ?? [];
@@ -880,16 +924,17 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     if (!shift || !shiftMeta) continue;
     shift.itemIssueTotal += 1;
     const actionKind = String(row.action_kind ?? 'note');
+    const remakeQuantity = Math.max(toNumber(row.resolved_quantity), toNumber(row.requested_quantity), actionKind === 'remake' ? 1 : 0);
     if (actionKind === 'note') shift.itemIssueNote += 1;
-    if (actionKind === 'remake') shift.itemIssueRemake += 1;
+    if (actionKind === 'remake') shift.itemIssueRemake += remakeQuantity;
     if (actionKind === 'cancel_undelivered') shift.itemIssueCancel += 1;
     if (actionKind === 'waive_delivered') shift.itemIssueWaive += 1;
-    const actorLabel = actorLabelFromIds({ by_staff_id: row.created_by_staff_id, by_owner_id: row.created_by_owner_id }, actorMaps);
-    if (actorLabel) {
+    const actor = resolveActorFromIds({ by_staff_id: row.created_by_staff_id, by_owner_id: row.created_by_owner_id }, actorMaps);
+    if (actor) {
       const shiftStaff = staffByShift.get(shiftId) ?? new Map<string, StaffPerformanceRow>();
-      const staff = shiftStaff.get(actorLabel) ?? createStaffRow(actorLabel);
+      const staff = shiftStaff.get(actor.actorKey) ?? createStaffRow(actor.actorKey, actor.actorLabel);
       staff.itemIssueCount += 1;
-      shiftStaff.set(actorLabel, staff);
+      shiftStaff.set(actor.actorKey, staff);
       staffByShift.set(shiftId, shiftStaff);
     }
     const details = itemIssuesByShift.get(shiftId) ?? [];
@@ -900,12 +945,12 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
   for (const row of (fulfillmentRows ?? []) as FulfillmentAggRow[]) {
     const shiftId = String(row.shift_id ?? '');
     if (!shiftMap.has(shiftId)) continue;
-    const actorLabel = actorLabelFromIds({ by_staff_id: row.by_staff_id, by_owner_id: row.by_owner_id }, actorMaps);
-    if (!actorLabel) continue;
+    const actor = resolveActorFromIds({ by_staff_id: row.by_staff_id, by_owner_id: row.by_owner_id }, actorMaps);
+    if (!actor) continue;
     const quantity = toNumber(row.quantity);
     const eventCode = String(row.event_code ?? '');
     const shiftStaff = staffByShift.get(shiftId) ?? new Map<string, StaffPerformanceRow>();
-    const staff = shiftStaff.get(actorLabel) ?? createStaffRow(actorLabel);
+    const staff = shiftStaff.get(actor.actorKey) ?? createStaffRow(actor.actorKey, actor.actorLabel);
     if (eventCode === 'submitted') staff.submittedQty += quantity;
     if (eventCode === 'remake_submitted') staff.remadeQty += quantity;
     if (eventCode === 'partial_ready' || eventCode === 'ready') staff.readyQty += quantity;
@@ -913,7 +958,7 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     if (eventCode === 'remake_delivered') staff.replacementDeliveredQty += quantity;
     if (eventCode === 'cancelled') staff.cancelledQty += quantity;
     if (eventCode === 'waived') staff.waivedQty += quantity;
-    shiftStaff.set(actorLabel, staff);
+    shiftStaff.set(actor.actorKey, staff);
     staffByShift.set(shiftId, shiftStaff);
   }
 
@@ -960,6 +1005,9 @@ function parseSummaryTotals(summaryLike: any): ReportTotals {
     salesReconciliationGap: toNumber(summary?.sales_gap),
     cashSales: toNumber(summary?.cash_total),
     deferredSales: toNumber(summary?.deferred_total),
+    taxTotal: toNumber(summary?.tax_total),
+    serviceTotal: toNumber(summary?.service_total),
+    extrasTotal: toNumber(summary?.extras_total ?? (toNumber(summary?.tax_total) + toNumber(summary?.service_total))),
     repaymentTotal: toNumber(summary?.repayment_total),
     complaintTotal: toNumber(summary?.complaint_total),
     complaintOpen: toNumber(summary?.complaint_open),
@@ -1013,8 +1061,10 @@ function parseSummaryStaff(summaryLike: any): StaffPerformanceRow[] {
     rows
       .map((raw: any) => {
         const actorLabel = toStringValue(raw?.actor_label);
-        if (!actorLabel) return null;
+        const actorKey = toStringValue(raw?.actor_key, actorLabel);
+        if (!actorLabel || !actorKey) return null;
         return {
+          actorKey,
           actorLabel,
           submittedQty: toNumber(raw?.submitted_qty),
           readyQty: toNumber(raw?.ready_qty),
@@ -1057,16 +1107,16 @@ function mergeProductCollections(base: ProductReportRow[], supplement: ProductRe
 }
 
 function mergeStaffCollections(base: StaffPerformanceRow[], supplement: StaffPerformanceRow[]): StaffPerformanceRow[] {
-  const byLabel = new Map<string, StaffPerformanceRow>();
+  const byKey = new Map<string, StaffPerformanceRow>();
   for (const row of base) {
-    byLabel.set(row.actorLabel, { ...row });
+    byKey.set(row.actorKey, { ...row });
   }
   for (const row of supplement) {
-    const current = byLabel.get(row.actorLabel) ?? createStaffRow(row.actorLabel);
+    const current = byKey.get(row.actorKey) ?? createStaffRow(row.actorKey, row.actorLabel);
     mergeStaffRows(current, row);
-    byLabel.set(row.actorLabel, current);
+    byKey.set(row.actorKey, current);
   }
-  return sortStaff(Array.from(byLabel.values()));
+  return sortStaff(Array.from(byKey.values()));
 }
 
 function mergeDayCollections(base: ReportBusinessDayRow[], supplement: ReportBusinessDayRow[]): ReportBusinessDayRow[] {
@@ -1150,6 +1200,9 @@ function totalsCompatible(left: ReportTotals, right: ReportTotals): boolean {
     numbersRoughlyEqual(left.salesReconciliationGap, right.salesReconciliationGap) &&
     numbersRoughlyEqual(left.cashSales, right.cashSales) &&
     numbersRoughlyEqual(left.deferredSales, right.deferredSales) &&
+    numbersRoughlyEqual(left.taxTotal, right.taxTotal) &&
+    numbersRoughlyEqual(left.serviceTotal, right.serviceTotal) &&
+    numbersRoughlyEqual(left.extrasTotal, right.extrasTotal) &&
     numbersRoughlyEqual(left.repaymentTotal, right.repaymentTotal) &&
     numbersRoughlyEqual(left.complaintTotal, right.complaintTotal, 0) &&
     numbersRoughlyEqual(left.complaintOpen, right.complaintOpen, 0) &&
@@ -1198,9 +1251,9 @@ function productCollectionsCompatible(left: ProductReportRow[], right: ProductRe
 
 function staffCollectionsCompatible(left: StaffPerformanceRow[], right: StaffPerformanceRow[]): boolean {
   if (left.length !== right.length) return false;
-  const rightByLabel = new Map(right.map((row) => [row.actorLabel, row]));
+  const rightByKey = new Map(right.map((row) => [row.actorKey, row]));
   for (const row of left) {
-    const candidate = rightByLabel.get(row.actorLabel);
+    const candidate = rightByKey.get(row.actorKey);
     if (!candidate) return false;
     if (
       !numbersRoughlyEqual(row.submittedQty, candidate.submittedQty, 0) ||
@@ -1362,24 +1415,13 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
     };
   }
 
-  const snapshotAggregates = await loadSnapshotAggregates(cafeId, shifts, databaseKey);
-  const missingClosedIds = shifts
-    .filter((row) => row.status === 'closed' && !snapshotAggregates.shiftRowsById.has(row.id))
-    .map((row) => row.id);
-  const liveShiftRows = shifts.filter((row) => row.status === 'open' || missingClosedIds.includes(row.id));
-  const liveAggregates = await loadLiveAggregates(cafeId, liveShiftRows, actorMaps, databaseKey);
+  const liveAggregates = await loadLiveAggregates(cafeId, shifts, actorMaps, databaseKey);
 
-  const combinedShiftRowsById = new Map<string, ReportShiftRow>(snapshotAggregates.shiftRowsById);
-  const combinedProductsByShift = new Map<string, Map<string, ProductReportRow>>(snapshotAggregates.productsByShift);
-  const combinedStaffByShift = new Map<string, Map<string, StaffPerformanceRow>>(snapshotAggregates.staffByShift);
-  const combinedComplaintsByShift = new Map<string, ReportComplaintEntry[]>(snapshotAggregates.complaintsByShift);
-  const combinedItemIssuesByShift = new Map<string, ReportItemIssueEntry[]>(snapshotAggregates.itemIssuesByShift);
-
-  for (const [key, value] of liveAggregates.shiftRowsById.entries()) combinedShiftRowsById.set(key, value);
-  for (const [key, value] of liveAggregates.productsByShift.entries()) combinedProductsByShift.set(key, value);
-  for (const [key, value] of liveAggregates.staffByShift.entries()) combinedStaffByShift.set(key, value);
-  for (const [key, value] of liveAggregates.complaintsByShift.entries()) combinedComplaintsByShift.set(key, value);
-  for (const [key, value] of liveAggregates.itemIssuesByShift.entries()) combinedItemIssuesByShift.set(key, value);
+  const combinedShiftRowsById = new Map<string, ReportShiftRow>(liveAggregates.shiftRowsById);
+  const combinedProductsByShift = new Map<string, Map<string, ProductReportRow>>(liveAggregates.productsByShift);
+  const combinedStaffByShift = new Map<string, Map<string, StaffPerformanceRow>>(liveAggregates.staffByShift);
+  const combinedComplaintsByShift = new Map<string, ReportComplaintEntry[]>(liveAggregates.complaintsByShift);
+  const combinedItemIssuesByShift = new Map<string, ReportItemIssueEntry[]>(liveAggregates.itemIssuesByShift);
 
   const shiftRows = shifts
     .map((row) => combinedShiftRowsById.get(row.id))

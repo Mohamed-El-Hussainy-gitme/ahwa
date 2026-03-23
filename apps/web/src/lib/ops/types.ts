@@ -168,6 +168,9 @@ export type ReportTotals = {
   salesReconciliationGap: number;
   cashSales: number;
   deferredSales: number;
+  taxTotal: number;
+  serviceTotal: number;
+  extrasTotal: number;
   repaymentTotal: number;
   complaintTotal: number;
   complaintOpen: number;
@@ -217,6 +220,7 @@ export type ProductReportRow = {
 };
 
 export type StaffPerformanceRow = {
+  actorKey: string;
   actorLabel: string;
   submittedQty: number;
   readyQty: number;

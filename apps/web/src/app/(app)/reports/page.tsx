@@ -27,9 +27,7 @@ function formatMoney(value: number) {
 }
 
 function salesHint(totals: ReportTotals) {
-  return totals.salesReconciliationGap > 0
-    ? `تمت مواءمة البيع مع التحصيل (+${formatMoney(totals.salesReconciliationGap)} ج)`
-    : `الكاش + الآجل ${formatMoney(totals.recognizedSales)} ج`;
+  return totals.extrasTotal > 0 ? `+${formatMoney(totals.extrasTotal)} ج ضريبة + خدمة` : undefined;
 }
 function shiftKindLabel(kind: string) {
   return kind === 'morning' ? 'صباحي' : kind === 'evening' ? 'مسائي' : kind;
@@ -152,8 +150,8 @@ function InsightStrip({
 }) {
   const chips = [
     topProduct ? `الأعلى بيعًا: ${topProduct.productName} (${formatMoney(topProduct.netSales)} ج)` : 'لا يوجد منتج متصدر بعد',
-    topStaff ? `الأعلى تحصيلًا: ${topStaff.actorLabel} (${formatMoney(topStaff.paymentTotal)} ج)` : 'لا يوجد تحصيل مسجل بعد',
-    `الملاحظات: ${totals.itemIssueNote} • إعادة مجانية: ${totals.itemIssueRemake} • شكاوى عامة مفتوحة: ${totals.complaintOpen}`,
+    topStaff ? `الأعلى بيعًا: ${topStaff.actorLabel} (${formatMoney(topStaff.paymentTotal)} ج)` : 'لا يوجد بيع مسجل بعد',
+    `الملاحظات: ${totals.itemIssueNote} • إعادة مجانية: ${totals.remadeQty} • شكاوى عامة مفتوحة: ${totals.complaintOpen}`,
   ];
 
   return (
@@ -232,7 +230,7 @@ function StaffList({ items }: { items: StaffPerformanceRow[] }) {
   return (
     <div className="space-y-2">
       {ranked.map((row, index) => (
-        <div key={row.actorLabel} className="rounded-2xl border bg-white p-3 shadow-sm">
+        <div key={row.actorKey} className="rounded-2xl border bg-white p-3 shadow-sm">
           <div className="flex items-center justify-between gap-3">
             <div className="text-right">
               <div className="flex items-center gap-2">
@@ -244,7 +242,7 @@ function StaffList({ items }: { items: StaffPerformanceRow[] }) {
             </div>
             <div className="text-left">
               <div className="text-base font-bold">{formatMoney(row.paymentTotal)} ج</div>
-              <div className="mt-1 text-xs text-neutral-500">كاش {formatMoney(row.cashSales)} • آجل {formatMoney(row.deferredSales)}</div>
+              <div className="mt-1 text-xs text-neutral-500">كاش {formatMoney(row.cashSales)} • آجل {formatMoney(row.deferredSales)} • سداد {formatMoney(row.repaymentTotal)}</div>
             </div>
           </div>
         </div>
@@ -503,7 +501,7 @@ export default function ReportsPage() {
             subtitle={currentShift ? `${shiftKindLabel(currentShift.kind)} • ${currentShift.businessDate ?? ''}` : 'لا توجد وردية مفتوحة الآن'}
             totals={currentShift ?? {
               shiftCount: 0, submittedQty: 0, readyQty: 0, deliveredQty: 0, replacementDeliveredQty: 0, paidQty: 0, deferredQty: 0,
-              remadeQty: 0, cancelledQty: 0, waivedQty: 0, netSales: 0, itemNetSales: 0, recognizedSales: 0, salesReconciliationGap: 0, cashSales: 0, deferredSales: 0, repaymentTotal: 0,
+              remadeQty: 0, cancelledQty: 0, waivedQty: 0, netSales: 0, itemNetSales: 0, recognizedSales: 0, salesReconciliationGap: 0, cashSales: 0, deferredSales: 0, taxTotal: 0, serviceTotal: 0, extrasTotal: 0, repaymentTotal: 0,
               complaintTotal: 0, complaintOpen: 0, complaintResolved: 0, complaintDismissed: 0, complaintRemake: 0, complaintCancel: 0,
               complaintWaive: 0, itemIssueTotal: 0, itemIssueNote: 0, itemIssueRemake: 0, itemIssueCancel: 0, itemIssueWaive: 0,
               openSessions: 0, closedSessions: 0, totalSessions: 0,
@@ -512,7 +510,7 @@ export default function ReportsPage() {
           />
           <InsightStrip topProduct={currentTopProduct} topStaff={currentTopStaff} totals={currentShift ?? {
             shiftCount: 0, submittedQty: 0, readyQty: 0, deliveredQty: 0, replacementDeliveredQty: 0, paidQty: 0, deferredQty: 0,
-            remadeQty: 0, cancelledQty: 0, waivedQty: 0, netSales: 0, itemNetSales: 0, recognizedSales: 0, salesReconciliationGap: 0, cashSales: 0, deferredSales: 0, repaymentTotal: 0,
+            remadeQty: 0, cancelledQty: 0, waivedQty: 0, netSales: 0, itemNetSales: 0, recognizedSales: 0, salesReconciliationGap: 0, cashSales: 0, deferredSales: 0, taxTotal: 0, serviceTotal: 0, extrasTotal: 0, repaymentTotal: 0,
             complaintTotal: 0, complaintOpen: 0, complaintResolved: 0, complaintDismissed: 0, complaintRemake: 0, complaintCancel: 0,
             complaintWaive: 0, itemIssueTotal: 0, itemIssueNote: 0, itemIssueRemake: 0, itemIssueCancel: 0, itemIssueWaive: 0,
             openSessions: 0, closedSessions: 0, totalSessions: 0,
