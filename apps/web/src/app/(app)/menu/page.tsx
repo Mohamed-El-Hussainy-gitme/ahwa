@@ -1,11 +1,11 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { MenuWorkspace, OpsProduct, OpsSection, StationCode } from '@/lib/ops/types';
+import type { BillingExtrasSettings, MenuWorkspace, OpsProduct, OpsSection, StationCode } from '@/lib/ops/types';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { AccessDenied } from '@/ui/AccessState';
 
@@ -52,9 +52,21 @@ export default function MenuPage() {
     stationCode: 'barista' as StationCode,
     unitPrice: '',
   });
+  const [billingSettingsForm, setBillingSettingsForm] = useState<BillingExtrasSettings>({
+    taxEnabled: false,
+    taxRate: 0,
+    serviceEnabled: false,
+    serviceRate: 0,
+  });
 
   const loader = useCallback(() => opsClient.menuWorkspace(), []);
-  const { data, error } = useOpsWorkspace<MenuWorkspace>(loader, { enabled: can.manageMenu });
+  const { data, error, setData } = useOpsWorkspace<MenuWorkspace>(loader, { enabled: can.manageMenu });
+
+  useEffect(() => {
+    if (data?.billingSettings) {
+      setBillingSettingsForm(data.billingSettings);
+    }
+  }, [data?.billingSettings]);
 
   const activeSections = useMemo(() => (data?.sections ?? []).filter((section) => section.isActive !== false), [data?.sections]);
 
@@ -152,6 +164,23 @@ export default function MenuPage() {
       });
       setEditingProductId('');
       await completeAction('تم تحديث الصنف.');
+    },
+    { onError: setLocalError },
+  );
+
+  const saveBillingSettings = useOpsCommand(
+    async () => {
+      const payload = {
+        taxEnabled: billingSettingsForm.taxEnabled,
+        taxRate: Math.min(Math.max(Number(billingSettingsForm.taxRate ?? 0), 0), 100),
+        serviceEnabled: billingSettingsForm.serviceEnabled,
+        serviceRate: Math.min(Math.max(Number(billingSettingsForm.serviceRate ?? 0), 0), 100),
+      } satisfies BillingExtrasSettings;
+
+      const result = await opsClient.saveBillingSettings(payload);
+      setBillingSettingsForm(result.settings);
+      setData((current) => current ? { ...current, billingSettings: result.settings } : current);
+      await completeAction('تم حفظ إعدادات الضريبة والخدمة.');
     },
     { onError: setLocalError },
   );
@@ -266,6 +295,7 @@ export default function MenuPage() {
     updateSection.busy,
     createProduct.busy,
     updateProduct.busy,
+    saveBillingSettings.busy,
     toggleSection.busy,
     deleteSection.busy,
     reorderSections.busy,
@@ -299,6 +329,42 @@ export default function MenuPage() {
       ) : null}
 
       <div className="space-y-3">
+        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+          <div className="mb-2 text-sm font-semibold text-slate-800">إعدادات الضريبة والخدمة</div>
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <label className="flex items-center justify-between gap-3 text-sm font-semibold text-slate-800">
+                <span>تفعيل الضريبة</span>
+                <input type="checkbox" checked={billingSettingsForm.taxEnabled} onChange={(event) => setBillingSettingsForm((current) => ({ ...current, taxEnabled: event.target.checked }))} />
+              </label>
+              <input
+                value={String(billingSettingsForm.taxRate)}
+                onChange={(event) => setBillingSettingsForm((current) => ({ ...current, taxRate: Number(event.target.value || 0) }))}
+                placeholder="مثال 14"
+                inputMode="decimal"
+                className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none"
+              />
+              <div className="mt-2 text-xs text-slate-500">النسبة المئوية للضريبة. مثال: 14 يعني 14%.</div>
+            </div>
+
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+              <label className="flex items-center justify-between gap-3 text-sm font-semibold text-slate-800">
+                <span>تفعيل الخدمة</span>
+                <input type="checkbox" checked={billingSettingsForm.serviceEnabled} onChange={(event) => setBillingSettingsForm((current) => ({ ...current, serviceEnabled: event.target.checked }))} />
+              </label>
+              <input
+                value={String(billingSettingsForm.serviceRate)}
+                onChange={(event) => setBillingSettingsForm((current) => ({ ...current, serviceRate: Number(event.target.value || 0) }))}
+                placeholder="مثال 12"
+                inputMode="decimal"
+                className="mt-3 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none"
+              />
+              <div className="mt-2 text-xs text-slate-500">النسبة المئوية للخدمة على الفاتورة الواحدة.</div>
+            </div>
+          </div>
+          <button onClick={() => void saveBillingSettings.run()} disabled={busy} className="mt-3 w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">حفظ إعدادات الفاتورة</button>
+        </section>
+
         <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
           <div className="mb-2 text-sm font-semibold text-slate-800">إضافة قسم</div>
           <div className="space-y-2">

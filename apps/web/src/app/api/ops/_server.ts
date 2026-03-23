@@ -1,5 +1,6 @@
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import type {
+  BillingExtrasSettings,
   BillingSession,
   BillableItem,
   ComplaintItemCandidate,
@@ -137,7 +138,7 @@ export async function listBillableRows(cafeId: string, databaseKey: string, shif
 
 export async function buildMenuWorkspace(cafeId: string, databaseKey: string): Promise<MenuWorkspace> {
   const admin = adminOps(databaseKey);
-  const [{ data: sections, error: sectionsError }, { data: products, error: productsError }] = await Promise.all([
+  const [{ data: sections, error: sectionsError }, { data: products, error: productsError }, billingSettings] = await Promise.all([
     admin
       .from('menu_sections')
       .select('id, title, station_code, sort_order, is_active')
@@ -150,6 +151,7 @@ export async function buildMenuWorkspace(cafeId: string, databaseKey: string): P
       .order('section_id', { ascending: true })
       .order('sort_order', { ascending: true })
       .order('created_at', { ascending: true }),
+    loadBillingSettings(cafeId, databaseKey),
   ]);
 
   if (sectionsError) throw sectionsError;
@@ -178,7 +180,26 @@ export async function buildMenuWorkspace(cafeId: string, databaseKey: string): P
           isActive: Boolean(row.is_active),
         }) satisfies OpsProduct,
     ),
+    billingSettings,
   };
+}
+
+
+export async function loadBillingSettings(cafeId: string, databaseKey: string): Promise<BillingExtrasSettings> {
+  const { data, error } = await adminOps(databaseKey)
+    .from('cafe_billing_settings')
+    .select('tax_enabled, tax_rate, service_enabled, service_rate')
+    .eq('cafe_id', cafeId)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  return {
+    taxEnabled: Boolean(data?.tax_enabled),
+    taxRate: Number(data?.tax_rate ?? 0),
+    serviceEnabled: Boolean(data?.service_enabled),
+    serviceRate: Number(data?.service_rate ?? 0),
+  } satisfies BillingExtrasSettings;
 }
 
 function allowStationCode(stationCode: StationCode, allowed: readonly StationCode[] | null | undefined) {
@@ -454,9 +475,10 @@ export async function buildBillingWorkspace(cafeId: string, databaseKey: string)
     ? (await loadOpenSessions(cafeId, normalizedShift.id, databaseKey)).map((row: any) => String(row.id))
     : [];
 
-  const [items, deferredSummaries] = await Promise.all([
+  const [items, deferredSummaries, billingSettings] = await Promise.all([
     listBillableRows(cafeId, databaseKey, normalizedShift?.id ?? null, openSessionIds),
     loadDeferredCustomerSummaryRows(cafeId, databaseKey),
+    loadBillingSettings(cafeId, databaseKey),
   ]);
   const bySession = new Map<string, BillingSession>();
   for (const item of items) {
@@ -478,7 +500,7 @@ export async function buildBillingWorkspace(cafeId: string, databaseKey: string)
     .filter(Boolean)
     .sort((left, right) => left.localeCompare(right, 'ar'));
 
-  return { shift: normalizedShift, sessions: Array.from(bySession.values()), deferredNames };
+  return { shift: normalizedShift, sessions: Array.from(bySession.values()), deferredNames, billingSettings };
 }
 
 

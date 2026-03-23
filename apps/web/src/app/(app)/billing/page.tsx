@@ -5,12 +5,17 @@ import { useCallback, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { BillingWorkspace } from '@/lib/ops/types';
+import type { BillingTotals, BillingWorkspace } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { applyBillingToWorkspace } from '@/lib/ops/workspacePatches';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
+import { computeBillingTotals } from '@/lib/ops/billing';
+
+function formatMoney(value: number) {
+  return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
+}
 
 export default function BillingPage() {
   const { can, shift } = useAuthz();
@@ -18,6 +23,8 @@ export default function BillingPage() {
   const [debtorName, setDebtorName] = useState('');
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
   const [localError, setLocalError] = useState<string | null>(null);
+  const [lastReceiptUrl, setLastReceiptUrl] = useState<string | null>(null);
+  const [lastTotals, setLastTotals] = useState<BillingTotals | null>(null);
 
   const loader = useCallback(() => opsClient.billingWorkspace(), []);
   const { data, setData, error } = useOpsWorkspace<BillingWorkspace>(loader, { enabled: Boolean(shift) });
@@ -40,8 +47,10 @@ export default function BillingPage() {
     async () => {
       const currentSessionId = effectiveSessionId;
       const selected = allocations();
-      await opsClient.settleAndClose(selected);
+      const result = await opsClient.settleAndClose(selected);
       setSelectedQty({});
+      setLastReceiptUrl(result.receiptUrl);
+      setLastTotals(result.totals);
       setData((currentWorkspace) => applyBillingToWorkspace(currentWorkspace, currentSessionId, selected, 'settle'));
     },
     { onError: setLocalError },
@@ -51,9 +60,11 @@ export default function BillingPage() {
     async () => {
       const currentSessionId = effectiveSessionId;
       const selected = allocations();
-      await opsClient.deferAndClose(debtorName, selected);
+      const result = await opsClient.deferAndClose(debtorName, selected);
       setSelectedQty({});
       setDebtorName('');
+      setLastReceiptUrl(result.receiptUrl);
+      setLastTotals(result.totals);
       setData((currentWorkspace) => applyBillingToWorkspace(currentWorkspace, currentSessionId, selected, 'defer'));
     },
     { onError: setLocalError },
@@ -70,10 +81,11 @@ export default function BillingPage() {
   const busy = settleCommand.busy || deferCommand.busy;
   const selectedAllocations = allocations();
   const selectedQtyTotal = selectedAllocations.reduce((sum, item) => sum + item.quantity, 0);
-  const selectedAmountTotal = selectedAllocations.reduce((sum, item) => {
+  const selectedSubtotal = selectedAllocations.reduce((sum, item) => {
     const match = current?.items.find((candidate) => candidate.orderItemId === item.orderItemId);
     return sum + item.quantity * Number(match?.unitPrice ?? 0);
   }, 0);
+  const previewTotals = computeBillingTotals(selectedSubtotal, data?.billingSettings);
 
   return (
     <MobileShell
@@ -90,9 +102,31 @@ export default function BillingPage() {
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 text-right">
                 <div className="text-sm font-semibold text-slate-900">{current?.sessionLabel ?? 'اختر جلسة للحساب'}</div>
-                <div className="mt-1 text-xs text-slate-500">{selectedQtyTotal > 0 ? `المحدد ${selectedQtyTotal} • ${selectedAmountTotal} ج` : 'حدد البنود ثم اختر تحصيل أو ترحيل'}</div>
+                <div className="mt-1 text-xs text-slate-500">
+                  {selectedQtyTotal > 0
+                    ? `المحدد ${selectedQtyTotal} • قبل الإضافات ${formatMoney(previewTotals.subtotal)} ج • النهائي ${formatMoney(previewTotals.total)} ج`
+                    : 'حدد البنود ثم اختر تحصيل أو ترحيل'}
+                </div>
               </div>
             </div>
+
+            {(data?.billingSettings.taxEnabled || data?.billingSettings.serviceEnabled) && selectedQtyTotal > 0 ? (
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                {data?.billingSettings.taxEnabled ? <div>ضريبة: {formatMoney(previewTotals.taxAmount)} ج ({formatMoney(data.billingSettings.taxRate)}%)</div> : null}
+                {data?.billingSettings.serviceEnabled ? <div>خدمة: {formatMoney(previewTotals.serviceAmount)} ج ({formatMoney(data.billingSettings.serviceRate)}%)</div> : null}
+              </div>
+            ) : null}
+
+            {lastReceiptUrl ? (
+              <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
+                <div className="text-right text-emerald-800">
+                  <div className="font-semibold">تم إنشاء بون الفاتورة.</div>
+                  {lastTotals ? <div className="mt-1 text-xs">الإجمالي النهائي {formatMoney(lastTotals.total)} ج</div> : null}
+                </div>
+                <Link href={lastReceiptUrl} target="_blank" className="rounded-2xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white">طباعة البون</Link>
+              </div>
+            ) : null}
+
             <div className="grid grid-cols-2 gap-2">
               <button
                 disabled={busy || selectedQtyTotal === 0}
@@ -132,7 +166,11 @@ export default function BillingPage() {
             {(data?.sessions ?? []).map((session) => (
               <button
                 key={session.sessionId}
-                onClick={() => setSessionId(session.sessionId)}
+                onClick={() => {
+                  setSessionId(session.sessionId);
+                  setLastReceiptUrl(null);
+                  setLastTotals(null);
+                }}
                 className={[
                   'rounded-2xl border px-3 py-3 text-right',
                   effectiveSessionId === session.sessionId ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-800',
@@ -244,7 +282,7 @@ export default function BillingPage() {
       </section>
 
       <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-        تُغلق الجلسة تلقائيًا عندما تنتهي كل الكميات المسلّمة والمسددة أو المرحلة.
+        تُغلق الجلسة تلقائيًا عندما تنتهي كل الكميات المسلّمة والمسددة أو المرحلة. تقسيم الحساب حسب الكميات المحددة بقي كما هو ولم يتم المساس بمنطقه.
       </div>
     </MobileShell>
   );

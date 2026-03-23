@@ -36,8 +36,12 @@ export type WaiterWorkspace = { shift: OpsShift | null; sessions: OpsSessionSumm
 export type StationQueueItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; stationCode: StationCode; qtyWaitingOriginal: number; qtyWaitingReplacement: number; qtyWaiting: number; qtyReady: number; qtyDelivered: number; qtyReplacementDelivered: number; createdAt: string };
 export type StationWorkspace = { shift: OpsShift | null; stationCode: StationCode; queue: StationQueueItem[] };
 export type BillableItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; unitPrice: number; qtyBillable: number; qtyDelivered: number; qtyPaid: number; qtyDeferred: number; qtyWaived: number };
+export type BillingExtrasSettings = { taxEnabled: boolean; taxRate: number; serviceEnabled: boolean; serviceRate: number };
+export type BillingTotals = { subtotal: number; taxAmount: number; serviceAmount: number; total: number };
+export type BillingReceiptLine = { orderItemId: string; productName: string; quantity: number; unitPrice: number; lineAmount: number };
+export type BillingReceipt = { paymentId: string; paymentKind: 'cash' | 'deferred' | 'mixed' | 'repayment' | 'adjustment'; sessionId: string; sessionLabel: string; cafeName: string; debtorName: string | null; notes: string | null; createdAt: string; actorLabel: string; totals: BillingTotals; settings: BillingExtrasSettings; lines: BillingReceiptLine[] };
 export type BillingSession = { sessionId: string; sessionLabel: string; items: BillableItem[]; totalBillableAmount: number; totalBillableQty: number };
-export type BillingWorkspace = { shift: OpsShift | null; sessions: BillingSession[]; deferredNames: string[] };
+export type BillingWorkspace = { shift: OpsShift | null; sessions: BillingSession[]; deferredNames: string[]; billingSettings: BillingExtrasSettings };
 export type OpsQueueHealth = {
   oldestPendingMinutes: number | null;
   oldestReadyMinutes: number | null;
@@ -73,6 +77,7 @@ export type OpsNavSummary = {
 export type MenuWorkspace = {
   sections: OpsSection[];
   products: OpsProduct[];
+  billingSettings: BillingExtrasSettings;
 };
 
 

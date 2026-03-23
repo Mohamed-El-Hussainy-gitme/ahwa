@@ -9,6 +9,7 @@ function isPublicPath(path: string) {
     path === '/' ||
     path === '/login' ||
     path === '/owner-login' ||
+    path === '/owner-password' ||
     path === '/partner/login' ||
     path === '/platform/login' ||
     /^\/c\/[^/]+\/(login|activate)\/?$/.test(path) ||
@@ -45,7 +46,7 @@ function isRuntimeProtectedPath(path: string) {
     path.startsWith('/customers') ||
     path.startsWith('/menu') ||
     path.startsWith('/reports') ||
-    path.startsWith('/owner') ||
+    /^\/owner(?:\/|$)/.test(path) ||
     path.startsWith('/shift') ||
     path.startsWith('/staff')
   );

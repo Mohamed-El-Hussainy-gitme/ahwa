@@ -27,6 +27,15 @@ export default function OwnerLoginClient() {
     }
   }, [slugFromQuery]);
 
+  function resolveSafeNext() {
+    const next = sp.get("next");
+    if (!next || !next.startsWith("/")) return "/dashboard";
+    if (next === "/owner-password" || next.startsWith("/owner-password?") || next.startsWith("/owner-password/")) {
+      return "/dashboard";
+    }
+    return next;
+  }
+
   async function onSubmit() {
     setErr(null);
     if (!phone.trim() || !password.trim()) return;
@@ -46,8 +55,7 @@ export default function OwnerLoginClient() {
       if (resolvedSlug && typeof window !== "undefined") {
         localStorage.setItem("ahwa.lastCafeSlug", resolvedSlug);
       }
-      const next = sp.get("next");
-      r.replace(next && next.startsWith("/") ? next : "/dashboard");
+      r.replace(resolveSafeNext());
     } finally {
       setBusy(false);
     }

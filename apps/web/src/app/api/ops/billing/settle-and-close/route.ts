@@ -11,6 +11,7 @@ import {
   requireBillingAccess,
   requireOpsActorContext,
 } from '@/app/api/ops/_helpers';
+import { buildBillingReceiptUrl } from '@/lib/ops/billing';
 import { resolveBillingContext } from '@/app/api/ops/_billing';
 
 type SettleAllocationInput = {
@@ -27,7 +28,10 @@ type SettleRpcResult = {
   payment_id?: string;
   outbox_event_id?: string;
   total_quantity?: number;
-  total_amount?: number;
+  subtotal_amount?: number | string;
+  tax_amount?: number | string;
+  service_amount?: number | string;
+  total_amount?: number | string;
 };
 
 type CloseSessionRpcResult = {
@@ -89,7 +93,18 @@ export async function POST(req: Request) {
     }
 
     kickOpsOutboxDispatch(ctx);
-    const responseBody = { ok: true, sessionClosed };
+    const responseBody = {
+      ok: true,
+      sessionClosed,
+      paymentId,
+      receiptUrl: buildBillingReceiptUrl(paymentId),
+      totals: {
+        subtotal: Number(rpc.subtotal_amount ?? 0),
+        taxAmount: Number(rpc.tax_amount ?? 0),
+        serviceAmount: Number(rpc.service_amount ?? 0),
+        total: Number(rpc.total_amount ?? 0),
+      },
+    };
     await completeIdempotentMutation(ctx, mutation, responseBody);
     return ok(responseBody);
   } catch (e) {

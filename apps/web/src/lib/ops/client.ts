@@ -1,4 +1,5 @@
 import type {
+  BillingReceipt,
   BillingWorkspace,
   ComplaintsWorkspace,
   DashboardWorkspace,
@@ -6,6 +7,8 @@ import type {
   DeferredCustomerLedgerWorkspace,
   DeferredCustomerSummary,
   MenuWorkspace,
+  BillingExtrasSettings,
+  BillingTotals,
   OwnerOnboardingGuide,
   ReportsWorkspace,
   StationCode,
@@ -36,6 +39,7 @@ export const opsClient = {
   billingWorkspace: () => post<BillingWorkspace>('/api/ops/workspaces/billing'),
   complaintsWorkspace: () => post<ComplaintsWorkspace>('/api/ops/workspaces/complaints'),
   menuWorkspace: () => post<MenuWorkspace>('/api/ops/workspaces/menu'),
+  billingReceipt: (paymentId: string) => get<BillingReceipt>(`/api/ops/billing/receipt?paymentId=${encodeURIComponent(paymentId)}`),
   reportsWorkspace: () => post<ReportsWorkspace>('/api/ops/workspaces/reports'),
   deferredCustomersWorkspace: () =>
     post<{ items: DeferredCustomerSummary[] }>('/api/ops/workspaces/deferred-customers'),
@@ -43,6 +47,7 @@ export const opsClient = {
     post<DeferredCustomerLedgerWorkspace>('/api/ops/workspaces/deferred-customer-ledger', { debtorName }),
 
   ownerOnboardingGuide: () => get<OwnerOnboardingGuide>('/api/owner/onboarding/guide'),
+  saveBillingSettings: (input: BillingExtrasSettings) => mutate(post<{ ok: true; settings: BillingExtrasSettings }>('/api/owner/billing-settings', input), { invalidate: true }),
 
   openOrResumeSession: (label?: string) =>
     mutate(post<{ sessionId: string; label: string }>('/api/ops/sessions/open-or-resume', { label })),
@@ -94,22 +99,22 @@ export const opsClient = {
     })),
 
   settle: (allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    mutate(post<{ ok: true }>('/api/ops/billing/settle', { allocations }, {
+    mutate(post<{ ok: true; paymentId: string; receiptUrl: string; totals: BillingTotals }>('/api/ops/billing/settle', { allocations }, {
       idempotency: { scope: 'ops.billing.settle' },
     })),
 
   settleAndClose: (allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    mutate(post<{ ok: true; sessionClosed: boolean }>('/api/ops/billing/settle-and-close', { allocations }, {
+    mutate(post<{ ok: true; sessionClosed: boolean; paymentId: string; receiptUrl: string; totals: BillingTotals }>('/api/ops/billing/settle-and-close', { allocations }, {
       idempotency: { scope: 'ops.billing.settle-and-close' },
     })),
 
   defer: (debtorName: string, allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    mutate(post<{ ok: true }>('/api/ops/billing/defer', { debtorName, allocations }, {
+    mutate(post<{ ok: true; paymentId: string; receiptUrl: string; totals: BillingTotals }>('/api/ops/billing/defer', { debtorName, allocations }, {
       idempotency: { scope: 'ops.billing.defer' },
     })),
 
   deferAndClose: (debtorName: string, allocations: Array<{ orderItemId: string; quantity: number }>) =>
-    mutate(post<{ ok: true; sessionClosed: boolean }>('/api/ops/billing/defer-and-close', { debtorName, allocations }, {
+    mutate(post<{ ok: true; sessionClosed: boolean; paymentId: string; receiptUrl: string; totals: BillingTotals }>('/api/ops/billing/defer-and-close', { debtorName, allocations }, {
       idempotency: { scope: 'ops.billing.defer-and-close' },
     })),
 
