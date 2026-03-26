@@ -1,16 +1,27 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { MobileShell } from "@/ui/MobileShell";
-import { useAuthz } from "@/lib/authz";
-import { AccessDenied } from "@/ui/AccessState";
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { MobileShell } from '@/ui/MobileShell';
+import { useAuthz } from '@/lib/authz';
+import { AccessDenied } from '@/ui/AccessState';
 import { apiPost } from '@/lib/http/client';
 import { extractApiErrorMessage } from '@/lib/api/errors';
 import { RecoveryPanel } from '@/ui/ops/RecoveryPanel';
+import {
+  opsAccentButton,
+  opsBadge,
+  opsDashed,
+  opsGhostButton,
+  opsInset,
+  opsMetricCard,
+  opsPrimaryButton,
+  opsSelect,
+  opsSurface,
+} from '@/ui/ops/premiumStyles';
 
-type ShiftKind = "morning" | "evening";
-type ShiftRole = "supervisor" | "waiter" | "barista" | "shisha";
-type ShiftStatus = "open" | "closing" | "closed" | "draft" | "cancelled";
+type ShiftKind = 'morning' | 'evening';
+type ShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
+type ShiftStatus = 'open' | 'closing' | 'closed' | 'draft' | 'cancelled';
 
 type StaffEmploymentStatus = 'active' | 'inactive' | 'left';
 
@@ -130,33 +141,33 @@ type NormalizedSnapshot = {
 
 function roleLabel(role: ShiftRole) {
   switch (role) {
-    case "supervisor":
-      return "مشرف التشغيل";
-    case "waiter":
-      return "مضيف الصالة";
-    case "barista":
-      return "الباريستا";
-    case "shisha":
-      return "مختص الشيشة";
+    case 'supervisor':
+      return 'مشرف التشغيل';
+    case 'waiter':
+      return 'مضيف الصالة';
+    case 'barista':
+      return 'الباريستا';
+    case 'shisha':
+      return 'مختص الشيشة';
   }
 }
 
 function kindLabel(kind: ShiftKind) {
-  return kind === "morning" ? "صباحية" : "مسائية";
+  return kind === 'morning' ? 'صباحية' : 'مسائية';
 }
 
 function formatDateTime(value: string | null | undefined) {
-  if (!value) return "-";
-  return new Date(value).toLocaleString("ar-EG");
+  if (!value) return '-';
+  return new Date(value).toLocaleString('ar-EG');
 }
 
 function toNumber(value: string | number | null | undefined) {
-  const numeric = typeof value === "number" ? value : Number(value ?? 0);
+  const numeric = typeof value === 'number' ? value : Number(value ?? 0);
   return Number.isFinite(numeric) ? numeric : 0;
 }
 
 function formatMoney(value: string | number | null | undefined) {
-  return toNumber(value).toLocaleString("ar-EG");
+  return toNumber(value).toLocaleString('ar-EG');
 }
 
 function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapshot | null {
@@ -169,7 +180,7 @@ function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapsho
     Array.isArray(snapshot.employees) && snapshot.employees.length > 0
       ? snapshot.employees.map((item, index) => ({
           userId: item.userId ?? `employee-${index}`,
-          fullName: item.fullName ?? item.userId ?? "غير معروف",
+          fullName: item.fullName ?? item.userId ?? 'غير معروف',
           shiftRole: item.shiftRole,
           deliveredItemCount: toNumber(item.deliveredItemCount),
           preparedItemCount: toNumber(item.preparedItemCount),
@@ -179,7 +190,7 @@ function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapsho
       : Array.isArray(snapshot.staff)
         ? snapshot.staff.map((item, index) => ({
             userId: `staff-${index}`,
-            fullName: item.actor_label ?? "غير معروف",
+            fullName: item.actor_label ?? 'غير معروف',
             deliveredItemCount: toNumber(item.delivered_qty),
             preparedItemCount: toNumber(item.ready_qty),
             cashCollected: toNumber(item.payment_total),
@@ -187,33 +198,25 @@ function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapsho
           }))
         : [];
 
-  const itemNetSales = toNumber(
-    snapshot.summary?.netSales ??
-      snapshot.totals?.item_net_sales ??
-      snapshot.totals?.net_sales,
-  );
+  const itemNetSales = toNumber(snapshot.summary?.netSales ?? snapshot.totals?.item_net_sales ?? snapshot.totals?.net_sales);
   const reconciledNetSales = Math.max(itemNetSales, cashSales + deferredSales);
 
   return {
     shift: {
-      id: snapshot.shift?.shift_id ?? "",
-      businessDate: snapshot.shift?.business_date ?? "-",
-      status: snapshot.shift?.status ?? "-",
+      id: snapshot.shift?.shift_id ?? '',
+      businessDate: snapshot.shift?.business_date ?? '-',
+      status: snapshot.shift?.status ?? '-',
       openedAt: snapshot.shift?.opened_at ?? null,
       closedAt: snapshot.shift?.closed_at ?? null,
       snapshotTakenAt: snapshot.shift?.snapshotTakenAt ?? snapshot.shift?.closed_at ?? null,
-      snapshotPhase: snapshot.shift?.snapshotPhase ?? "ops",
+      snapshotPhase: snapshot.shift?.snapshotPhase ?? 'ops',
     },
     summary: {
       netSales: reconciledNetSales,
       cashSales,
       deferredSales,
-      deliveredItemCount: toNumber(
-        snapshot.summary?.deliveredItemCount ?? snapshot.totals?.delivered_qty,
-      ),
-      remadeItemCount: toNumber(
-        snapshot.summary?.remadeItemCount ?? snapshot.totals?.remade_qty,
-      ),
+      deliveredItemCount: toNumber(snapshot.summary?.deliveredItemCount ?? snapshot.totals?.delivered_qty),
+      remadeItemCount: toNumber(snapshot.summary?.remadeItemCount ?? snapshot.totals?.remade_qty),
     },
     employees,
   };
@@ -226,11 +229,11 @@ export default function ShiftPage() {
   const [actors, setActors] = useState<AssignableActorRow[]>([]);
   const [shift, setShift] = useState<ShiftRow | null>(null);
   const [history, setHistory] = useState<ShiftHistoryRow[]>([]);
-  const [assignments, setAssignments] = useState<Record<string, ShiftRole | "">>({});
+  const [assignments, setAssignments] = useState<Record<string, ShiftRole | ''>>({});
   const [currentAssignments, setCurrentAssignments] = useState<AssignmentRow[]>([]);
-  const [kind, setKind] = useState<ShiftKind>("morning");
-  const [openNotes, setOpenNotes] = useState("");
-  const [closeNotes, setCloseNotes] = useState("");
+  const [kind, setKind] = useState<ShiftKind>('morning');
+  const [openNotes, setOpenNotes] = useState('');
+  const [closeNotes, setCloseNotes] = useState('');
   const [snapshotBusyFor, setSnapshotBusyFor] = useState<string | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<RawShiftSnapshot | null>(null);
 
@@ -240,14 +243,11 @@ export default function ShiftPage() {
   );
 
   const selectedSupervisorId = useMemo(
-    () => Object.entries(assignments).find(([, role]) => role === "supervisor")?.[0] ?? "",
+    () => Object.entries(assignments).find(([, role]) => role === 'supervisor')?.[0] ?? '',
     [assignments],
   );
 
-  const snapshotView = useMemo(
-    () => normalizeSnapshot(selectedSnapshot),
-    [selectedSnapshot],
-  );
+  const snapshotView = useMemo(() => normalizeSnapshot(selectedSnapshot), [selectedSnapshot]);
 
   const canViewShift = can.viewShift;
   const canManageShift = can.owner;
@@ -256,12 +256,12 @@ export default function ShiftPage() {
     setMessage(null);
 
     const requests: Array<Promise<Response>> = [
-      fetch("/api/owner/shift/state", { cache: "no-store" }),
-      fetch("/api/owner/shift/history", { cache: "no-store" }),
+      fetch('/api/owner/shift/state', { cache: 'no-store' }),
+      fetch('/api/owner/shift/history', { cache: 'no-store' }),
     ];
 
     if (canManageShift) {
-      requests.unshift(fetch("/api/owner/shift/assignable-actors", { cache: "no-store" }));
+      requests.unshift(fetch('/api/owner/shift/assignable-actors', { cache: 'no-store' }));
     }
 
     const responses = await Promise.all(requests);
@@ -294,7 +294,7 @@ export default function ShiftPage() {
       setKind(stateJson.shift.kind as ShiftKind);
     }
 
-    const nextAssignments: Record<string, ShiftRole | ""> = {};
+    const nextAssignments: Record<string, ShiftRole | ''> = {};
     for (const item of (stateJson.assignments as AssignmentRow[] | undefined) ?? []) {
       nextAssignments[item.userId] = item.role;
     }
@@ -306,7 +306,7 @@ export default function ShiftPage() {
     void load();
   }, [canViewShift, load]);
 
-  function setRole(userId: string, role: ShiftRole | "") {
+  function setRole(userId: string, role: ShiftRole | '') {
     setAssignments((current) => ({ ...current, [userId]: role }));
   }
 
@@ -320,17 +320,17 @@ export default function ShiftPage() {
         actorType: actorTypeById.get(userId) ?? 'staff',
       }));
 
-    if (payloadAssignments.filter((item) => item.role === "supervisor").length !== 1) {
-      setMessage("يجب تحديد مشرف واحد فقط قبل فتح الوردية.");
+    if (payloadAssignments.filter((item) => item.role === 'supervisor').length !== 1) {
+      setMessage('يجب تحديد مشرف واحد فقط قبل فتح الوردية.');
       return;
     }
 
     setBusy(true);
     setMessage(null);
     try {
-      const res = await fetch("/api/owner/shift/open", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+      const res = await fetch('/api/owner/shift/open', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           kind,
           notes: openNotes || undefined,
@@ -342,7 +342,7 @@ export default function ShiftPage() {
         setMessage(extractApiErrorMessage(json, 'FAILED_TO_OPEN_SHIFT'));
         return;
       }
-      setOpenNotes("");
+      setOpenNotes('');
       await load();
       if (typeof json?.message === 'string' && json.message.trim()) {
         setMessage(json.message);
@@ -358,11 +358,11 @@ export default function ShiftPage() {
     setMessage(null);
     try {
       await apiPost<{ ok: true }>(
-        "/api/owner/shift/close",
+        '/api/owner/shift/close',
         { shiftId: shift.id, notes: closeNotes || undefined },
         { idempotency: { scope: 'owner.shift.close' } },
       );
-      setCloseNotes("");
+      setCloseNotes('');
       await load();
       await loadSnapshot(shift.id);
     } catch (error) {
@@ -376,9 +376,9 @@ export default function ShiftPage() {
     setSnapshotBusyFor(shiftId);
     setMessage(null);
     try {
-      const res = await fetch("/api/owner/shift/close-snapshot", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
+      const res = await fetch('/api/owner/shift/close-snapshot', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ shiftId }),
       });
       const json = await res.json().catch(() => null);
@@ -399,95 +399,98 @@ export default function ShiftPage() {
   return (
     <MobileShell title="الوردية" backHref={can.owner ? '/owner' : '/dashboard'}>
       {message ? (
-        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-right text-sm text-red-700">
+        <div className="mb-3 rounded-[22px] border border-[#e6c7c2] bg-[#fff7f5] p-3 text-right text-sm text-[#9a3e35]">
           {message}
         </div>
       ) : null}
 
       {!canManageShift && effectiveRole === 'supervisor' ? (
-        <div className="mb-3 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-right text-sm text-sky-900">
+        <div className="mb-3 rounded-[22px] border border-[#d6dee5] bg-[#f4f7f9] p-3 text-right text-sm text-[#3c617c]">
           يمكنك متابعة حالة الوردية الحالية والسناب شوت فقط، بينما الفتح والتقفيل وتوزيع الأدوار متاحة لصلاحيات الإدارة فقط.
         </div>
       ) : null}
 
-      <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-right text-sm text-slate-700">
-        {!shift
-          ? 'ابدأ من هنا فقط: اختر نوع الوردية، حدد مشرف التشغيل والباريستا وباقي الفريق، ثم اضغط فتح الوردية.'
-          : canManageShift
-            ? 'هذه الصفحة لإدارة حالة الوردية الحالية. إذا كانت الوردية مفتوحة فتستطيع مراجعة التعيينات ثم التقفيل بعد إنهاء الجلسات والحسابات.'
-            : 'هذه الصفحة للمتابعة فقط بالنسبة لك الآن. راقب حالة الوردية الحالية والسناب شوت، ولأي تعديل ارجع إلى المالك.'}
-      </div>
+      <section className={[opsSurface, 'mb-3 p-3'].join(' ')}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className="text-sm font-semibold text-[#1e1712]">حالة الوردية</div>
+            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
+              {!shift
+                ? 'ابدأ من هنا: اختر نوع الوردية، حدّد مشرف التشغيل وبقية الفريق، ثم افتح الوردية.'
+                : canManageShift
+                  ? 'راجع التعيينات الحالية ثم نفّذ تقفيل الوردية بعد إنهاء الجلسات والحسابات.'
+                  : 'هذه الصفحة للمتابعة فقط بالنسبة لك الآن. راقب حالة الوردية الحالية والسناب شوت، ولأي تعديل ارجع إلى المالك.'}
+            </div>
+          </div>
+          <div className={opsBadge(shift ? 'success' : 'accent')}>{shift ? 'وردية قائمة' : 'جاهز للفتح'}</div>
+        </div>
+      </section>
 
       {shift ? (
         <>
-          <section className="rounded-3xl border border-emerald-200/70 bg-emerald-50 p-4 shadow-sm">
+          <section className={[opsSurface, 'p-4'].join(' ')}>
             <div className="flex items-center justify-between gap-3">
               <div className="text-right">
-                <div className="text-sm font-bold text-emerald-950">وردية مفتوحة</div>
-                <div className="mt-1 text-xs text-emerald-900/70">
+                <div className="text-sm font-bold text-[#1e1712]">وردية مفتوحة</div>
+                <div className="mt-1 text-xs text-[#7d6a59]">
                   {kindLabel(shift.kind)} • {shift.businessDate ?? '-'}
                 </div>
-                <div className="mt-1 text-xs text-emerald-900/70">
-                  بدأت: {formatDateTime(shift.startedAt)}
-                </div>
+                <div className="mt-1 text-xs text-[#7d6a59]">بدأت: {formatDateTime(shift.startedAt)}</div>
               </div>
-              <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-2 text-xs font-semibold text-emerald-900">
+              <div className={opsBadge(shift.status === 'closing' ? 'warning' : 'success')}>
                 {shift.status === 'closing' ? 'قيد الإغلاق' : 'مفتوحة'}
               </div>
             </div>
 
-            <div className="mt-4 rounded-2xl border border-emerald-200/70 bg-white p-3">
-              <div className="text-right text-sm font-semibold text-emerald-950">
-                تعيينات الوردية الحالية
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <div className={opsMetricCard('info')}>
+                <div className="text-[11px] font-semibold opacity-70">التعيينات النشطة</div>
+                <div className="mt-1 text-xl font-black leading-none">{currentAssignments.length}</div>
               </div>
+              <div className={opsMetricCard('accent')}>
+                <div className="text-[11px] font-semibold opacity-70">نوع الوردية</div>
+                <div className="mt-1 text-xl font-black leading-none">{kindLabel(shift.kind)}</div>
+              </div>
+            </div>
+
+            <div className={[opsInset, 'mt-4 p-3'].join(' ')}>
+              <div className="text-right text-sm font-semibold text-[#1e1712]">تعيينات الوردية الحالية</div>
               <div className="mt-3 space-y-2">
-                {currentAssignments.length > 0
-                  ? currentAssignments.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center justify-between gap-2 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-2"
-                    >
-                      <div className="rounded-xl bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-900">
-                        {roleLabel(item.role)}
-                      </div>
-                      <div className="text-right text-sm font-semibold text-emerald-950">
-                        {item.fullName ?? item.id}{item.actorType === 'owner' ? ' • المالك' : ''}
-                      </div>
+                {currentAssignments.length > 0 ? currentAssignments.map((item) => (
+                  <div key={item.id} className={[opsInset, 'flex items-center justify-between gap-2 p-2'].join(' ')}>
+                    <div className={opsBadge('accent')}>{roleLabel(item.role)}</div>
+                    <div className="text-right text-sm font-semibold text-[#1e1712]">
+                      {item.fullName ?? item.id}
+                      {item.actorType === 'owner' ? ' • المالك' : ''}
                     </div>
-                  ))
-                  : (
-                    <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/30 p-3 text-right text-sm text-emerald-900/70">
-                      لا توجد تعيينات نشطة داخل هذه الوردية.
-                    </div>
-                  )}
+                  </div>
+                )) : (
+                  <div className={[opsDashed, 'p-3 text-right text-sm text-[#6b5a4c]'].join(' ')}>
+                    لا توجد تعيينات نشطة داخل هذه الوردية.
+                  </div>
+                )}
               </div>
             </div>
 
             {canManageShift ? (
               <>
                 <div className="mt-4">
-                  <label className="block text-right text-xs font-semibold text-emerald-900/70">
-                    ملاحظات الإغلاق
-                  </label>
+                  <label className="block text-right text-xs font-semibold text-[#7d6a59]">ملاحظات الإغلاق</label>
                   <textarea
-                    className="mt-1 min-h-24 w-full rounded-2xl border border-emerald-200/70 bg-white p-3 text-right"
+                    className="mt-1 min-h-24 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] p-3 text-right text-[#1e1712] outline-none placeholder:text-[#a08a75]"
                     value={closeNotes}
                     onChange={(event) => setCloseNotes(event.target.value)}
                     placeholder="ملاحظات اختيارية تحفظ مع سناب شوت الإغلاق"
                   />
                 </div>
 
-                <button
-                  disabled={busy}
-                  onClick={closeShift}
-                  className="mt-4 w-full rounded-2xl bg-red-600 py-3 text-sm font-semibold text-white disabled:opacity-50"
-                >
+                <button disabled={busy} onClick={closeShift} className={[opsPrimaryButton, 'mt-4 w-full bg-[#9a3e35]'].join(' ')}>
                   {busy ? '...' : 'تقفيل الوردية'}
                 </button>
               </>
             ) : null}
 
-            <div className="mt-3 text-right text-xs text-emerald-900/70">
+            <div className="mt-3 text-right text-xs leading-6 text-[#7d6a59]">
               الإغلاق يرفض وجود جلسات أو حسابات غير محسومة، ثم يأخذ سناب شوت للتقارير قبل قفل الوردية.
             </div>
           </section>
@@ -495,18 +498,16 @@ export default function ShiftPage() {
           {canManageShift ? <RecoveryPanel onResync={load} /> : null}
         </>
       ) : canManageShift ? (
-        <section className="rounded-3xl border border-amber-200/70 bg-white p-4 shadow-sm">
-          <div className="text-right font-bold text-amber-950">فتح وردية جديدة</div>
+        <section className={[opsSurface, 'p-4'].join(' ')}>
+          <div className="text-right font-bold text-[#1e1712]">فتح وردية جديدة</div>
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={() => setKind('morning')}
               className={[
-                'rounded-2xl border px-3 py-3 text-sm font-semibold',
-                kind === 'morning'
-                  ? 'border-amber-600 bg-amber-600 text-white'
-                  : 'border-amber-200/70 bg-amber-50 text-amber-950',
+                'rounded-[18px] border px-3 py-3 text-sm font-semibold',
+                kind === 'morning' ? 'border-[#1e1712] bg-[#1e1712] text-white' : 'border-[#dac9b6] bg-[#fffaf3] text-[#5e4d3f]',
               ].join(' ')}
             >
               صباحية
@@ -515,10 +516,8 @@ export default function ShiftPage() {
               type="button"
               onClick={() => setKind('evening')}
               className={[
-                'rounded-2xl border px-3 py-3 text-sm font-semibold',
-                kind === 'evening'
-                  ? 'border-amber-600 bg-amber-600 text-white'
-                  : 'border-amber-200/70 bg-amber-50 text-amber-950',
+                'rounded-[18px] border px-3 py-3 text-sm font-semibold',
+                kind === 'evening' ? 'border-[#1e1712] bg-[#1e1712] text-white' : 'border-[#dac9b6] bg-[#fffaf3] text-[#5e4d3f]',
               ].join(' ')}
             >
               مسائية
@@ -526,36 +525,29 @@ export default function ShiftPage() {
           </div>
 
           <div className="mt-4">
-            <label className="block text-right text-xs font-semibold text-amber-900/70">
-              ملاحظات الافتتاح
-            </label>
+            <label className="block text-right text-xs font-semibold text-[#7d6a59]">ملاحظات الافتتاح</label>
             <textarea
-              className="mt-1 min-h-24 w-full rounded-2xl border border-amber-200/70 bg-amber-50/50 p-3 text-right"
+              className="mt-1 min-h-24 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] p-3 text-right text-[#1e1712] outline-none placeholder:text-[#a08a75]"
               value={openNotes}
               onChange={(event) => setOpenNotes(event.target.value)}
               placeholder="ملاحظات اختيارية مع بداية الوردية"
             />
           </div>
 
-          <div className="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/60 p-3 text-right text-xs text-amber-900/80">
+          <div className="mt-3 rounded-[20px] border border-[#ead7bc] bg-[#f8ecdb] p-3 text-right text-xs leading-6 text-[#7c5222]">
             يمكنك تعيين نفسك داخل الوردية كمالك من نفس الشاشة. هذا التعيين يدخل في التقارير وسجل الوردية مثل باقي الأدوار.
           </div>
 
-          <div className="mt-4 rounded-3xl border border-amber-200/70 bg-amber-50/40 p-3">
-            <div className="mb-2 text-right text-sm font-semibold text-amber-950">
-              تعيين الأدوار
-            </div>
+          <div className={[opsInset, 'mt-4 p-3'].join(' ')}>
+            <div className="mb-2 text-right text-sm font-semibold text-[#1e1712]">تعيين الأدوار</div>
             <div className="space-y-2">
               {activeAssignableActors.map((item) => {
                 const currentRole = assignments[item.id] ?? '';
                 return (
-                  <div
-                    key={item.id}
-                    className="flex items-center gap-2 rounded-2xl border border-amber-200/70 bg-white p-2"
-                  >
+                  <div key={item.id} className={[opsInset, 'flex items-center gap-2 p-2'].join(' ')}>
                     <select
                       aria-label={item.actorType === 'owner' ? 'اختر دورك أنت كمالك في الوردية' : 'اختر دور عضو الفريق في الوردية'}
-                      className="w-1/2 rounded-2xl border border-amber-200/70 bg-amber-50/50 p-2"
+                      className={[opsSelect, 'w-1/2'].join(' ')}
                       value={currentRole}
                       onChange={(event) => setRole(item.id, event.target.value as ShiftRole | '')}
                     >
@@ -566,10 +558,11 @@ export default function ShiftPage() {
                       <option value="shisha">مختص الشيشة</option>
                     </select>
                     <div className="flex-1 text-right">
-                      <div className="text-sm font-semibold text-amber-950">
-                        {item.fullName ?? item.id}{item.actorType === 'owner' ? ' • المالك' : ''}
+                      <div className="text-sm font-semibold text-[#1e1712]">
+                        {item.fullName ?? item.id}
+                        {item.actorType === 'owner' ? ' • المالك' : ''}
                       </div>
-                      <div className="text-[11px] text-amber-900/60">
+                      <div className="text-[11px] text-[#8b7866]">
                         {currentRole ? `الدور الحالي: ${roleLabel(currentRole as ShiftRole)}` : 'بدون دور'}
                       </div>
                     </div>
@@ -579,7 +572,7 @@ export default function ShiftPage() {
             </div>
           </div>
 
-          <div className="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/60 p-3 text-right text-xs text-amber-900/80">
+          <div className="mt-3 rounded-[20px] border border-[#e5d7c7] bg-[#f8f1e7] p-3 text-right text-xs leading-6 text-[#6b5a4c]">
             المشرف المختار:{' '}
             <b>
               {selectedSupervisorId
@@ -588,91 +581,68 @@ export default function ShiftPage() {
             </b>
           </div>
 
-          <button
-            disabled={busy || activeAssignableActors.length === 0}
-            onClick={openShift}
-            className="mt-4 w-full rounded-2xl bg-amber-600 py-3 text-sm font-semibold text-white disabled:opacity-50"
-          >
+          <button disabled={busy || activeAssignableActors.length === 0} onClick={openShift} className={[opsAccentButton, 'mt-4 w-full'].join(' ')}>
             {busy ? '...' : 'فتح الوردية'}
           </button>
         </section>
       ) : (
-        <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="text-right text-sm text-slate-600">لا توجد وردية مفتوحة حاليًا.</div>
+        <section className={[opsSurface, 'p-4'].join(' ')}>
+          <div className="text-right text-sm text-[#6b5a4c]">لا توجد وردية مفتوحة حاليًا.</div>
         </section>
       )}
 
       {snapshotView ? (
-        <section className="mt-4 rounded-3xl border border-sky-200 bg-sky-50/60 p-4 shadow-sm">
+        <section className={[opsSurface, 'mt-4 p-4'].join(' ')}>
           <div className="flex items-center justify-between gap-3">
             <div className="text-right">
-              <div className="text-sm font-bold text-sky-950">سناب شوت الإغلاق</div>
-              <div className="mt-1 text-xs text-sky-900/70">
-                {snapshotView.shift.businessDate} • أُخذت اللقطة{" "}
-                {formatDateTime(snapshotView.shift.snapshotTakenAt)}
+              <div className="text-sm font-bold text-[#1e1712]">سناب شوت الإغلاق</div>
+              <div className="mt-1 text-xs text-[#7d6a59]">
+                {snapshotView.shift.businessDate} • أُخذت اللقطة {formatDateTime(snapshotView.shift.snapshotTakenAt)}
               </div>
             </div>
-            <div className="rounded-2xl border border-sky-200 bg-white px-3 py-2 text-xs font-semibold text-sky-900">
-              {snapshotView.shift.snapshotPhase ?? "ops"}
-            </div>
+            <div className={opsBadge('info')}>{snapshotView.shift.snapshotPhase ?? 'ops'}</div>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2">
-            <div className="rounded-2xl border border-sky-200 bg-white p-3 text-center">
-              <div className="text-xs text-sky-900/60">صافي المبيعات</div>
-              <div className="mt-1 text-base font-bold text-sky-950">
-                {formatMoney(snapshotView.summary.netSales)} ج
-              </div>
+            <div className={opsMetricCard('accent')}>
+              <div className="text-xs opacity-70">صافي المبيعات</div>
+              <div className="mt-1 text-base font-bold">{formatMoney(snapshotView.summary.netSales)} ج</div>
             </div>
-            <div className="rounded-2xl border border-sky-200 bg-white p-3 text-center">
-              <div className="text-xs text-sky-900/60">نقدي</div>
-              <div className="mt-1 text-base font-bold text-sky-950">
-                {formatMoney(snapshotView.summary.cashSales)} ج
-              </div>
+            <div className={opsMetricCard('success')}>
+              <div className="text-xs opacity-70">نقدي</div>
+              <div className="mt-1 text-base font-bold">{formatMoney(snapshotView.summary.cashSales)} ج</div>
             </div>
-            <div className="rounded-2xl border border-sky-200 bg-white p-3 text-center">
-              <div className="text-xs text-sky-900/60">آجل</div>
-              <div className="mt-1 text-base font-bold text-sky-950">
-                {formatMoney(snapshotView.summary.deferredSales)} ج
-              </div>
+            <div className={opsMetricCard('info')}>
+              <div className="text-xs opacity-70">آجل</div>
+              <div className="mt-1 text-base font-bold">{formatMoney(snapshotView.summary.deferredSales)} ج</div>
             </div>
-            <div className="rounded-2xl border border-sky-200 bg-white p-3 text-center">
-              <div className="text-xs text-sky-900/60">المسلّم / المرتجع</div>
-              <div className="mt-1 text-base font-bold text-sky-950">
-                {snapshotView.summary.deliveredItemCount} /{" "}
-                {snapshotView.summary.remadeItemCount}
+            <div className={opsMetricCard('warning')}>
+              <div className="text-xs opacity-70">المسلّم / المرتجع</div>
+              <div className="mt-1 text-base font-bold">
+                {snapshotView.summary.deliveredItemCount} / {snapshotView.summary.remadeItemCount}
               </div>
             </div>
           </div>
 
-          <div className="mt-3 rounded-2xl border border-sky-200 bg-white p-3">
-            <div className="text-right text-sm font-semibold text-sky-950">
-              ملخص الموظفين
-            </div>
+          <div className={[opsInset, 'mt-3 p-3'].join(' ')}>
+            <div className="text-right text-sm font-semibold text-[#1e1712]">ملخص الفريق</div>
             <div className="mt-2 space-y-2">
               {snapshotView.employees.map((item) => (
-                <div
-                  key={item.userId}
-                  className="flex items-center justify-between gap-2 rounded-2xl border border-sky-100 bg-sky-50/40 p-2"
-                >
-                  <div className="rounded-xl bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-900">
-                    {item.shiftRole ? roleLabel(item.shiftRole) : "ملخص"}
+                <div key={item.userId} className={[opsInset, 'flex items-center justify-between gap-2 p-2'].join(' ')}>
+                  <div className={opsBadge(item.shiftRole ? 'accent' : 'neutral')}>
+                    {item.shiftRole ? roleLabel(item.shiftRole) : 'ملخص'}
                   </div>
                   <div className="flex-1 text-right">
-                    <div className="text-sm font-semibold text-sky-950">
-                      {item.fullName}
-                    </div>
-                    <div className="mt-1 text-[11px] text-sky-900/70">
-                      تجهيز {item.preparedItemCount} • تسليم {item.deliveredItemCount} •
-                      نقدي {formatMoney(item.cashCollected)} • آجل{" "}
-                      {formatMoney(item.deferredBooked)}
+                    <div className="text-sm font-semibold text-[#1e1712]">{item.fullName}</div>
+                    <div className="mt-1 text-[11px] text-[#7d6a59]">
+                      تجهيز {item.preparedItemCount} • تسليم {item.deliveredItemCount} • نقدي {formatMoney(item.cashCollected)} • آجل {formatMoney(item.deferredBooked)}
                     </div>
                   </div>
                 </div>
               ))}
               {snapshotView.employees.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-sky-200 bg-sky-50/30 p-3 text-right text-sm text-sky-900/70">
-                  لا يوجد ملخص موظفين في هذه اللقطة.
+                <div className={[opsDashed, 'p-3 text-right text-sm text-[#6b5a4c]'].join(' ')}>
+                  لا يوجد ملخص فريق في هذه اللقطة.
                 </div>
               ) : null}
             </div>
@@ -680,38 +650,27 @@ export default function ShiftPage() {
         </section>
       ) : null}
 
-      <section className="mt-4 rounded-3xl border border-neutral-200 bg-white p-4 shadow-sm">
-        <div className="mb-2 text-right text-sm font-semibold text-neutral-950">
-          آخر الورديات
-        </div>
+      <section className={[opsSurface, 'mt-4 p-4'].join(' ')}>
+        <div className="mb-2 text-right text-sm font-semibold text-[#1e1712]">آخر الورديات</div>
         {history.length === 0 ? (
-          <div className="text-right text-sm text-neutral-500">لا توجد ورديات سابقة.</div>
+          <div className="text-right text-sm text-[#6b5a4c]">لا توجد ورديات سابقة.</div>
         ) : (
           <div className="space-y-2">
             {history.slice(0, 6).map((item) => (
-              <div
-                key={item.id}
-                className="rounded-2xl border border-neutral-200 bg-neutral-50 p-3 text-right"
-              >
+              <div key={item.id} className={[opsInset, 'p-3 text-right'].join(' ')}>
                 <div className="flex items-center justify-between gap-3">
                   <button
                     type="button"
                     onClick={() => void loadSnapshot(item.id)}
                     disabled={snapshotBusyFor === item.id || !item.endedAt}
-                    className="rounded-xl border border-neutral-200 bg-white px-3 py-2 text-xs font-semibold text-neutral-700 disabled:opacity-50"
+                    className={[opsGhostButton, 'disabled:opacity-50'].join(' ')}
                   >
-                    {snapshotBusyFor === item.id ? "..." : "عرض السناب شوت"}
+                    {snapshotBusyFor === item.id ? '...' : 'عرض السناب شوت'}
                   </button>
                   <div>
-                    <div className="text-sm font-semibold text-neutral-950">
-                      {kindLabel(item.kind)}
-                    </div>
-                    <div className="mt-1 text-xs text-neutral-600">
-                      بدأت: {formatDateTime(item.startedAt)}
-                    </div>
-                    <div className="mt-1 text-xs text-neutral-600">
-                      انتهت: {formatDateTime(item.endedAt)}
-                    </div>
+                    <div className="text-sm font-semibold text-[#1e1712]">{kindLabel(item.kind)}</div>
+                    <div className="mt-1 text-xs text-[#7d6a59]">بدأت: {formatDateTime(item.startedAt)}</div>
+                    <div className="mt-1 text-xs text-[#7d6a59]">انتهت: {formatDateTime(item.endedAt)}</div>
                   </div>
                 </div>
               </div>

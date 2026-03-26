@@ -40,20 +40,20 @@ export default function CustomerLedgerPrintPage() {
 
   return (
     <PrintPageFrame title={data?.debtorName ?? debtorName} exportFilename={`كشف-${debtorName}`} subtitle={data ? `الرصيد الحالي ${formatMoney(data.balance)} ج` : 'جاري التحميل...'}>
-      {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-      {!data && !error ? <div className="rounded-2xl border border-dashed p-4 text-sm text-neutral-500">جاري تجهيز الكشف...</div> : null}
+      {error ? <div className="rounded-2xl border border-[#e6c7c2] bg-[#fff3f1] p-3 text-sm text-[#9a3e35]">{error}</div> : null}
+      {!data && !error ? <div className="rounded-2xl border border-dashed p-4 text-sm text-[#8a7763]">جاري تجهيز الكشف...</div> : null}
       {data ? (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div className="rounded-2xl border bg-neutral-50 p-3 text-center"><div className="text-xs text-neutral-500">الرصيد</div><div className="mt-1 text-lg font-bold">{formatMoney(data.balance)} ج</div></div>
-            <div className="rounded-2xl border bg-neutral-50 p-3 text-center"><div className="text-xs text-neutral-500">إجمالي الترحيل</div><div className="mt-1 text-lg font-bold">{formatMoney(data.debtTotal)} ج</div></div>
-            <div className="rounded-2xl border bg-neutral-50 p-3 text-center"><div className="text-xs text-neutral-500">إجمالي السداد</div><div className="mt-1 text-lg font-bold">{formatMoney(data.repaymentTotal)} ج</div></div>
-            <div className="rounded-2xl border bg-neutral-50 p-3 text-center"><div className="text-xs text-neutral-500">عدد الحركات</div><div className="mt-1 text-lg font-bold">{data.entryCount}</div></div>
+            <div className="rounded-2xl border bg-[#f8f1e7] p-3 text-center"><div className="text-xs text-[#8a7763]">الرصيد</div><div className="mt-1 text-lg font-bold">{formatMoney(data.balance)} ج</div></div>
+            <div className="rounded-2xl border bg-[#f8f1e7] p-3 text-center"><div className="text-xs text-[#8a7763]">إجمالي الترحيل</div><div className="mt-1 text-lg font-bold">{formatMoney(data.debtTotal)} ج</div></div>
+            <div className="rounded-2xl border bg-[#f8f1e7] p-3 text-center"><div className="text-xs text-[#8a7763]">إجمالي السداد</div><div className="mt-1 text-lg font-bold">{formatMoney(data.repaymentTotal)} ج</div></div>
+            <div className="rounded-2xl border bg-[#f8f1e7] p-3 text-center"><div className="text-xs text-[#8a7763]">عدد الحركات</div><div className="mt-1 text-lg font-bold">{data.entryCount}</div></div>
           </div>
 
           <table className="w-full border-collapse text-sm">
             <thead>
-              <tr className="border-b bg-neutral-50 text-right">
+              <tr className="border-b bg-[#f8f1e7] text-right">
                 <th className="px-3 py-2">الوقت</th>
                 <th className="px-3 py-2">النوع</th>
                 <th className="px-3 py-2">المبلغ</th>
@@ -76,7 +76,7 @@ export default function CustomerLedgerPrintPage() {
         </div>
       ) : null}
       <div className="mt-4 print:hidden">
-        <Link href={`/customers/${encodeURIComponent(debtorName)}`} className="text-sm font-semibold text-neutral-700 underline underline-offset-4">العودة إلى كشف العميل</Link>
+        <Link href={`/customers/${encodeURIComponent(debtorName)}`} className="text-sm font-semibold text-[#5e4d3f] underline underline-offset-4">العودة إلى كشف العميل</Link>
       </div>
     </PrintPageFrame>
   );

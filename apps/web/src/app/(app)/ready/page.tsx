@@ -11,6 +11,7 @@ import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { MobileShell } from '@/ui/MobileShell';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { clampPositive } from '@/ui/ops/sessionHelpers';
+import { opsBadge, opsGhostButton, opsMetricCard, opsSurface } from '@/ui/ops/premiumStyles';
 
 export default function ReadyPage() {
   const { can, shift, effectiveRole } = useAuthz();
@@ -35,6 +36,8 @@ export default function ReadyPage() {
 
   const readyItems = useMemo(() => data?.readyItems ?? [], [data?.readyItems]);
   const effectiveError = localError ?? error ?? null;
+  const readyTotal = readyItems.reduce((sum, item) => sum + item.qtyReadyForDelivery, 0);
+  const replacements = readyItems.reduce((sum, item) => sum + item.qtyReadyForReplacementDelivery, 0);
 
   if (!shift) return <ShiftRequired title="جاهز" />;
   if (can.owner || !canAccess) {
@@ -44,17 +47,43 @@ export default function ReadyPage() {
   return (
     <MobileShell
       title="جاهز"
-      topRight={<Link href="/support?source=in_app&page=/ready" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>}
+      topRight={<Link href="/support?source=in_app&page=/ready" className={opsGhostButton}>دعم</Link>}
     >
       {effectiveError ? (
-        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-3 rounded-[22px] border border-[#e6c7c2] bg-[#fff7f5] p-3 text-sm text-[#9a3e35]">
           {effectiveError}
         </div>
       ) : null}
 
+      <section className={[opsSurface, 'mb-3 p-3'].join(' ')}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className="text-sm font-semibold text-[#1e1712]">تسليم الجاهز</div>
+            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
+              راقب البنود الجاهزة وسلمها مباشرة إلى الجلسة الصحيحة مع المحافظة على وضوح البنود البديلة المجانية.
+            </div>
+          </div>
+          <div className={opsBadge('success')}>خدمة الصالة</div>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className={opsMetricCard('success')}>
+            <div className="text-[11px] font-semibold opacity-70">عدد البنود</div>
+            <div className="mt-1 text-xl font-black leading-none">{readyItems.length}</div>
+          </div>
+          <div className={opsMetricCard('info')}>
+            <div className="text-[11px] font-semibold opacity-70">إجمالي الجاهز</div>
+            <div className="mt-1 text-xl font-black leading-none">{readyTotal}</div>
+          </div>
+          <div className={opsMetricCard('warning')}>
+            <div className="text-[11px] font-semibold opacity-70">بدائل مجانية</div>
+            <div className="mt-1 text-xl font-black leading-none">{replacements}</div>
+          </div>
+        </div>
+      </section>
+
       <section id="ready-panel">
         <ReadyDeliveryPanel
-          title="جاهز"
+          title="جاهز للتسليم"
           items={readyItems}
           selectedQty={readySelection}
           onChangeQty={(orderItemId, nextQty, maxQty) => {

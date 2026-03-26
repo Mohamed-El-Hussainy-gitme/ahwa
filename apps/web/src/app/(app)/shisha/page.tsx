@@ -20,6 +20,19 @@ import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
+import {
+  opsAccentButton,
+  opsAlert,
+  opsBadge,
+  opsEmptyState,
+  opsGhostButton,
+  opsInput,
+  opsMetricCard,
+  opsPrimaryButton,
+  opsSectionHint,
+  opsSectionTitle,
+  opsSurface,
+} from '@/ui/ops/premiumStyles';
 
 export default function ShishaPage() {
   const { can, shift, effectiveRole } = useAuthz();
@@ -126,8 +139,7 @@ export default function ShishaPage() {
 
   const submitCommand = useOpsCommand(
     async () => {
-      if (!orderData) return;
-      if (!draftLines.length) return;
+      if (!orderData || !draftLines.length) return;
 
       if (creatingNew || !effectiveSessionId) {
         const created = await opsClient.openAndCreateOrder({
@@ -208,17 +220,11 @@ export default function ShishaPage() {
       topRight={
         <div className="flex gap-2">
           {can.owner || can.billing ? (
-            <Link
-              href="/complaints"
-              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-            >
+            <Link href="/complaints" className={opsGhostButton}>
               شكاوى
             </Link>
           ) : null}
-          <Link
-            href="/support?source=in_app&page=/shisha"
-            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-          >
+          <Link href="/support?source=in_app&page=/shisha" className={opsGhostButton}>
             دعم
           </Link>
         </div>
@@ -227,86 +233,89 @@ export default function ShishaPage() {
         <StickyActionBar>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 text-right">
-              <div className="text-sm font-semibold text-slate-900">
+              <div className="text-sm font-semibold text-[#1e1712]">
                 {creatingNew ? 'جلسة شيشة جديدة' : currentSessionLabel || 'اختر جلسة شيشة'}
               </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر أصناف الشيشة ثم أرسل مرة واحدة'}
+              <div className="mt-1 text-xs text-[#7d6a59]">
+                {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر أصناف الشيشة ثم أرسل الطلب دفعة واحدة'}
               </div>
             </div>
             <button
               type="button"
               onClick={() => void submitCommand.run()}
               disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
-              className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              className={[opsPrimaryButton, 'shrink-0'].join(' ')}
             >
-              {submitCommand.busy ? '...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
+              {submitCommand.busy ? 'جارٍ الإرسال...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
             </button>
           </div>
         </StickyActionBar>
       }
     >
-      {effectiveError ? (
-        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {effectiveError}
-        </div>
-      ) : null}
+      {effectiveError ? <div className={`mb-3 ${opsAlert('danger')}`}>{effectiveError}</div> : null}
+      {sessionWarning ? <div className={`mb-3 ${opsAlert('warning')} font-semibold`}>{sessionWarning}</div> : null}
 
-      {sessionWarning ? (
-        <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
-          {sessionWarning}
+      <section className={`${opsSurface} mb-3 p-3`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className={opsSectionTitle}>محطة الشيشة</div>
+            <div className={`mt-1 ${opsSectionHint}`}>
+              افتح جلسة أو اختر الجلسة الحالية، ثم أضف أصناف الشيشة وتابع الطابور والجاهز من نفس المساحة.
+            </div>
+          </div>
+          <div className={opsBadge('accent')}>{creatingNew ? 'جلسة جديدة' : 'تشغيل مباشر'}</div>
         </div>
-      ) : null}
-
-      <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs font-semibold text-slate-600">
-        اختر جلسة شيشة أو أنشئ جلسة جديدة ثم أضف الأصناف.
-      </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className={opsMetricCard('warning')}>
+            <div className="text-[11px] font-semibold opacity-70">قيد الانتظار</div>
+            <div className="mt-1 text-xl font-black leading-none">{totalQueueWaiting}</div>
+          </div>
+          <div className={opsMetricCard('success')}>
+            <div className="text-[11px] font-semibold opacity-70">جاهز للتسليم</div>
+            <div className="mt-1 text-xl font-black leading-none">{readyItems.length}</div>
+          </div>
+          <div className={opsMetricCard('info')}>
+            <div className="text-[11px] font-semibold opacity-70">الجلسات</div>
+            <div className="mt-1 text-xl font-black leading-none">{sessions.length}</div>
+          </div>
+        </div>
+      </section>
 
       <div className="space-y-3">
-        <section id="sessions-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+        <section id="sessions-panel" className={`${opsSurface} p-3`}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              {sessions.length ? (
-                <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                  {sessions.length}
-                </div>
-              ) : null}
-              <div className="text-sm font-semibold text-slate-800">جلسات الشيشة المفتوحة</div>
+              {sessions.length ? <div className={opsBadge('info')}>{sessions.length}</div> : null}
+              <div className={opsSectionTitle}>جلسات الشيشة المفتوحة</div>
             </div>
-            <button
-              type="button"
-              onClick={beginNewSession}
-              className="rounded-2xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm"
-            >
+            <button type="button" onClick={beginNewSession} className={opsAccentButton}>
               + جلسة شيشة جديدة
             </button>
           </div>
 
           {sessions.length ? (
             <div className="grid grid-cols-2 gap-2">
-              {sessions.map((session) => (
-                <button
-                  key={session.id}
-                  type="button"
-                  onClick={() => selectExistingSession(session.id)}
-                  className={[
-                    'rounded-2xl border px-3 py-3 text-right',
-                    !creatingNew && effectiveSessionId === session.id
-                      ? 'border-slate-900 bg-slate-900 text-white'
-                      : 'border-slate-200 bg-slate-50 text-slate-800',
-                  ].join(' ')}
-                >
-                  <div className="truncate text-sm font-bold">{session.label}</div>
-                  <div
+              {sessions.map((session) => {
+                const active = !creatingNew && effectiveSessionId === session.id;
+                return (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => selectExistingSession(session.id)}
                     className={[
-                      'mt-1 text-xs',
-                      !creatingNew && effectiveSessionId === session.id ? 'text-slate-200' : 'text-slate-500',
+                      'rounded-[20px] border px-3 py-3 text-right transition duration-150 hover:-translate-y-[1px]',
+                      active
+                        ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]'
+                        : 'border-[#decdb9] bg-[#f8f1e7] text-[#2f241b] hover:bg-[#f3e8da]',
                     ].join(' ')}
                   >
-                    جاهز {session.readyCount} • للحساب {session.billableCount}
-                  </div>
-                </button>
-              ))}
+                    <div className="truncate text-sm font-bold">{session.label}</div>
+                    <div className={['mt-1 text-xs', active ? 'text-white/75' : 'text-[#8a7763]'].join(' ')}>
+                      جاهز {session.readyCount} • للحساب {session.billableCount}
+                    </div>
+                  </button>
+                );
+              })}
             </div>
           ) : null}
 
@@ -316,36 +325,23 @@ export default function ShishaPage() {
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="اسم أو رقم الجلسة الجديدة"
-                className="w-full rounded-2xl border border-slate-200 px-3 py-3 text-right"
+                className={opsInput}
               />
-              <div className="text-xs text-slate-500">يمكن ترك الاسم فارغًا ليولده النظام تلقائيًا.</div>
+              <div className="text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولده النظام تلقائيًا.</div>
             </div>
           ) : null}
 
-          {!sessions.length && !creatingNew ? (
-            <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              لا توجد جلسات شيشة مفتوحة الآن.
-            </div>
-          ) : null}
-
-          {!sections.length ? (
-            <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              لا توجد أقسام منيو شيشة متاحة الآن.
-            </div>
-          ) : null}
+          {!sessions.length && !creatingNew ? <div className={`mt-3 ${opsEmptyState()}`}>لا توجد جلسات شيشة مفتوحة الآن.</div> : null}
+          {!sections.length ? <div className={`mt-3 ${opsEmptyState('warning')}`}>لا توجد أقسام منيو شيشة متاحة الآن.</div> : null}
         </section>
 
-        <section id="menu-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+        <section id="menu-panel" className={`${opsSurface} p-3`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-slate-800">منيو الشيشة</div>
+            <div className={opsSectionTitle}>منيو الشيشة</div>
             {creatingNew ? (
-              <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                جلسة جديدة
-              </div>
+              <div className={opsBadge('accent')}>جلسة جديدة</div>
             ) : currentSessionLabel ? (
-              <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                {currentSessionLabel}
-              </div>
+              <div className={opsBadge('info')}>{currentSessionLabel}</div>
             ) : null}
           </div>
 
@@ -356,10 +352,10 @@ export default function ShishaPage() {
                 type="button"
                 onClick={() => setSelectedSectionId(section.id)}
                 className={[
-                  'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
+                  'rounded-[18px] border px-3 py-2 text-sm font-semibold whitespace-nowrap transition duration-150',
                   effectiveSelectedSectionId === section.id
-                    ? 'border-emerald-600 bg-emerald-600 text-white'
-                    : 'border-slate-200 bg-slate-50 text-slate-700',
+                    ? 'border-[#9b6b2e] bg-[#9b6b2e] text-white shadow-[0_12px_24px_rgba(155,107,46,0.18)]'
+                    : 'border-[#dac9b6] bg-[#fffaf3] text-[#5e4d3f] hover:bg-[#f4eadc]',
                 ].join(' ')}
               >
                 {section.title}
@@ -367,54 +363,56 @@ export default function ShishaPage() {
             ))}
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {filteredProducts.map((product) => (
-              <div key={product.id} className="rounded-2xl border border-slate-200 p-3">
-                <div className="text-sm font-semibold text-slate-900">{product.name}</div>
-                <div className="mt-1 text-xs text-slate-500">{product.unitPrice}</div>
-                <div className="mt-3 flex items-center justify-between">
-                  <button
-                    type="button"
-                    onClick={() => dec(product.id)}
-                    className="h-10 w-10 rounded-2xl border border-slate-200"
-                  >
-                    -
-                  </button>
-                  <div className="text-lg font-bold">{draft[product.id] ?? 0}</div>
-                  <button
-                    type="button"
-                    onClick={() => inc(product.id)}
-                    className="h-10 w-10 rounded-2xl bg-slate-900 text-white"
-                  >
-                    +
-                  </button>
+          {filteredProducts.length ? (
+            <div className="grid grid-cols-2 gap-2">
+              {filteredProducts.map((product) => (
+                <div key={product.id} className="rounded-[20px] border border-[#e1d4c4] bg-[#fffdf8] p-3 shadow-[0_8px_24px_rgba(30,23,18,0.05)]">
+                  <div className="text-sm font-semibold text-[#1e1712]">{product.name}</div>
+                  <div className="mt-1 text-xs text-[#7d6a59]">{product.unitPrice}</div>
+                  <div className="mt-3 flex items-center justify-between">
+                    <button
+                      type="button"
+                      onClick={() => dec(product.id)}
+                      className="h-10 w-10 rounded-[16px] border border-[#d8c7b3] bg-white text-lg font-bold text-[#5e4d3f] transition duration-150 hover:-translate-y-[1px]"
+                    >
+                      -
+                    </button>
+                    <div className="text-lg font-black text-[#1e1712]">{draft[product.id] ?? 0}</div>
+                    <button
+                      type="button"
+                      onClick={() => inc(product.id)}
+                      className="h-10 w-10 rounded-[16px] bg-[#1e1712] text-lg font-bold text-white transition duration-150 hover:-translate-y-[1px]"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className={opsEmptyState('accent')}>لا توجد أصناف ظاهرة في هذا القسم الآن.</div>
+          )}
         </section>
 
         <section id="queue-panel" className="space-y-3">
           {queue.map((item) => {
             const qty = Math.max(1, Math.min(queueSelection[item.orderItemId] ?? 1, item.qtyWaiting));
             return (
-              <div key={item.orderItemId} className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+              <div key={item.orderItemId} className={`${opsSurface} p-3`}>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 text-right">
-                    <div className="text-xs font-semibold text-slate-500">{item.sessionLabel}</div>
-                    <div className="mt-1 text-base font-bold text-slate-900">{item.productName}</div>
+                    <div className="text-xs font-semibold text-[#8d7967]">{item.sessionLabel}</div>
+                    <div className="mt-1 text-base font-bold text-[#1e1712]">{item.productName}</div>
                   </div>
-                  <div className="rounded-2xl bg-slate-900 px-3 py-2 text-center text-white">
-                    <div className="text-[10px] font-semibold text-white/70">الكمية</div>
+                  <div className="rounded-[18px] bg-[#1e1712] px-3 py-2 text-center text-white shadow-[0_12px_24px_rgba(30,23,18,0.14)]">
+                    <div className="text-[10px] font-semibold text-white/75">الكمية</div>
                     <div className="text-xl font-black leading-none">{item.qtyWaiting}</div>
                   </div>
                 </div>
 
                 {item.qtyWaitingReplacement > 0 ? (
                   <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                    <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">
-                      إعادة مجانية {item.qtyWaitingReplacement}
-                    </span>
+                    <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span>
                   </div>
                 ) : null}
 
@@ -430,7 +428,7 @@ export default function ShishaPage() {
                     type="button"
                     disabled={readyCommand.busy}
                     onClick={() => void readyCommand.run(item, qty)}
-                    className="rounded-2xl border border-slate-200 px-3 py-3 font-semibold text-slate-700 disabled:opacity-40"
+                    className={opsGhostButton}
                   >
                     تجهيز المحدد
                   </button>
@@ -438,7 +436,7 @@ export default function ShishaPage() {
                     type="button"
                     disabled={readyCommand.busy}
                     onClick={() => void readyCommand.run(item, item.qtyWaiting)}
-                    className="rounded-2xl bg-slate-900 px-3 py-3 font-semibold text-white disabled:opacity-40"
+                    className={opsPrimaryButton}
                   >
                     تجهيز الكل
                   </button>
@@ -447,11 +445,7 @@ export default function ShishaPage() {
             );
           })}
 
-          {!queue.length ? (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
-              لا يوجد طلبات شيشة الآن.
-            </div>
-          ) : null}
+          {!queue.length ? <div className={opsEmptyState()}>لا توجد طلبات شيشة الآن.</div> : null}
         </section>
 
         <section id="ready-panel">
@@ -464,7 +458,7 @@ export default function ShishaPage() {
             }}
             onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
             busy={deliverCommand.busy}
-            emptyLabel="لا يوجد شيشة جاهزة للتسليم"
+            emptyLabel="لا توجد شيشة جاهزة للتسليم الآن."
             compact
           />
         </section>

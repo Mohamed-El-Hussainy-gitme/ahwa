@@ -34,12 +34,12 @@ export default function CustomersPrintPage() {
 
   return (
     <PrintPageFrame title="دفتر الآجل" exportFilename="دفتر-الآجل" subtitle={data ? `إجمالي الرصيد المفتوح ${formatMoney(totalDebt)} ج` : 'جاري التحميل...'}>
-      {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
-      {!data && !error ? <div className="rounded-2xl border border-dashed p-4 text-sm text-neutral-500">جاري تجهيز النسخة القابلة للطباعة...</div> : null}
+      {error ? <div className="rounded-2xl border border-[#e6c7c2] bg-[#fff3f1] p-3 text-sm text-[#9a3e35]">{error}</div> : null}
+      {!data && !error ? <div className="rounded-2xl border border-dashed p-4 text-sm text-[#8a7763]">جاري تجهيز النسخة القابلة للطباعة...</div> : null}
       {data ? (
         <table className="w-full border-collapse text-sm">
           <thead>
-            <tr className="border-b bg-neutral-50 text-right">
+            <tr className="border-b bg-[#f8f1e7] text-right">
               <th className="px-3 py-2">الاسم</th>
               <th className="px-3 py-2">الرصيد</th>
               <th className="px-3 py-2">الحالة</th>
@@ -61,7 +61,7 @@ export default function CustomersPrintPage() {
         </table>
       ) : null}
       <div className="mt-4 print:hidden">
-        <Link href="/customers" className="text-sm font-semibold text-neutral-700 underline underline-offset-4">العودة إلى دفتر الآجل</Link>
+        <Link href="/customers" className="text-sm font-semibold text-[#5e4d3f] underline underline-offset-4">العودة إلى دفتر الآجل</Link>
       </div>
     </PrintPageFrame>
   );

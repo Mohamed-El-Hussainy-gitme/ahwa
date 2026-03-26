@@ -13,6 +13,16 @@ import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
+import {
+  opsAccentButton,
+  opsBadge,
+  opsDashed,
+  opsGhostButton,
+  opsInset,
+  opsMetricCard,
+  opsPrimaryButton,
+  opsSurface,
+} from '@/ui/ops/premiumStyles';
 
 export default function OrdersPage() {
   const { can, shift, effectiveRole } = useAuthz();
@@ -156,17 +166,11 @@ export default function OrdersPage() {
       topRight={
         <div className="flex gap-2">
           {can.owner || can.billing ? (
-            <Link
-              href="/complaints"
-              className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-            >
+            <Link href="/complaints" className={opsGhostButton}>
               شكاوى
             </Link>
           ) : null}
-          <Link
-            href="/support?source=in_app&page=/orders"
-            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-          >
+          <Link href="/support?source=in_app&page=/orders" className={opsGhostButton}>
             دعم
           </Link>
         </div>
@@ -175,18 +179,18 @@ export default function OrdersPage() {
         <StickyActionBar>
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 text-right">
-              <div className="text-sm font-semibold text-slate-900">
+              <div className="text-sm font-semibold text-[#1e1712]">
                 {creatingNew ? 'جلسة جديدة' : currentSessionLabel || 'اختر جلسة'}
               </div>
-              <div className="mt-1 text-xs text-slate-500">
-                {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر الأصناف ثم أرسل مرة واحدة'}
+              <div className="mt-1 text-xs text-[#7d6a59]">
+                {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر الأصناف ثم أرسل الطلب دفعة واحدة'}
               </div>
             </div>
             <button
               type="button"
               onClick={() => void submitCommand.run()}
               disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
-              className="shrink-0 rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-50"
+              className={[opsPrimaryButton, 'shrink-0'].join(' ')}
             >
               {submitCommand.busy ? '...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
             </button>
@@ -195,37 +199,51 @@ export default function OrdersPage() {
       }
     >
       {effectiveError ? (
-        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-3 rounded-[22px] border border-[#e6c7c2] bg-[#fff7f5] p-3 text-sm text-[#9a3e35]">
           {effectiveError}
         </div>
       ) : null}
 
       {sessionWarning ? (
-        <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+        <div className="mb-3 rounded-[22px] border border-[#ecd9bd] bg-[#fffbf5] p-3 text-sm font-semibold text-[#a5671e]">
           {sessionWarning}
         </div>
       ) : null}
 
-      <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-right text-xs font-semibold text-slate-600">
-        اختر جلسة أو أنشئ جلسة جديدة ثم أضف الأصناف.
-      </div>
+      <section className={[opsSurface, 'mb-3 p-3'].join(' ')}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className="text-sm font-semibold text-[#1e1712]">إدارة الجلسات والطلب</div>
+            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
+              اختر جلسة مفتوحة أو ابدأ جلسة جديدة، ثم حدّد الأصناف من المنيو وأرسلها دفعة واحدة لتبقى الحركة أوضح.
+            </div>
+          </div>
+          <div className={opsBadge('accent')}>{creatingNew ? 'جلسة جديدة' : 'تشغيل مباشر'}</div>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className={opsMetricCard('info')}>
+            <div className="text-[11px] font-semibold opacity-70">الجلسات</div>
+            <div className="mt-1 text-xl font-black leading-none">{sessions.length}</div>
+          </div>
+          <div className={opsMetricCard('success')}>
+            <div className="text-[11px] font-semibold opacity-70">جاهز للتسليم</div>
+            <div className="mt-1 text-xl font-black leading-none">{data?.readyItems?.length ?? 0}</div>
+          </div>
+          <div className={opsMetricCard('warning')}>
+            <div className="text-[11px] font-semibold opacity-70">المحدد الآن</div>
+            <div className="mt-1 text-xl font-black leading-none">{draftQtyTotal}</div>
+          </div>
+        </div>
+      </section>
 
       <div className="space-y-3">
-        <section id="sessions-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+        <section id="sessions-panel" className={[opsSurface, 'p-3'].join(' ')}>
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              {sessions.length ? (
-                <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                  {sessions.length}
-                </div>
-              ) : null}
-              <div className="text-sm font-semibold text-slate-800">الجلسات المفتوحة</div>
+              {sessions.length ? <div className={opsBadge('info')}>{sessions.length}</div> : null}
+              <div className="text-sm font-semibold text-[#3d3128]">الجلسات المفتوحة</div>
             </div>
-            <button
-              type="button"
-              onClick={beginNewSession}
-              className="rounded-2xl bg-emerald-600 px-3 py-2 text-sm font-semibold text-white shadow-sm"
-            >
+            <button type="button" onClick={beginNewSession} className={opsAccentButton}>
               + جلسة جديدة
             </button>
           </div>
@@ -238,17 +256,17 @@ export default function OrdersPage() {
                   type="button"
                   onClick={() => selectExistingSession(session.id)}
                   className={[
-                    'rounded-2xl border px-3 py-3 text-right',
+                    'rounded-[20px] border px-3 py-3 text-right transition',
                     !creatingNew && effectiveSessionId === session.id
-                      ? 'border-slate-900 bg-slate-900 text-white'
-                      : 'border-slate-200 bg-slate-50 text-slate-800',
+                      ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]'
+                      : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
                   ].join(' ')}
                 >
                   <div className="truncate text-sm font-bold">{session.label}</div>
                   <div
                     className={[
                       'mt-1 text-xs',
-                      !creatingNew && effectiveSessionId === session.id ? 'text-slate-200' : 'text-slate-500',
+                      !creatingNew && effectiveSessionId === session.id ? 'text-white/75' : 'text-[#7d6a59]',
                     ].join(' ')}
                   >
                     جاهز {session.readyCount} • للحساب {session.billableCount}
@@ -264,36 +282,28 @@ export default function OrdersPage() {
                 value={label}
                 onChange={(e) => setLabel(e.target.value)}
                 placeholder="اسم أو رقم الجلسة الجديدة"
-                className="w-full rounded-2xl border border-slate-200 px-3 py-3 text-right"
+                className="w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
               />
-              <div className="text-xs text-slate-500">يمكن ترك الاسم فارغًا ليولده النظام تلقائيًا.</div>
+              <div className="text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولده النظام تلقائيًا.</div>
             </div>
           ) : null}
 
           {!sessions.length && !creatingNew ? (
-            <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              لا توجد جلسات مفتوحة الآن.
-            </div>
+            <div className={[opsDashed, 'mt-3 p-3 text-sm text-[#6b5a4c]'].join(' ')}>لا توجد جلسات مفتوحة الآن.</div>
           ) : null}
 
           {!sections.length ? (
-            <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-              لا توجد أقسام منيو متاحة الآن.
-            </div>
+            <div className={[opsDashed, 'mt-3 p-3 text-sm text-[#6b5a4c]'].join(' ')}>لا توجد أقسام منيو متاحة الآن.</div>
           ) : null}
         </section>
 
-        <section id="menu-panel" className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+        <section id="menu-panel" className={[opsSurface, 'p-3'].join(' ')}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-slate-800">المنيو</div>
+            <div className="text-sm font-semibold text-[#3d3128]">المنيو</div>
             {creatingNew ? (
-              <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                جلسة جديدة
-              </div>
+              <div className={opsBadge('accent')}>جلسة جديدة</div>
             ) : currentSessionLabel ? (
-              <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">
-                {currentSessionLabel}
-              </div>
+              <div className={opsBadge('info')}>{currentSessionLabel}</div>
             ) : null}
           </div>
 
@@ -304,10 +314,10 @@ export default function OrdersPage() {
                 type="button"
                 onClick={() => setSelectedSectionId(section.id)}
                 className={[
-                  'rounded-2xl border px-3 py-2 text-sm font-semibold whitespace-nowrap',
+                  'rounded-[18px] border px-3 py-2 text-sm font-semibold whitespace-nowrap',
                   effectiveSelectedSectionId === section.id
-                    ? 'border-emerald-600 bg-emerald-600 text-white'
-                    : 'border-slate-200 bg-slate-50 text-slate-700',
+                    ? 'border-[#9b6b2e] bg-[#9b6b2e] text-white'
+                    : 'border-[#dac9b6] bg-[#fffaf3] text-[#5e4d3f]',
                 ].join(' ')}
               >
                 {section.title}
@@ -317,22 +327,24 @@ export default function OrdersPage() {
 
           <div className="grid grid-cols-2 gap-2">
             {filteredProducts.map((product) => (
-              <div key={product.id} className="rounded-2xl border border-slate-200 p-3">
-                <div className="text-sm font-semibold text-slate-900">{product.name}</div>
-                <div className="mt-1 text-xs text-slate-500">{product.unitPrice} ج</div>
+              <div key={product.id} className={[opsInset, 'p-3'].join(' ')}>
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-[#1e1712]">{product.name}</div>
+                  <div className="mt-1 text-xs text-[#7d6a59]">{product.unitPrice} ج</div>
+                </div>
                 <div className="mt-3 flex items-center justify-between">
                   <button
                     type="button"
                     onClick={() => dec(product.id)}
-                    className="h-10 w-10 rounded-2xl border border-slate-200"
+                    className="h-10 w-10 rounded-[16px] border border-[#d8c7b3] bg-white text-[#5e4d3f]"
                   >
                     -
                   </button>
-                  <div className="text-lg font-bold">{draft[product.id] ?? 0}</div>
+                  <div className="text-lg font-black text-[#1e1712]">{draft[product.id] ?? 0}</div>
                   <button
                     type="button"
                     onClick={() => inc(product.id)}
-                    className="h-10 w-10 rounded-2xl bg-slate-900 text-white"
+                    className="h-10 w-10 rounded-[16px] bg-[#1e1712] text-white"
                   >
                     +
                   </button>

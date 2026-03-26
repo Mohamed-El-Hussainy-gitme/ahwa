@@ -62,9 +62,9 @@ export function OwnerOnboardingGuideCard() {
   if (error) return null;
   if (loading && !data) {
     return (
-      <section className="mb-3 rounded-3xl border bg-white p-4 shadow-sm">
+      <section className="mb-3 ahwa-card p-4">
         <div className="h-4 w-40 animate-pulse rounded bg-neutral-200" />
-        <div className="mt-3 h-20 animate-pulse rounded-2xl bg-neutral-100" />
+        <div className="mt-3 h-20 animate-pulse rounded-2xl bg-[#efe5d8]" />
       </section>
     );
   }
@@ -75,49 +75,49 @@ export function OwnerOnboardingGuideCard() {
 
   if (dismissed) {
     return (
-      <section className="mb-3 rounded-3xl border bg-white p-4 shadow-sm">
+      <section className="mb-3 ahwa-card p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <div className="text-sm font-bold text-neutral-900">دليل البداية السريع</div>
-            <div className="mt-1 text-xs text-neutral-500">{data.readyToRun ? 'اكتمل الدليل ويمكنك إظهاره عند الحاجة.' : `تم إخفاء الدليل مؤقتًا. المتبقي ${data.totalCount - data.completedCount} خطوة.`}</div>
+            <div className="text-sm font-bold text-[#1e1712]">خارطة التشغيل الأولى</div>
+            <div className="mt-1 text-xs text-[#8a7763]">{data.readyToRun ? 'اكتملت الخارطة ويمكنك إظهارها عند الحاجة.' : `تم إخفاء الخارطة مؤقتًا. المتبقي ${data.totalCount - data.completedCount} خطوة.`}</div>
           </div>
-          <button type="button" onClick={() => setDismissedState(false)} className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-neutral-700">إظهار الدليل</button>
+          <button type="button" onClick={() => setDismissedState(false)} className="ahwa-btn-secondary px-3 py-2 text-xs">إظهار الخارطة</button>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="mb-3 rounded-3xl border bg-white p-4 shadow-sm">
+    <section className="mb-3 ahwa-card p-4">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-bold text-neutral-900">دليل البداية السريع</div>
-          <div className="mt-1 text-xs text-neutral-500">{data.completedCount}/{data.totalCount} مكتملة • {data.completionPercent}%</div>
+          <div className="text-sm font-bold text-[#1e1712]">خارطة التشغيل الأولى</div>
+          <div className="mt-1 text-xs text-[#8a7763]">{data.completedCount}/{data.totalCount} مكتملة • {data.completionPercent}%</div>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={() => void reload()} className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-neutral-700">تحديث</button>
-          <button type="button" onClick={() => setDismissedState(true)} className="rounded-xl border bg-white px-3 py-2 text-xs font-semibold text-neutral-700">تخطي الآن</button>
+          <button type="button" onClick={() => void reload()} className="ahwa-btn-secondary px-3 py-2 text-xs">تحديث</button>
+          <button type="button" onClick={() => setDismissedState(true)} className="ahwa-btn-secondary px-3 py-2 text-xs">إخفاء الآن</button>
         </div>
       </div>
-      <div className="mt-3 h-2 overflow-hidden rounded-full bg-neutral-100"><div className="h-full rounded-full bg-neutral-900 transition-all" style={{ width: `${Math.max(6, data.completionPercent)}%` }} /></div>
-      <div className="mt-3 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">{data.intro}</div>
+      <div className="mt-3 h-2 overflow-hidden rounded-full bg-[#efe5d8]"><div className="h-full rounded-full bg-[#9b6b2e] transition-all" style={{ width: `${Math.max(6, data.completionPercent)}%` }} /></div>
+      <div className="mt-3 rounded-2xl border border-[#d6dee5] bg-[#f4f7f9] p-3 text-sm text-[#294c63]">{data.intro}</div>
       {data.readyToRun ? (
-        <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">القهوة جاهزة للتشغيل. يمكنك فتح الوردية والبدء فورًا، ثم متابعة الآجل والتقارير من صفحات الإدارة.</div>
+        <div className="mt-3 rounded-2xl border border-[#cfe0d7] bg-[#eff7f1] p-3 text-sm text-[#275944]">القهوة جاهزة للتشغيل. يمكنك فتح الوردية والبدء مباشرة، ثم متابعة الآجل والتقارير من مساحة الإدارة.</div>
       ) : nextStep ? (
-        <div className="mt-3 rounded-2xl border border-amber-200 bg-amber-50 p-3">
-          <div className="text-sm font-semibold text-amber-900">الخطوة التالية المقترحة</div>
-          <div className="mt-1 text-sm text-amber-800">{nextStep.title}</div>
-          <div className="mt-1 text-xs text-amber-800">{nextStep.description}</div>
-          <div className="mt-3"><Link href={stepHref(nextStep.key)} className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-semibold text-amber-900">افتح الخطوة</Link></div>
+        <div className="mt-3 rounded-2xl border border-[#ecd9bd] bg-[#fcf3e7] p-3">
+          <div className="text-sm font-semibold text-[#774c10]">الخطوة التالية</div>
+          <div className="mt-1 text-sm text-[#8a5a18]">{nextStep.title}</div>
+          <div className="mt-1 text-xs text-[#8a5a18]">{nextStep.description}</div>
+          <div className="mt-3"><Link href={stepHref(nextStep.key)} className="ahwa-btn-secondary px-3 py-2 text-xs">فتح الخطوة</Link></div>
         </div>
       ) : null}
       <div className="mt-3 space-y-2">{data.steps.map((step) => (
-        <Link key={step.key} href={stepHref(step.key)} className={[ 'flex items-start justify-between gap-3 rounded-2xl border px-3 py-3 text-right', step.done ? 'border-emerald-200 bg-emerald-50' : 'border-amber-200 bg-amber-50', ].join(' ')}>
+        <Link key={step.key} href={stepHref(step.key)} className={[ 'flex items-start justify-between gap-3 rounded-2xl border px-3 py-3 text-right', step.done ? 'border-[#cfe0d7] bg-[#eff7f1]' : 'border-[#ecd9bd] bg-[#fcf3e7]', ].join(' ')}>
           <div>
-            <div className={[ 'text-sm font-semibold', step.done ? 'text-emerald-900' : 'text-amber-900', ].join(' ')}>{step.title}</div>
-            <div className={[ 'mt-1 text-xs', step.done ? 'text-emerald-800' : 'text-amber-800', ].join(' ')}>{step.description}</div>
+            <div className={[ 'text-sm font-semibold', step.done ? 'text-[#275944]' : 'text-[#774c10]', ].join(' ')}>{step.title}</div>
+            <div className={[ 'mt-1 text-xs', step.done ? 'text-[#2e6a4e]' : 'text-[#8a5a18]', ].join(' ')}>{step.description}</div>
           </div>
-          <div className={[ 'rounded-full border bg-white px-2 py-1 text-[11px] font-semibold', step.done ? 'border-emerald-300 text-emerald-800' : 'border-amber-300 text-amber-800', ].join(' ')}>{step.done ? 'مكتمل' : 'غير مكتمل'}</div>
+          <div className={[ 'rounded-full border bg-[#fffdf9] px-2 py-1 text-[11px] font-semibold', step.done ? 'border-[#cfe0d7] text-[#2e6a4e]' : 'border-[#ecd9bd] text-[#8a5a18]', ].join(' ')}>{step.done ? 'مكتمل' : 'غير مكتمل'}</div>
         </Link>
       ))}</div>
     </section>

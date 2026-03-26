@@ -106,7 +106,7 @@ export function PlatformChrome({
             <div className="rounded-3xl border border-indigo-100 bg-gradient-to-b from-indigo-600 to-indigo-500 px-5 py-5 text-white shadow-sm">
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-[11px] font-semibold tracking-[0.18em] text-indigo-100">AHWA PLATFORM</div>
+                  <div className="text-[11px] font-semibold tracking-[0.18em] text-indigo-100">منصة أهوا</div>
                   <div className="mt-2 text-2xl font-bold">لوحة السوبر أدمن</div>
                 </div>
                 <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-[11px] font-semibold text-white/90">

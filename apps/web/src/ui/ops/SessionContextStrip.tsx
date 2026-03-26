@@ -1,6 +1,7 @@
 'use client';
 
 import Link, { type LinkProps } from 'next/link';
+import { opsBadge, opsToolbarButton } from '@/ui/ops/premiumStyles';
 
 type Stat = {
   label: string;
@@ -14,10 +15,10 @@ type Action = {
 };
 
 function statTone(tone: Stat['tone']) {
-  if (tone === 'emerald') return 'bg-emerald-50 text-emerald-700';
-  if (tone === 'amber') return 'bg-amber-50 text-amber-700';
-  if (tone === 'sky') return 'bg-sky-50 text-sky-700';
-  return 'bg-slate-100 text-slate-700';
+  if (tone === 'emerald') return opsBadge('success');
+  if (tone === 'amber') return opsBadge('warning');
+  if (tone === 'sky') return opsBadge('info');
+  return opsBadge('neutral');
 }
 
 export function SessionContextStrip({
@@ -32,17 +33,17 @@ export function SessionContextStrip({
   actions?: Action[];
 }) {
   return (
-    <div className="sticky top-[108px] z-[5] rounded-3xl border border-slate-200 bg-white/95 p-3 shadow-sm backdrop-blur">
+    <div className="sticky top-[108px] z-[5] rounded-[24px] border border-[#decdb9] bg-[rgba(255,250,244,0.96)] p-3 shadow-[0_12px_28px_rgba(30,23,18,0.08)] backdrop-blur">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 text-right">
-          <div className="truncate text-sm font-bold text-slate-900">{title}</div>
-          {subtitle ? <div className="mt-1 text-xs text-slate-500">{subtitle}</div> : null}
+          <div className="truncate text-sm font-bold text-[#1e1712]">{title}</div>
+          {subtitle ? <div className="mt-1 text-xs leading-6 text-[#7d6a59]">{subtitle}</div> : null}
         </div>
 
         {stats?.length ? (
           <div className="flex flex-wrap justify-end gap-2">
             {stats.map((stat) => (
-              <div key={`${stat.label}-${stat.value}`} className={`rounded-full px-3 py-1 text-xs font-semibold ${statTone(stat.tone)}`}>
+              <div key={`${stat.label}-${stat.value}`} className={statTone(stat.tone)}>
                 {stat.label} {stat.value}
               </div>
             ))}
@@ -53,11 +54,7 @@ export function SessionContextStrip({
       {actions?.length ? (
         <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
           {actions.map((action) => (
-            <Link
-              key={`${String(action.href)}-${action.label}`}
-              href={action.href}
-              className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold whitespace-nowrap text-slate-700"
-            >
+            <Link key={`${String(action.href)}-${action.label}`} href={action.href} className={opsToolbarButton}>
               {action.label}
             </Link>
           ))}

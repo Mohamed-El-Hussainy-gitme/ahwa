@@ -21,11 +21,11 @@ function formatDateTime(value: string | null) {
 function statusMeta(status: DeferredCustomerStatus) {
   switch (status) {
     case 'late':
-      return { label: 'متأخر', className: 'border border-red-200 bg-red-50 text-red-700' };
+      return { label: 'متأخر', className: 'border border-[#e6c7c2] bg-[#fff3f1] text-[#9a3e35]' };
     case 'settled':
-      return { label: 'مسدد', className: 'border border-emerald-200 bg-emerald-50 text-emerald-700' };
+      return { label: 'مسدد', className: 'border border-[#cfe0d7] bg-[#eff7f1] text-[#2e6a4e]' };
     default:
-      return { label: 'نشط', className: 'border border-amber-200 bg-amber-50 text-amber-700' };
+      return { label: 'نشط', className: 'border border-[#ecd9bd] bg-[#fcf3e7] text-[#a5671e]' };
   }
 }
 
@@ -121,19 +121,19 @@ export default function CustomerLedgerPage() {
       }
     >
       {effectiveError ? (
-        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-3 rounded-2xl border border-[#e6c7c2] bg-[#fff3f1] p-3 text-sm text-[#9a3e35]">
           {effectiveError}
         </div>
       ) : null}
 
       <div className="space-y-3">
-        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <section className="ahwa-card p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="font-semibold text-slate-900">تصدير كشف العميل</div>
-              <div className="mt-1 text-xs text-slate-500">نسخة قابلة للطباعة والحفظ PDF.</div>
+              <div className="font-semibold text-[#1e1712]">تصدير كشف الحساب</div>
+              <div className="mt-1 text-xs text-[#8a7763]">نسخة مرتبة للطباعة أو الحفظ بصيغة PDF.</div>
             </div>
-            <Link href={`/customers/${encodeURIComponent(debtorName)}/print`} target="_blank" className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-slate-700">تصدير PDF</Link>
+            <Link href={`/customers/${encodeURIComponent(debtorName)}/print`} target="_blank" className="rounded-2xl border bg-[#fffdf9] px-4 py-2 text-sm font-semibold text-[#5e4d3f]">تصدير PDF</Link>
           </div>
         </section>
         <div className="grid grid-cols-2 gap-3">
@@ -143,7 +143,7 @@ export default function CustomerLedgerPage() {
           <MetricCard label="إجمالي السداد" value={`${formatMoney(data?.repaymentTotal ?? 0)} ج`} />
         </div>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <section className="ahwa-card p-3">
           <div className="grid grid-cols-2 gap-3 text-sm">
             <InfoLine label="آخر حركة" value={formatDateTime(data?.lastEntryAt ?? null)} />
             <InfoLine label="آخر ترحيل" value={formatDateTime(data?.lastDebtAt ?? null)} />
@@ -152,16 +152,16 @@ export default function CustomerLedgerPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-2 text-sm font-semibold text-slate-800">تسجيل حركة</div>
+        <section className="ahwa-card p-3">
+          <div className="mb-2 text-sm font-semibold text-[#2f241b]">إضافة حركة مالية</div>
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => setMode('repayment')}
               className={[
                 'rounded-2xl px-3 py-3 text-sm font-semibold',
                 mode === 'repayment'
-                  ? 'bg-emerald-600 text-white'
-                  : 'border border-slate-200 bg-white text-slate-800',
+                  ? 'bg-[#2e6a4e] text-white'
+                  : 'border border-[#decdb9] bg-[#fffdf9] text-[#2f241b]',
               ].join(' ')}
             >
               سداد
@@ -171,8 +171,8 @@ export default function CustomerLedgerPage() {
               className={[
                 'rounded-2xl px-3 py-3 text-sm font-semibold',
                 mode === 'debt'
-                  ? 'bg-amber-500 text-white'
-                  : 'border border-slate-200 bg-white text-slate-800',
+                  ? 'bg-[#9b6b2e] text-white'
+                  : 'border border-[#decdb9] bg-[#fffdf9] text-[#2f241b]',
               ].join(' ')}
             >
               مديونية
@@ -183,29 +183,29 @@ export default function CustomerLedgerPage() {
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
               inputMode="decimal"
-              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none"
+              className="ahwa-input text-right text-sm"
               placeholder="المبلغ"
             />
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none"
-              placeholder={mode === 'repayment' ? 'ملاحظة على السداد' : 'ملاحظة على الترحيل'}
+              className="min-h-24 ahwa-textarea text-right text-sm"
+              placeholder={mode === 'repayment' ? 'ملاحظات داخلية على السداد' : 'ملاحظات داخلية على الترحيل'}
             />
             <button
               onClick={() => void submit.run()}
               disabled={submit.busy}
-              className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              className="ahwa-btn-primary w-full px-4 disabled:opacity-60"
             >
-              {submit.busy ? '...' : mode === 'repayment' ? 'تسجيل سداد' : 'تسجيل مديونية'}
+              {submit.busy ? '...' : mode === 'repayment' ? 'تسجيل سداد' : 'ترحيل مبلغ'}
             </button>
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <section className="ahwa-card p-3">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="font-semibold text-slate-900">سجل الحركة</div>
-            <div className="text-xs text-slate-500">الأحدث أولًا</div>
+            <div className="font-semibold text-[#1e1712]">سجل الحركة</div>
+            <div className="text-xs text-[#8a7763]">ترتيب زمني من الأحدث</div>
           </div>
 
           <div className="mb-3 flex flex-wrap gap-2">
@@ -216,8 +216,8 @@ export default function CustomerLedgerPage() {
                 className={[
                   'rounded-full px-3 py-2 text-xs font-semibold transition',
                   entryFilter === item.key
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700',
+                    ? 'bg-[#1e1712] text-white'
+                    : 'border border-[#decdb9] bg-[#fffdf9] text-[#5e4d3f]',
                 ].join(' ')}
               >
                 {item.label}
@@ -226,39 +226,39 @@ export default function CustomerLedgerPage() {
           </div>
 
           {!filteredEntries.length ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
-              لا توجد حركات مطابقة
+            <div className="ahwa-card-dashed p-4 text-center text-sm text-[#8a7763]">
+              لا توجد حركات مطابقة لهذا الفلتر
             </div>
           ) : (
             <div className="space-y-2">
               {filteredEntries.map((entry) => {
                 const isDebt = entry.entryKind === 'debt';
                 return (
-                  <div key={entry.id} className="rounded-2xl border border-slate-200 p-3">
+                  <div key={entry.id} className="rounded-2xl border border-[#decdb9] p-3">
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 text-right">
-                        <div className="truncate text-sm font-medium text-slate-900">
+                        <div className="truncate text-sm font-medium text-[#1e1712]">
                           {entry.entryKind === 'debt'
                             ? 'ترحيل آجل'
                             : entry.entryKind === 'repayment'
                               ? 'سداد آجل'
                               : 'تسوية'}
                         </div>
-                        <div className="mt-1 text-xs text-slate-500">
+                        <div className="mt-1 text-xs text-[#8a7763]">
                           {formatDateTime(entry.createdAt)} • {actorLabel(entry.actorLabel)}
                         </div>
-                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-slate-500">
-                          {entry.serviceSessionId ? <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">جلسة مرتبطة</span> : null}
-                          {entry.paymentId ? <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">دفعة مرتبطة</span> : null}
-                          {entry.notes ? <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1">{entry.notes}</span> : null}
+                        <div className="mt-1 flex flex-wrap gap-2 text-xs text-[#8a7763]">
+                          {entry.serviceSessionId ? <span className="rounded-full border border-[#decdb9] bg-[#f8f1e7] px-2 py-1">جلسة مرتبطة</span> : null}
+                          {entry.paymentId ? <span className="rounded-full border border-[#decdb9] bg-[#f8f1e7] px-2 py-1">دفعة مرتبطة</span> : null}
+                          {entry.notes ? <span className="rounded-full border border-[#decdb9] bg-[#f8f1e7] px-2 py-1">{entry.notes}</span> : null}
                         </div>
                       </div>
                       <div
                         className={[
                           'shrink-0 rounded-full px-3 py-1 text-xs font-semibold',
                           isDebt
-                            ? 'border border-red-200 bg-red-50 text-red-700'
-                            : 'border border-emerald-200 bg-emerald-50 text-emerald-700',
+                            ? 'border border-[#e6c7c2] bg-[#fff3f1] text-[#9a3e35]'
+                            : 'border border-[#cfe0d7] bg-[#eff7f1] text-[#2e6a4e]',
                         ].join(' ')}
                       >
                         {isDebt ? '+' : '-'}
@@ -289,12 +289,12 @@ function MetricCard({
 }) {
   const toneClass =
     tone === 'red'
-      ? 'border-red-200 bg-red-50 text-red-700'
+      ? 'border-[#e6c7c2] bg-[#fff3f1] text-[#9a3e35]'
       : tone === 'emerald'
-        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+        ? 'border-[#cfe0d7] bg-[#eff7f1] text-[#2e6a4e]'
         : tone === 'amber'
-          ? 'border-amber-200 bg-amber-50 text-amber-700'
-          : 'border-slate-200 bg-white text-slate-900';
+          ? 'border-[#ecd9bd] bg-[#fcf3e7] text-[#a5671e]'
+          : 'border-[#decdb9] bg-[#fffdf9] text-[#1e1712]';
   return (
     <div className={[ 'rounded-2xl border p-4 shadow-sm', toneClass ].join(' ')}>
       <div className="text-xs opacity-80">{label}</div>
@@ -306,9 +306,9 @@ function MetricCard({
 
 function InfoLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
-      <div className="text-xs text-slate-500">{label}</div>
-      <div className="mt-1 font-medium text-slate-900">{value}</div>
+    <div className="rounded-2xl border border-[#decdb9] bg-[#f8f1e7] px-3 py-3">
+      <div className="text-xs text-[#8a7763]">{label}</div>
+      <div className="mt-1 font-medium text-[#1e1712]">{value}</div>
     </div>
   );
 }

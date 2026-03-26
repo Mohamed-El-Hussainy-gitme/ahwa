@@ -1,17 +1,34 @@
 import { MobileShell } from '@/ui/MobileShell';
+import { opsAlert } from '@/ui/ops/premiumStyles';
 
-export function AccessDenied({ title, backHref = '/dashboard', message = 'غير مسموح' }: { title: string; backHref?: string; message?: string }) {
+export function AccessDenied({
+  title,
+  backHref = '/dashboard',
+  message = 'هذه المساحة غير متاحة لك ضمن صلاحياتك الحالية.',
+}: {
+  title: string;
+  backHref?: string;
+  message?: string;
+}) {
   return (
     <MobileShell title={title} backHref={backHref}>
-      <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-right text-sm text-red-700">{message}</div>
+      <div className={opsAlert('danger')}>{message}</div>
     </MobileShell>
   );
 }
 
-export function ShiftRequired({ title, backHref = '/dashboard', message = 'لا توجد وردية مفتوحة.' }: { title: string; backHref?: string; message?: string }) {
+export function ShiftRequired({
+  title,
+  backHref = '/dashboard',
+  message = 'لا توجد وردية نشطة الآن.',
+}: {
+  title: string;
+  backHref?: string;
+  message?: string;
+}) {
   return (
     <MobileShell title={title} backHref={backHref}>
-      <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-right text-sm text-amber-900">{message}</div>
+      <div className={opsAlert('warning')}>{message}</div>
     </MobileShell>
   );
 }

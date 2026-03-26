@@ -12,6 +12,18 @@ import { applyBillingToWorkspace } from '@/lib/ops/workspacePatches';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import { buildBillingPreviewUrl, computeBillingTotals } from '@/lib/ops/billing';
+import {
+  opsAccentButton,
+  opsBadge,
+  opsDashed,
+  opsGhostButton,
+  opsInset,
+  opsInput,
+  opsMetricCard,
+  opsPrimaryButton,
+  opsSuccessButton,
+  opsSurface,
+} from '@/ui/ops/premiumStyles';
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
@@ -108,13 +120,10 @@ export default function BillingPage() {
       title="الحساب"
       topRight={
         <div className="flex gap-2">
-          <Link href="/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">
+          <Link href="/complaints" className={opsGhostButton}>
             شكاوى
           </Link>
-          <Link
-            href="/support?source=in_app&page=/billing"
-            className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700"
-          >
+          <Link href="/support?source=in_app&page=/billing" className={opsGhostButton}>
             دعم
           </Link>
         </div>
@@ -124,8 +133,8 @@ export default function BillingPage() {
           <div className="space-y-3">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0 text-right">
-                <div className="text-sm font-semibold text-slate-900">{current?.sessionLabel ?? 'اختر جلسة للحساب'}</div>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="text-sm font-semibold text-[#1e1712]">{current?.sessionLabel ?? 'اختر جلسة للحساب'}</div>
+                <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
                   {selectedQtyTotal > 0
                     ? `المحدد ${selectedQtyTotal} • قبل الإضافات ${formatMoney(previewTotals.subtotal)} ج • النهائي ${formatMoney(previewTotals.total)} ج`
                     : 'حدد البنود المطلوبة للتحصيل أو الترحيل'}
@@ -134,7 +143,7 @@ export default function BillingPage() {
             </div>
 
             {(data?.billingSettings.taxEnabled || data?.billingSettings.serviceEnabled) && selectedQtyTotal > 0 ? (
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+              <div className={[opsInset, 'p-3 text-xs text-[#6b5a4c]'].join(' ')}>
                 {data?.billingSettings.taxEnabled ? (
                   <div>
                     ضريبة: {formatMoney(previewTotals.taxAmount)} ج ({formatMoney(data.billingSettings.taxRate)}%)
@@ -149,8 +158,8 @@ export default function BillingPage() {
             ) : null}
 
             {lastTotals ? (
-              <div className="flex items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3 text-sm">
-                <div className="text-right text-emerald-800">
+              <div className="flex items-center justify-between gap-3 rounded-[20px] border border-[#cfe0d7] bg-[#eff7f1] p-3 text-sm">
+                <div className="text-right text-[#2e6a4e]">
                   <div className="font-semibold">تم تسجيل العملية.</div>
                   <div className="mt-1 text-xs">الإجمالي النهائي {formatMoney(lastTotals.total)} ج</div>
                 </div>
@@ -158,7 +167,7 @@ export default function BillingPage() {
                   <Link
                     href={lastReceiptUrl}
                     target="_blank"
-                    className="rounded-2xl border border-emerald-300 px-4 py-2 text-sm font-semibold text-emerald-800"
+                    className="rounded-[18px] border border-[#c0d8cb] px-4 py-2 text-sm font-semibold text-[#2e6a4e]"
                   >
                     عرض المستند النهائي
                   </Link>
@@ -170,14 +179,14 @@ export default function BillingPage() {
               <button
                 disabled={busy || selectedQtyTotal === 0}
                 onClick={() => void settleCommand.run()}
-                className="rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                className={opsSuccessButton}
               >
                 تحصيل المحدد
               </button>
               <button
                 disabled={busy || !debtorName.trim() || selectedQtyTotal === 0}
                 onClick={() => void deferCommand.run()}
-                className="rounded-2xl bg-amber-600 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+                className={opsAccentButton}
               >
                 ترحيل المحدد
               </button>
@@ -187,17 +196,41 @@ export default function BillingPage() {
       }
     >
       {effectiveError ? (
-        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-3 rounded-[22px] border border-[#e6c7c2] bg-[#fff7f5] p-3 text-sm text-[#9a3e35]">
           {effectiveError}
         </div>
       ) : null}
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+      <section className={[opsSurface, 'mb-3 p-3'].join(' ')}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className="text-sm font-semibold text-[#1e1712]">التحصيل والإقفال</div>
+            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
+              اختر الجلسة، حدّد البنود المطلوب تحصيلها، ثم اطبع الفاتورة أو رحّلها إلى الآجل باسم واضح.
+            </div>
+          </div>
+          <div className={opsBadge('accent')}>واجهة التحصيل</div>
+        </div>
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className={opsMetricCard('success')}>
+            <div className="text-[11px] font-semibold opacity-70">جلسات للحساب</div>
+            <div className="mt-1 text-xl font-black leading-none">{data?.sessions?.length ?? 0}</div>
+          </div>
+          <div className={opsMetricCard('info')}>
+            <div className="text-[11px] font-semibold opacity-70">المحدد</div>
+            <div className="mt-1 text-xl font-black leading-none">{selectedQtyTotal}</div>
+          </div>
+          <div className={opsMetricCard('accent')}>
+            <div className="text-[11px] font-semibold opacity-70">الإجمالي</div>
+            <div className="mt-1 text-xl font-black leading-none">{formatMoney(previewTotals.total)}</div>
+          </div>
+        </div>
+      </section>
+
+      <section className={[opsSurface, 'p-3'].join(' ')}>
         <div className="mb-3 flex items-center justify-between gap-2">
-          <div className="text-sm font-semibold text-slate-800">الجلسات للحساب</div>
-          {(data?.sessions?.length ?? 0) > 0 ? (
-            <div className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">{data?.sessions.length}</div>
-          ) : null}
+          <div className="text-sm font-semibold text-[#3d3128]">الجلسات للحساب</div>
+          {(data?.sessions?.length ?? 0) > 0 ? <div className={opsBadge('success')}>{data?.sessions.length}</div> : null}
         </div>
 
         {(data?.sessions ?? []).length ? (
@@ -211,52 +244,50 @@ export default function BillingPage() {
                   setLastTotals(null);
                 }}
                 className={[
-                  'rounded-2xl border px-3 py-3 text-right',
-                  effectiveSessionId === session.sessionId ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-800',
+                  'rounded-[20px] border px-3 py-3 text-right transition',
+                  effectiveSessionId === session.sessionId
+                    ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]'
+                    : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
                 ].join(' ')}
               >
                 <div className="truncate text-sm font-bold">{session.sessionLabel}</div>
-                <div className={['mt-1 text-xs', effectiveSessionId === session.sessionId ? 'text-slate-200' : 'text-slate-500'].join(' ')}>
+                <div className={['mt-1 text-xs', effectiveSessionId === session.sessionId ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
                   {session.totalBillableQty} صنف • {session.totalBillableAmount} ج
                 </div>
               </button>
             ))}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+          <div className={[opsDashed, 'p-3 text-sm text-[#6b5a4c]'].join(' ')}>
             لا توجد جلسات جاهزة للحساب الآن.
           </div>
         )}
       </section>
 
       {current ? (
-        <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        <div className={[opsSurface, 'mt-3 p-3'].join(' ')}>
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 text-right">
-              <div className="text-sm font-bold text-slate-900">{current.sessionLabel}</div>
-              <div className="mt-1 text-xs text-slate-500">الجلسة الحالية للحساب</div>
+              <div className="text-sm font-bold text-[#1e1712]">{current.sessionLabel}</div>
+              <div className="mt-1 text-xs text-[#7d6a59]">الجلسة الحالية للحساب</div>
             </div>
 
             <div className="flex flex-wrap justify-end gap-2 text-xs font-semibold">
-              <span className="rounded-full bg-sky-50 px-3 py-1 text-sky-700">للحساب {current.totalBillableQty}</span>
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-emerald-700">{current.totalBillableAmount} ج</span>
+              <span className={opsBadge('info')}>للحساب {current.totalBillableQty}</span>
+              <span className={opsBadge('success')}>{current.totalBillableAmount} ج</span>
             </div>
           </div>
 
           {printableQtyTotal > 0 ? (
-            <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-sky-200 bg-white p-3">
+            <div className={[opsInset, 'mt-3 flex items-center justify-between gap-3 p-3'].join(' ')}>
               <div className="text-right">
-                <div className="text-sm font-semibold text-slate-900">الفاتورة الكاملة</div>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="text-sm font-semibold text-[#1e1712]">الفاتورة الكاملة</div>
+                <div className="mt-1 text-xs text-[#7d6a59]">
                   {formatMoney(printableTotals.total)} ج • {printableQtyTotal} صنف
                 </div>
               </div>
 
-              <Link
-                href={previewReceiptUrl}
-                target="_blank"
-                className="inline-flex shrink-0 items-center justify-center rounded-2xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white"
-              >
+              <Link href={previewReceiptUrl} target="_blank" className={opsPrimaryButton}>
                 طباعة الفاتورة
               </Link>
             </div>
@@ -264,8 +295,8 @@ export default function BillingPage() {
         </div>
       ) : null}
 
-      <section className="mt-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="mb-3 text-right text-sm font-semibold text-slate-800">الأصناف الجاهزة للحساب</div>
+      <section className={[opsSurface, 'mt-3 p-3'].join(' ')}>
+        <div className="mb-3 text-right text-sm font-semibold text-[#3d3128]">الأصناف الجاهزة للحساب</div>
 
         {current?.items?.length ? (
           <div className="grid grid-cols-2 gap-2">
@@ -273,23 +304,23 @@ export default function BillingPage() {
               const selected = selectedQty[item.orderItemId] ?? 0;
 
               return (
-                <div key={item.orderItemId} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                <div key={item.orderItemId} className={[opsInset, 'p-3'].join(' ')}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0 text-right">
-                      <div className="text-sm font-bold text-slate-900">{item.productName}</div>
-                      <div className="mt-1 text-xs text-slate-500">{item.unitPrice} ج</div>
+                      <div className="text-sm font-bold text-[#1e1712]">{item.productName}</div>
+                      <div className="mt-1 text-xs text-[#7d6a59]">{item.unitPrice} ج</div>
                     </div>
-                    <div className="rounded-2xl bg-emerald-600 px-2 py-1 text-center text-white">
+                    <div className="rounded-[16px] bg-[#2e6a4e] px-2 py-1 text-center text-white">
                       <div className="text-[9px] font-semibold text-white/80">للحساب</div>
                       <div className="text-lg font-black leading-none">{item.qtyBillable}</div>
                     </div>
                   </div>
 
                   <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold">
-                    {item.qtyDelivered > 0 ? <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-700">مسلّم {item.qtyDelivered}</span> : null}
-                    {item.qtyWaived > 0 ? <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">مسقط {item.qtyWaived}</span> : null}
-                    {item.qtyDeferred > 0 ? <span className="rounded-full bg-violet-50 px-2 py-1 text-violet-700">آجل {item.qtyDeferred}</span> : null}
-                    {item.qtyPaid > 0 ? <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">مدفوع {item.qtyPaid}</span> : null}
+                    {item.qtyDelivered > 0 ? <span className={opsBadge('info')}>مسلّم {item.qtyDelivered}</span> : null}
+                    {item.qtyWaived > 0 ? <span className={opsBadge('warning')}>مسقط {item.qtyWaived}</span> : null}
+                    {item.qtyDeferred > 0 ? <span className={opsBadge('accent')}>آجل {item.qtyDeferred}</span> : null}
+                    {item.qtyPaid > 0 ? <span className={opsBadge('success')}>مدفوع {item.qtyPaid}</span> : null}
                   </div>
 
                   <QuantityStepper
@@ -304,23 +335,18 @@ export default function BillingPage() {
             })}
           </div>
         ) : (
-          <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+          <div className={[opsDashed, 'p-3 text-sm text-[#6b5a4c]'].join(' ')}>
             لا يوجد عناصر جاهزة للحساب في هذه الجلسة.
           </div>
         )}
       </section>
 
-      <section className="mt-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-        <div className="text-right text-sm font-semibold text-slate-800">الترحيل إلى الآجل</div>
-        <input
-          value={debtorName}
-          onChange={(e) => setDebtorName(e.target.value)}
-          placeholder="اسم الأجل"
-          className="mt-3 w-full rounded-2xl border border-slate-200 px-3 py-3 text-right"
-        />
+      <section className={[opsSurface, 'mt-3 p-3'].join(' ')}>
+        <div className="text-right text-sm font-semibold text-[#3d3128]">الترحيل إلى الآجل</div>
+        <input value={debtorName} onChange={(e) => setDebtorName(e.target.value)} placeholder="اسم الأجل" className={[opsInput, 'mt-3'].join(' ')} />
         {(data?.deferredNames?.length ?? 0) > 0 ? (
           <div className="mt-2">
-            <div className="mb-2 text-right text-xs font-semibold text-slate-500">اختيار سريع</div>
+            <div className="mb-2 text-right text-xs font-semibold text-[#7d6a59]">اختيار سريع</div>
             <div className="flex gap-2 overflow-x-auto pb-1">
               {data?.deferredNames.map((name) => (
                 <button
@@ -328,8 +354,8 @@ export default function BillingPage() {
                   type="button"
                   onClick={() => setDebtorName(name)}
                   className={[
-                    'rounded-2xl border px-3 py-2 text-sm whitespace-nowrap',
-                    debtorName === name ? 'border-amber-600 bg-amber-600 text-white' : 'border-slate-200 bg-slate-50 text-slate-800',
+                    'rounded-[18px] border px-3 py-2 text-sm whitespace-nowrap',
+                    debtorName === name ? 'border-[#9b6b2e] bg-[#9b6b2e] text-white' : 'border-[#dac9b6] bg-[#fffaf3] text-[#5e4d3f]',
                   ].join(' ')}
                 >
                   {name}

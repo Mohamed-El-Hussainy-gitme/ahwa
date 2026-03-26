@@ -184,22 +184,22 @@ export default function ComplaintsPage() {
     <MobileShell
       title="الشكاوى"
       backHref={backHref}
-      topRight={<Link href="/support?source=in_app&page=/complaints" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>}
+      topRight={<Link href="/support?source=in_app&page=/complaints" className="ahwa-btn-secondary px-3 py-2 text-xs">دعم</Link>}
     >
       {effectiveError ? (
-        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-3 ahwa-alert-danger p-3 text-sm">
           {effectiveError === 'INVALID_INPUT' ? 'أكمل البيانات المطلوبة أولاً.' : effectiveError}
         </div>
       ) : null}
 
       <div className="space-y-4">
-        <section className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-2 text-sm font-semibold text-slate-700">شكوى عامة</div>
+        <section className="ahwa-card p-3">
+          <div className="mb-2 text-sm font-semibold text-[#5e4d3f]">بلاغ عام</div>
           <div className="grid gap-2 sm:grid-cols-2">
             <select
               value={effectiveGeneralSessionId}
               onChange={(event) => setGeneralSessionId(event.target.value)}
-              className="rounded-2xl border border-slate-200 px-3 py-3 text-right"
+              className="ahwa-input text-right"
             >
               {sessions.map((session) => (
                 <option key={session.id} value={session.id}>{session.label}</option>
@@ -208,7 +208,7 @@ export default function ComplaintsPage() {
             <select
               value={generalKind}
               onChange={(event) => setGeneralKind(event.target.value as ComplaintRecord['complaintKind'])}
-              className="rounded-2xl border border-slate-200 px-3 py-3 text-right"
+              className="ahwa-input text-right"
             >
               <option value="quality_issue">جودة</option>
               <option value="wrong_item">صنف خطأ</option>
@@ -222,25 +222,25 @@ export default function ComplaintsPage() {
             onChange={(event) => setGeneralNotes(event.target.value)}
             rows={3}
             placeholder="اكتب الشكوى العامة أو ملاحظة الخدمة"
-            className="mt-3 w-full rounded-2xl border border-slate-200 px-3 py-3 text-right"
+            className="mt-3 w-full ahwa-input text-right"
           />
           <button
             disabled={generalComplaintCommand.busy || !effectiveGeneralSessionId || !generalNotes.trim()}
             onClick={() => void generalComplaintCommand.run()}
-            className="mt-3 w-full rounded-2xl bg-slate-900 px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
+            className="mt-3 w-full ahwa-btn-primary disabled:opacity-40"
           >
-            تسجيل شكوى عامة
+            تسجيل بلاغ عام
           </button>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+        <section className="ahwa-card p-3">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-slate-800">شكوى على طلب</div>
-            {sessions.length ? <div className="rounded-full bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-700">جلسات {sessions.length}</div> : null}
+            <div className="text-sm font-semibold text-[#2f241b]">بلاغ على طلب</div>
+            {sessions.length ? <div className="rounded-full bg-[#f4f7f9] px-3 py-1 text-xs font-semibold text-[#3c617c]">جلسات {sessions.length}</div> : null}
           </div>
 
           {!canManageComplaintActions ? (
-            <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+            <div className="mb-3 ahwa-alert-warning p-3 text-xs">
               يمكن لمضيف الصالة ومختص الشيشة تسجيل ملاحظات فقط. الإلغاء والإعادة المجانية وإسقاط الحساب متاحة لمشرف التشغيل أو المالك فقط.
             </div>
           ) : null}
@@ -254,32 +254,32 @@ export default function ComplaintsPage() {
                   onClick={() => setItemSessionId(session.id)}
                   className={[
                     'rounded-2xl border px-3 py-3 text-right',
-                    effectiveItemSessionId === session.id ? 'border-slate-900 bg-slate-900 text-white' : 'border-slate-200 bg-slate-50 text-slate-800',
+                    effectiveItemSessionId === session.id ? 'border-slate-900 bg-[#1e1712] text-white' : 'border-[#decdb9] bg-[#f8f1e7] text-[#2f241b]',
                   ].join(' ')}
                 >
                   <div className="truncate text-sm font-bold">{session.label}</div>
-                  <div className={['mt-1 text-xs', effectiveItemSessionId === session.id ? 'text-slate-200' : 'text-slate-500'].join(' ')}>
+                  <div className={['mt-1 text-xs', effectiveItemSessionId === session.id ? 'text-slate-200' : 'text-[#8a7763]'].join(' ')}>
                     {effectiveItemSessionId === session.id ? 'الجلسة الحالية للشكاوى' : 'اضغط لعرض أصناف الجلسة'}
                   </div>
                 </button>
               ))}
             </div>
           ) : (
-            <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+            <div className="ahwa-card-dashed p-3 text-sm text-[#8a7763]">
               لا توجد جلسات مفتوحة الآن.
             </div>
           )}
 
           {effectiveItemSessionId ? (
-            <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+            <div className="mt-3 rounded-2xl border border-[#decdb9] bg-[#f8f1e7] p-3">
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0 text-right">
-                  <div className="text-sm font-bold text-slate-900">{selectedSessionLabel}</div>
-                  <div className="mt-1 text-xs text-slate-500">الأصناف الخاصة بهذه الجلسة فقط</div>
+                  <div className="text-sm font-bold text-[#1e1712]">{selectedSessionLabel}</div>
+                  <div className="mt-1 text-xs text-[#8a7763]">الأصناف الخاصة بهذه الجلسة فقط</div>
                 </div>
                 <div className="flex flex-wrap justify-end gap-2 text-xs font-semibold">
-                  <span className="rounded-full bg-slate-100 px-3 py-1 text-slate-700">أصناف {sessionItems.length}</span>
-                  {selectedSessionIssueHistory.length ? <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">سجل {selectedSessionIssueHistory.length}</span> : null}
+                  <span className="rounded-full bg-[#f3eadf] px-3 py-1 text-[#5e4d3f]">أصناف {sessionItems.length}</span>
+                  {selectedSessionIssueHistory.length ? <span className="rounded-full bg-[#fcf3e7] px-3 py-1 text-[#a5671e]">سجل {selectedSessionIssueHistory.length}</span> : null}
                 </div>
               </div>
             </div>
@@ -292,11 +292,11 @@ export default function ComplaintsPage() {
                 const quantity = clampQty(selectedQty[item.orderItemId] ?? 1, maxQty);
                 const expanded = Boolean(expandedByItem[item.orderItemId]);
                 return (
-                  <div key={item.orderItemId} className="rounded-2xl border border-slate-200 bg-slate-50/70 p-3">
+                  <div key={item.orderItemId} className="rounded-2xl border border-[#decdb9] bg-[#f8f1e7]/80 p-3">
                     <div className="text-right">
-                      <div className="min-h-[2.5rem] text-sm font-bold leading-5 text-slate-900">{item.productName}</div>
+                      <div className="min-h-[2.5rem] text-sm font-bold leading-5 text-[#1e1712]">{item.productName}</div>
                       <div className="mt-1 flex flex-wrap gap-1.5 text-[10px] font-semibold">
-                        {item.availableRemakeQty > 0 ? <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">إعادة {item.availableRemakeQty}</span> : null}
+                        {item.availableRemakeQty > 0 ? <span className="rounded-full bg-[#fcf3e7] px-2 py-1 text-[#a5671e]">إعادة {item.availableRemakeQty}</span> : null}
                         {item.availableCancelQty > 0 ? <span className="rounded-full bg-rose-50 px-2 py-1 text-rose-700">إلغاء {item.availableCancelQty}</span> : null}
                         {item.availableWaiveQty > 0 ? <span className="rounded-full bg-violet-50 px-2 py-1 text-violet-700">إسقاط {item.availableWaiveQty}</span> : null}
                       </div>
@@ -316,7 +316,7 @@ export default function ComplaintsPage() {
                         onClick={() => setExpandedByItem((state) => ({ ...state, [item.orderItemId]: !expanded }))}
                         className={[
                           'w-full rounded-2xl border px-2 py-2 text-[11px] font-semibold',
-                          expanded || (notesByItem[item.orderItemId] ?? '').trim() ? 'border-amber-200 bg-amber-50 text-amber-800' : 'border-slate-200 bg-white text-slate-700',
+                          expanded || (notesByItem[item.orderItemId] ?? '').trim() ? 'border-[#ecd9bd] bg-[#fcf3e7] text-[#8a5a18]' : 'border-[#decdb9] bg-[#fffdf9] text-[#5e4d3f]',
                         ].join(' ')}
                       >
                         {(notesByItem[item.orderItemId] ?? '').trim() ? 'السبب محفوظ' : expanded ? 'إخفاء السبب' : 'إضافة سبب'}
@@ -328,7 +328,7 @@ export default function ComplaintsPage() {
                           onChange={(event) => setNotesByItem((state) => ({ ...state, [item.orderItemId]: event.target.value }))}
                           rows={2}
                           placeholder="اكتب السبب أو الملاحظة"
-                          className="w-full rounded-2xl border border-amber-200 bg-white px-2 py-2 text-right text-xs"
+                          className="w-full rounded-2xl border border-[#ecd9bd] bg-[#fffdf9] px-2 py-2 text-right text-xs"
                         />
                       ) : null}
 
@@ -337,7 +337,7 @@ export default function ComplaintsPage() {
                           type="button"
                           disabled={actionCommand.busy}
                           onClick={() => void actionCommand.run(item, 'none')}
-                          className="rounded-2xl border border-slate-200 bg-white px-2 py-2 text-xs font-semibold text-slate-700 disabled:opacity-40"
+                          className="ahwa-btn-secondary px-2 py-2 text-xs disabled:opacity-40"
                         >
                           ملاحظة
                         </button>
@@ -345,7 +345,7 @@ export default function ComplaintsPage() {
                           type="button"
                           disabled={!canManageComplaintActions || actionCommand.busy || item.availableRemakeQty <= 0}
                           onClick={() => void actionCommand.run(item, 'remake')}
-                          className="rounded-2xl bg-amber-600 px-2 py-2 text-xs font-semibold text-white disabled:opacity-40"
+                          className="ahwa-btn-accent px-2 py-2 text-xs disabled:opacity-40"
                         >
                           إعادة
                         </button>
@@ -372,35 +372,35 @@ export default function ComplaintsPage() {
               })}
             </div>
           ) : effectiveItemSessionId ? (
-            <div className="mt-3 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+            <div className="mt-3 ahwa-card-dashed p-3 text-sm text-[#8a7763]">
               لا توجد أصناف قابلة لتسجيل شكوى أو إعادة أو إسقاط في هذه الجلسة.
             </div>
           ) : null}
 
           {effectiveItemSessionId ? (
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-3">
-              <div className="mb-2 text-sm font-semibold text-slate-700">سجل هذه الجلسة</div>
+            <div className="mt-4 rounded-2xl border border-[#decdb9] bg-[#fffdf9] p-3">
+              <div className="mb-2 text-sm font-semibold text-[#5e4d3f]">سجل هذه الجلسة</div>
               {selectedSessionIssueHistory.length ? (
                 <div className="space-y-2">
                   {selectedSessionIssueHistory.map((issue) => (
-                    <div key={issue.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                    <div key={issue.id} className="rounded-2xl border border-[#decdb9] bg-[#f8f1e7] p-3">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 text-right">
-                          <div className="text-sm font-bold text-slate-900">{issue.productName}</div>
+                          <div className="text-sm font-bold text-[#1e1712]">{issue.productName}</div>
                           <div className="mt-1 flex flex-wrap gap-1.5 text-[11px] font-semibold">
-                            <span className="rounded-full bg-slate-100 px-2 py-1 text-slate-700">{itemIssueActionLabel(issue.actionKind)}</span>
-                            <span className="rounded-full bg-sky-50 px-2 py-1 text-sky-700">{complaintKindLabel(issue.issueKind)}</span>
-                            <span className="rounded-full bg-emerald-50 px-2 py-1 text-emerald-700">{itemIssueStatusLabel(issue.status)}</span>
-                            {issue.resolvedQuantity ? <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">كمية {issue.resolvedQuantity}</span> : issue.requestedQuantity ? <span className="rounded-full bg-amber-50 px-2 py-1 text-amber-700">كمية {issue.requestedQuantity}</span> : null}
+                            <span className="rounded-full bg-[#f3eadf] px-2 py-1 text-[#5e4d3f]">{itemIssueActionLabel(issue.actionKind)}</span>
+                            <span className="rounded-full bg-[#f4f7f9] px-2 py-1 text-[#3c617c]">{complaintKindLabel(issue.issueKind)}</span>
+                            <span className="rounded-full bg-[#eff7f1] px-2 py-1 text-[#2e6a4e]">{itemIssueStatusLabel(issue.status)}</span>
+                            {issue.resolvedQuantity ? <span className="rounded-full bg-[#fcf3e7] px-2 py-1 text-[#a5671e]">كمية {issue.resolvedQuantity}</span> : issue.requestedQuantity ? <span className="rounded-full bg-[#fcf3e7] px-2 py-1 text-[#a5671e]">كمية {issue.requestedQuantity}</span> : null}
                           </div>
                         </div>
                       </div>
-                      {issue.notes ? <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{issue.notes}</div> : null}
+                      {issue.notes ? <div className="mt-2 whitespace-pre-wrap text-sm text-[#5e4d3f]">{issue.notes}</div> : null}
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">
+                <div className="ahwa-card-dashed p-3 text-sm text-[#8a7763]">
                   لا يوجد سجل شكاوى أو إعادة عمل لهذه الجلسة بعد.
                 </div>
               )}
@@ -408,55 +408,55 @@ export default function ComplaintsPage() {
           ) : null}
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-2 text-sm font-semibold text-slate-700">شكاوى عامة مفتوحة</div>
+        <section className="ahwa-card p-3">
+          <div className="mb-2 text-sm font-semibold text-[#5e4d3f]">البلاغات العامة المفتوحة</div>
           <div className="space-y-2">
             {openComplaints.map((complaint) => (
-              <div key={complaint.id} className="rounded-2xl border border-slate-200 p-3">
+              <div key={complaint.id} className="rounded-2xl border border-[#decdb9] p-3">
                 <div className="font-semibold">
                   {complaint.sessionLabel}
                   {complaint.productName ? ` • ${complaint.productName}` : ''}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">{complaintKindLabel(complaint.complaintKind)}</div>
-                {complaint.notes ? <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{complaint.notes}</div> : null}
+                <div className="mt-1 text-xs text-[#8a7763]">{complaintKindLabel(complaint.complaintKind)}</div>
+                {complaint.notes ? <div className="mt-2 whitespace-pre-wrap text-sm text-[#5e4d3f]">{complaint.notes}</div> : null}
                 <div className="mt-3 grid grid-cols-2 gap-2">
                   <button
                     disabled={!canManageComplaintActions || resolveCommand.busy}
                     onClick={() => void resolveCommand.run(complaint, 'resolved')}
-                    className="rounded-2xl border border-emerald-200 px-3 py-3 text-sm font-semibold text-emerald-700 disabled:opacity-40"
+                    className="ahwa-btn-success disabled:opacity-40"
                   >
                     تمت المعالجة
                   </button>
                   <button
                     disabled={!canManageComplaintActions || resolveCommand.busy}
                     onClick={() => void resolveCommand.run(complaint, 'dismissed')}
-                    className="rounded-2xl bg-slate-900 px-3 py-3 text-sm font-semibold text-white disabled:opacity-40"
+                    className="ahwa-btn-primary disabled:opacity-40"
                   >
                     إغلاق
                   </button>
                 </div>
               </div>
             ))}
-            {!openComplaints.length ? <div className="text-sm text-slate-500">لا توجد شكاوى عامة مفتوحة.</div> : null}
+            {!openComplaints.length ? <div className="text-sm text-[#8a7763]">لا توجد البلاغات العامة المفتوحة.</div> : null}
           </div>
         </section>
 
-        <section className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-2 text-sm font-semibold text-slate-700">آخر الشكاوى العامة</div>
+        <section className="ahwa-card p-3">
+          <div className="mb-2 text-sm font-semibold text-[#5e4d3f]">آخر البلاغات العامة</div>
           <div className="space-y-2">
             {closedComplaints.map((complaint) => (
-              <div key={complaint.id} className="rounded-2xl border border-slate-200 p-3">
+              <div key={complaint.id} className="rounded-2xl border border-[#decdb9] p-3">
                 <div className="font-semibold">
                   {complaint.sessionLabel}
                   {complaint.productName ? ` • ${complaint.productName}` : ''}
                 </div>
-                <div className="mt-1 text-xs text-slate-500">
+                <div className="mt-1 text-xs text-[#8a7763]">
                   {complaintKindLabel(complaint.complaintKind)} • {complaintStatusLabel(complaint)}
                 </div>
-                {complaint.notes ? <div className="mt-2 whitespace-pre-wrap text-sm text-slate-700">{complaint.notes}</div> : null}
+                {complaint.notes ? <div className="mt-2 whitespace-pre-wrap text-sm text-[#5e4d3f]">{complaint.notes}</div> : null}
               </div>
             ))}
-            {!closedComplaints.length ? <div className="text-sm text-slate-500">لا توجد شكاوى عامة مغلقة بعد.</div> : null}
+            {!closedComplaints.length ? <div className="text-sm text-[#8a7763]">لا توجد بلاغات عامة مغلقة بعد.</div> : null}
           </div>
         </section>
       </div>

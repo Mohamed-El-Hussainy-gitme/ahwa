@@ -100,8 +100,8 @@ export default function SupportRequestClient() {
       const accessRequested = Boolean(json?.data?.supportAccessRequested);
       setNotice(
         accessRequested
-          ? 'تم إرسال طلب الدعم مع طلب دخول مؤقت كامل إلى القهوة. سيقوم الدعم بمراجعته وتفعيله عند الحاجة.'
-          : 'تم إرسال طلب الدعم وسيتم التواصل معك عبر الهاتف في أقرب وقت.',
+          ? 'تم تسجيل طلب الدعم مع طلب وصول مؤقت كامل إلى القهوة. سيقوم فريق الدعم بمراجعته وتفعيله عند الحاجة.'
+          : 'تم تسجيل الطلب بنجاح، وسيتم التواصل معك عبر الهاتف في أقرب وقت.',
       );
       setForm((value) => ({ ...value, message: '', requestAccess: false }));
       if (source === 'login') setDismissed(true);
@@ -113,44 +113,44 @@ export default function SupportRequestClient() {
   }
 
   return (
-    <div className="min-h-dvh bg-slate-50 p-4" dir="rtl">
-      <div className="mx-auto max-w-2xl rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="ahwa-page-shell p-4" dir="rtl">
+      <div className="ahwa-card mx-auto max-w-2xl p-5">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">الدعم الفني</h1>
-            <p className="mt-1 text-sm text-slate-500">
+            <h1 className="text-2xl font-bold text-[#1e1712]">مركز الدعم</h1>
+            <p className="mt-1 text-sm text-[#8a7763]">
               {source === 'login'
-                ? 'اكتب بياناتك ورسالتك وسنتابع معك عبر الهاتف.'
-                : 'أرسل طلب دعم من داخل النظام وسيتم تعبئة بيانات الدخول الحالية تلقائيًا متى أمكن.'}
+                ? 'أرسل تفاصيل الطلب بوضوح، وسيتم التواصل معك عبر الهاتف في أقرب وقت.'
+                : 'أرسل طلب الدعم من داخل النظام، وسنرفق بيانات التشغيل الحالية تلقائيًا متى أمكن.'}
             </p>
           </div>
-          <Link href={source === 'login' ? '/login' : '/dashboard'} className="rounded-2xl border border-slate-200 px-4 py-2 text-sm font-medium text-slate-700">رجوع</Link>
+          <Link href={source === 'login' ? '/login' : '/dashboard'} className="rounded-2xl border border-[#decdb9] px-4 py-2 text-sm font-medium text-[#5e4d3f]">عودة</Link>
         </div>
 
-        {notice ? <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{notice}</div> : null}
-        {error ? <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-700">{error}</div> : null}
-        {dismissed && source === 'login' ? <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">يمكنك العودة لصفحة الدخول أو إرسال رسالة أخرى إذا احتجت.</div> : null}
+        {notice ? <div className="ahwa-alert-success mt-4">{notice}</div> : null}
+        {error ? <div className="ahwa-alert-danger mt-4">{error}</div> : null}
+        {dismissed && source === 'login' ? <div className="ahwa-card-soft mt-4 p-4 text-sm text-[#746353]">يمكنك العودة إلى صفحة الدخول أو إرسال طلب جديد متى احتجت.</div> : null}
 
         <div className="mt-5 grid gap-3 md:grid-cols-2">
-          <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="الاسم" value={form.senderName} onChange={(e) => setForm((v) => ({ ...v, senderName: e.target.value }))} />
-          <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="رقم الهاتف" value={form.senderPhone} onChange={(e) => setForm((v) => ({ ...v, senderPhone: e.target.value }))} />
-          <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="اسم القهوة" value={form.cafeName} onChange={(e) => setForm((v) => ({ ...v, cafeName: e.target.value }))} />
-          <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="slug القهوة" value={form.cafeSlug} onChange={(e) => setForm((v) => ({ ...v, cafeSlug: e.target.value }))} />
-          <select className="rounded-2xl border border-slate-200 px-4 py-3 md:col-span-2" value={form.issueType} onChange={(e) => setForm((v) => ({ ...v, issueType: e.target.value }))}>
+          <input className="ahwa-input" placeholder="الاسم" value={form.senderName} onChange={(e) => setForm((v) => ({ ...v, senderName: e.target.value }))} />
+          <input className="ahwa-input" placeholder="رقم الهاتف" value={form.senderPhone} onChange={(e) => setForm((v) => ({ ...v, senderPhone: e.target.value }))} />
+          <input className="ahwa-input" placeholder="اسم القهوة" value={form.cafeName} onChange={(e) => setForm((v) => ({ ...v, cafeName: e.target.value }))} />
+          <input className="ahwa-input" placeholder="معرّف القهوة (slug)" value={form.cafeSlug} onChange={(e) => setForm((v) => ({ ...v, cafeSlug: e.target.value }))} />
+          <select className="ahwa-select md:col-span-2" value={form.issueType} onChange={(e) => setForm((v) => ({ ...v, issueType: e.target.value }))}>
             {issueOptions(source).map((item) => <option key={item} value={item}>{item}</option>)}
           </select>
-          <textarea className="min-h-36 rounded-2xl border border-slate-200 px-4 py-3 md:col-span-2" placeholder="اكتب المشكلة أو طلب الدعم بالتفصيل" value={form.message} onChange={(e) => setForm((v) => ({ ...v, message: e.target.value }))} />
+          <textarea className="ahwa-textarea min-h-36 md:col-span-2" placeholder="اكتب تفاصيل المشكلة أو الطلب بوضوح" value={form.message} onChange={(e) => setForm((v) => ({ ...v, message: e.target.value }))} />
         </div>
 
         {source === 'in_app' && actorLabel ? (
-          <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm text-sky-800">
-            سيتم إرسال الطلب كـ <span className="font-semibold">{actorLabel}</span>
+          <div className="ahwa-alert-info mt-4">
+            سيتم إرسال هذا الطلب بصفة <span className="font-semibold">{actorLabel}</span>
             {runtimeMe?.tenantSlug ? <> داخل قهوة <span className="font-semibold">{runtimeMe.tenantSlug}</span></> : null}.
           </div>
         ) : null}
 
         {canRequestSupportAccess ? (
-          <label className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+          <label className="mt-4 flex items-start gap-3 rounded-[22px] border border-[#ecd9bd] bg-[#fcf3e7] p-4 text-sm text-[#774c10]">
             <input
               type="checkbox"
               className="mt-1 h-4 w-4"
@@ -158,25 +158,25 @@ export default function SupportRequestClient() {
               onChange={(event) => setForm((value) => ({ ...value, requestAccess: event.target.checked }))}
             />
             <span>
-              أطلب فتح دخول دعم مؤقت كامل لهذه القهوة لهذه الرسالة فقط.
-              <span className="mt-1 block text-xs text-amber-800">
-                هذا لا يمنح السوبر أدمن رؤية دائمة، بل يفتح دخولًا مؤقتًا كاملًا إلى القهوة عند موافقة الدعم ولمدة محددة أو حتى إغلاق البلاغ.
+              أطلب فتح وصول دعم مؤقت كامل لهذه القهوة لهذه الرسالة فقط.
+              <span className="mt-1 block text-xs text-[#8a5a18]">
+                هذا لا يمنح وصولًا دائمًا، بل يفعّل وصولًا مؤقتًا ومقيّدًا عند موافقة الدعم ولمدة محددة أو حتى إغلاق البلاغ.
               </span>
             </span>
           </label>
         ) : null}
 
         <div className="mt-5 flex flex-wrap gap-3">
-          <button disabled={busy} onClick={submit} className="rounded-2xl bg-slate-900 px-5 py-3 text-sm font-semibold text-white disabled:opacity-60">{busy ? 'جارٍ الإرسال...' : 'إرسال طلب الدعم'}</button>
-          <Link href={source === 'login' ? '/login' : '/dashboard'} className="rounded-2xl border border-slate-200 px-5 py-3 text-sm font-semibold text-slate-700">إلغاء</Link>
+          <button disabled={busy} onClick={submit} className="ahwa-btn-primary px-5 disabled:opacity-60">{busy ? 'يتم الإرسال...' : 'إرسال الطلب'}</button>
+          <Link href={source === 'login' ? '/login' : '/dashboard'} className="ahwa-btn-secondary px-5">تراجع</Link>
         </div>
 
-        <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-          <div className="font-semibold text-slate-800">اشتراطات الإرسال</div>
+        <div className="ahwa-card-soft mt-6 p-4 text-sm text-[#746353]">
+          <div className="font-semibold text-[#2f241b]">قبل الإرسال</div>
           <ul className="mt-2 space-y-1">
-            <li>• الاسم + رقم الهاتف + اسم القهوة أو الـ slug مطلوبة من صفحة الدخول.</li>
-            <li>• في حال وجود رد أو متابعة سيتم التواصل معك عبر الهاتف.</li>
-            <li>• طلب الدخول المؤقت الكامل يظهر فقط من داخل القهوة للمالك أو مشرف التشغيل.</li>
+            <li>• من صفحة الدخول نحتاج الاسم ورقم الهاتف واسم القهوة أو معرّفها.</li>
+            <li>• في حال وجود متابعة سيتم التواصل معك عبر الهاتف.</li>
+            <li>• طلب الوصول المؤقت الكامل يظهر فقط من داخل القهوة للمالك أو مشرف التشغيل.</li>
           </ul>
         </div>
       </div>

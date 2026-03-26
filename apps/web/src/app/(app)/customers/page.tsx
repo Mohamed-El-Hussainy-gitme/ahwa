@@ -20,26 +20,26 @@ function formatDateTime(value: string | null) {
 function statusMeta(status: DeferredCustomerStatus) {
   switch (status) {
     case 'late':
-      return { label: 'متأخر', className: 'border border-red-200 bg-red-50 text-red-700' };
+      return { label: 'متأخر', className: 'border border-[#e6c7c2] bg-[#fff3f1] text-[#9a3e35]' };
     case 'settled':
-      return { label: 'مسدد', className: 'border border-emerald-200 bg-emerald-50 text-emerald-700' };
+      return { label: 'مسدد', className: 'border border-[#cfe0d7] bg-[#eff7f1] text-[#2e6a4e]' };
     default:
-      return { label: 'نشط', className: 'border border-amber-200 bg-amber-50 text-amber-700' };
+      return { label: 'نشط', className: 'border border-[#ecd9bd] bg-[#fcf3e7] text-[#a5671e]' };
   }
 }
 
 function agingMeta(bucket: DeferredAgingBucket) {
   switch (bucket) {
     case 'three_days':
-      return { label: 'حتى 3 أيام', className: 'border border-amber-200 bg-amber-50 text-amber-700' };
+      return { label: 'حتى 3 أيام', className: 'border border-[#ecd9bd] bg-[#fcf3e7] text-[#a5671e]' };
     case 'week':
-      return { label: 'حتى أسبوع', className: 'border border-orange-200 bg-orange-50 text-orange-700' };
+      return { label: 'حتى أسبوع', className: 'border border-[#ecd9bd] bg-[#fcf3e7] text-[#a5671e]' };
     case 'older':
-      return { label: 'أكثر من أسبوع', className: 'border border-red-200 bg-red-50 text-red-700' };
+      return { label: 'أكثر من أسبوع', className: 'border border-[#e6c7c2] bg-[#fff3f1] text-[#9a3e35]' };
     case 'settled':
-      return { label: 'مسدد', className: 'border border-emerald-200 bg-emerald-50 text-emerald-700' };
+      return { label: 'مسدد', className: 'border border-[#cfe0d7] bg-[#eff7f1] text-[#2e6a4e]' };
     default:
-      return { label: 'اليوم', className: 'border border-sky-200 bg-sky-50 text-sky-700' };
+      return { label: 'اليوم', className: 'border border-[#d6dee5] bg-[#f4f7f9] text-[#3c617c]' };
   }
 }
 
@@ -134,30 +134,30 @@ export default function CustomersPage() {
   return (
     <MobileShell title="دفتر الآجل" backHref={can.owner ? '/owner' : '/billing'}>
       {effectiveError ? (
-        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mb-3 rounded-2xl border border-[#e6c7c2] bg-[#fff3f1] p-3 text-sm text-[#9a3e35]">
           {effectiveError}
         </div>
       ) : null}
 
       <div className="space-y-3">
-        <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <div className="ahwa-card p-3">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <div className="font-semibold text-slate-900">تصدير دفتر الآجل</div>
-              <div className="mt-1 text-xs text-slate-500">افتح نسخة قابلة للطباعة واحفظها PDF.</div>
+              <div className="font-semibold text-[#1e1712]">تصدير كشف الآجل</div>
+              <div className="mt-1 text-xs text-[#8a7763]">افتح نسخة مرتبة للطباعة أو الحفظ بصيغة PDF.</div>
             </div>
-            <Link href="/customers/print" target="_blank" className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-slate-700">تصدير PDF</Link>
+            <Link href="/customers/print" target="_blank" className="rounded-2xl border bg-[#fffdf9] px-4 py-2 text-sm font-semibold text-[#5e4d3f]">تصدير PDF</Link>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-xs text-slate-500">الرصيد المفتوح</div>
-            <div className="mt-1 text-2xl font-semibold text-amber-700">{formatMoney(summary.totalDebt)} ج</div>
+          <div className="ahwa-card p-4">
+            <div className="text-xs text-[#8a7763]">الرصيد المفتوح</div>
+            <div className="mt-1 text-2xl font-semibold text-[#a5671e]">{formatMoney(summary.totalDebt)} ج</div>
           </div>
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="text-xs text-slate-500">عدد الأسماء</div>
-            <div className="mt-1 text-2xl font-semibold text-slate-900">{items.length}</div>
+          <div className="ahwa-card p-4">
+            <div className="text-xs text-[#8a7763]">عدد الحسابات</div>
+            <div className="mt-1 text-2xl font-semibold text-[#1e1712]">{items.length}</div>
           </div>
         </div>
 
@@ -167,13 +167,13 @@ export default function CustomersPage() {
           <StatPill label="مسدد" value={summary.settledCount} tone="emerald" />
         </div>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-2 text-sm font-semibold text-slate-800">بحث وفلترة</div>
+        <section className="ahwa-card p-3">
+          <div className="mb-2 text-sm font-semibold text-[#2f241b]">بحث وفلترة</div>
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none"
-            placeholder="اسم العميل أو قيمة تقريبية"
+            className="ahwa-input text-right text-sm"
+            placeholder="اسم الحساب أو قيمة تقريبية"
           />
           <div className="mt-3 flex flex-wrap gap-2">
             {STATUS_FILTERS.map((item) => (
@@ -183,8 +183,8 @@ export default function CustomersPage() {
                 className={[
                   'rounded-full px-3 py-2 text-xs font-semibold transition',
                   statusFilter === item.key
-                    ? 'bg-slate-900 text-white'
-                    : 'border border-slate-200 bg-white text-slate-700',
+                    ? 'bg-[#1e1712] text-white'
+                    : 'border border-[#decdb9] bg-[#fffdf9] text-[#5e4d3f]',
                 ].join(' ')}
               >
                 {item.label}
@@ -198,15 +198,15 @@ export default function CustomersPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+        <section className="ahwa-card p-3">
           <div className="mb-2 flex items-center justify-between gap-3">
-            <div className="font-semibold text-slate-900">العملاء</div>
-            <div className="text-xs text-slate-500">{filteredItems.length} نتيجة</div>
+            <div className="font-semibold text-[#1e1712]">الحسابات</div>
+            <div className="text-xs text-[#8a7763]">{filteredItems.length} نتيجة</div>
           </div>
 
           {filteredItems.length === 0 ? (
-            <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500">
-              لا توجد حسابات مطابقة
+            <div className="ahwa-card-dashed p-4 text-center text-sm text-[#8a7763]">
+              لا توجد حسابات مطابقة لهذه المعايير
             </div>
           ) : (
             <div className="space-y-2">
@@ -217,18 +217,18 @@ export default function CustomersPage() {
                   <Link
                     key={item.id}
                     href={`/customers/${item.id}`}
-                    className="block rounded-2xl border border-slate-200 p-3 transition hover:bg-slate-50"
+                    className="block rounded-2xl border border-[#decdb9] p-3 transition hover:bg-[#f8f1e7]"
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 text-right">
-                        <div className="truncate text-sm font-semibold text-slate-900">{item.debtorName}</div>
-                        <div className="mt-1 text-xs text-slate-500">
+                        <div className="truncate text-sm font-semibold text-[#1e1712]">{item.debtorName}</div>
+                        <div className="mt-1 text-xs text-[#8a7763]">
                           آخر حركة {formatDateTime(item.lastEntryAt)}
                         </div>
                       </div>
                       <div className="text-left">
-                        <div className="text-base font-bold text-slate-900">{formatMoney(item.balance)} ج</div>
-                        <div className="mt-1 text-xs text-slate-500">
+                        <div className="text-base font-bold text-[#1e1712]">{formatMoney(item.balance)} ج</div>
+                        <div className="mt-1 text-xs text-[#8a7763]">
                           دين {formatMoney(item.debtTotal)} • سداد {formatMoney(item.repaymentTotal)}
                         </div>
                       </div>
@@ -237,11 +237,11 @@ export default function CustomersPage() {
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-xs">
                       <span className={[ 'rounded-full px-3 py-1 font-semibold', status.className ].join(' ')}>{status.label}</span>
                       <span className={[ 'rounded-full px-3 py-1 font-semibold', aging.className ].join(' ')}>{aging.label}</span>
-                      <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                      <span className="ahwa-pill-neutral">
                         {item.entryCount} حركة
                       </span>
                       {item.ageDays !== null ? (
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-slate-600">
+                        <span className="ahwa-pill-neutral">
                           منذ {item.ageDays} يوم
                         </span>
                       ) : null}
@@ -253,38 +253,38 @@ export default function CustomersPage() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-          <div className="mb-2 text-sm font-semibold text-slate-800">تسجيل مديونية مباشرة</div>
+        <section className="ahwa-card p-3">
+          <div className="mb-2 text-sm font-semibold text-[#2f241b]">ترحيل مبلغ جديد</div>
           <div className="space-y-2">
             <input
               value={debtorName}
               onChange={(event) => setDebtorName(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none"
-              placeholder="اسم العميل"
+              className="ahwa-input text-right text-sm"
+              placeholder="اسم الحساب"
             />
             <input
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
-              className="w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none"
+              className="ahwa-input text-right text-sm"
               placeholder="المبلغ"
               inputMode="decimal"
             />
             <textarea
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
-              className="min-h-24 w-full rounded-2xl border border-slate-200 bg-white px-3 py-3 text-right text-sm outline-none"
-              placeholder="ملاحظة"
+              className="min-h-24 ahwa-textarea text-right text-sm"
+              placeholder="ملاحظات داخلية"
             />
             <button
               onClick={() => void addDebt.run()}
               disabled={addDebt.busy}
-              className="w-full rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              className="w-full rounded-2xl bg-[#9b6b2e] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
             >
-              {addDebt.busy ? '...' : 'إضافة المديونية'}
+              {addDebt.busy ? '...' : 'ترحيل المبلغ'}
             </button>
           </div>
-          <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-500">
-            دفتر الآجل هنا خفيف وسريع: ابحث بالاسم، راقب الرصيد، وافتح العميل لتسجيل السداد أو متابعة السجل كاملًا.
+          <div className="mt-3 rounded-2xl border border-[#decdb9] bg-[#f8f1e7] p-3 text-xs text-[#8a7763]">
+            دفتر الآجل هنا مصمم للمتابعة اليومية السريعة: ابحث بالاسم، راقب الرصيد، وافتح الحساب لتسجيل السداد أو مراجعة السجل بالكامل.
           </div>
         </section>
       </div>
@@ -295,10 +295,10 @@ export default function CustomersPage() {
 function StatPill({ label, value, tone }: { label: string; value: number; tone: 'amber' | 'red' | 'emerald' }) {
   const toneClass =
     tone === 'red'
-      ? 'border-red-200 bg-red-50 text-red-700'
+      ? 'border-[#e6c7c2] bg-[#fff3f1] text-[#9a3e35]'
       : tone === 'emerald'
-        ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
-        : 'border-amber-200 bg-amber-50 text-amber-700';
+        ? 'border-[#cfe0d7] bg-[#eff7f1] text-[#2e6a4e]'
+        : 'border-[#ecd9bd] bg-[#fcf3e7] text-[#a5671e]';
   return (
     <div className={[ 'rounded-2xl border px-3 py-3 text-center shadow-sm', toneClass ].join(' ')}>
       <div className="text-xs font-medium">{label}</div>
@@ -310,10 +310,10 @@ function StatPill({ label, value, tone }: { label: string; value: number; tone: 
 function MiniAgingCard({ label, value, tone }: { label: string; value: number; tone: 'sky' | 'orange' | 'red' }) {
   const toneClass =
     tone === 'red'
-      ? 'border-red-200 bg-red-50 text-red-700'
+      ? 'border-[#e6c7c2] bg-[#fff3f1] text-[#9a3e35]'
       : tone === 'orange'
-        ? 'border-orange-200 bg-orange-50 text-orange-700'
-        : 'border-sky-200 bg-sky-50 text-sky-700';
+        ? 'border-[#ecd9bd] bg-[#fcf3e7] text-[#a5671e]'
+        : 'border-[#d6dee5] bg-[#f4f7f9] text-[#3c617c]';
   return (
     <div className={[ 'rounded-2xl border px-2 py-2 text-center', toneClass ].join(' ')}>
       <div className="text-[11px] font-medium">{label}</div>

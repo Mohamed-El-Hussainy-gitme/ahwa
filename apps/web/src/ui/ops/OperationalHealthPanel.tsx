@@ -1,21 +1,11 @@
 'use client';
 
 import type { OpsNavSummary } from '@/lib/ops/types';
+import { opsMetricCard } from '@/ui/ops/premiumStyles';
 
 type SyncState = 'idle' | 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
 
-type MetricTone = 'healthy' | 'watch' | 'alert';
-
-function metricToneClass(tone: MetricTone) {
-  switch (tone) {
-    case 'alert':
-      return 'border-red-200 bg-red-50 text-red-700';
-    case 'watch':
-      return 'border-amber-200 bg-amber-50 text-amber-700';
-    default:
-      return 'border-emerald-200 bg-emerald-50 text-emerald-700';
-  }
-}
+type MetricTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
 function syncLabel(state: SyncState) {
   switch (state) {
@@ -23,7 +13,7 @@ function syncLabel(state: SyncState) {
       return 'مباشر';
     case 'connecting':
     case 'reconnecting':
-      return 'إعادة اتصال';
+      return 'يعيد الاتصال';
     case 'disconnected':
       return 'غير متصل';
     default:
@@ -34,14 +24,14 @@ function syncLabel(state: SyncState) {
 function syncTone(state: SyncState): MetricTone {
   switch (state) {
     case 'connected':
-      return 'healthy';
+      return 'success';
     case 'connecting':
     case 'reconnecting':
-      return 'watch';
+      return 'warning';
     case 'disconnected':
-      return 'alert';
+      return 'danger';
     default:
-      return 'watch';
+      return 'neutral';
   }
 }
 
@@ -81,45 +71,45 @@ export function OperationalHealthPanel({
 
   const deliveryTone: MetricTone =
     readyMinutes != null && readyMinutes >= 15
-      ? 'alert'
+      ? 'danger'
       : readyMinutes != null && readyMinutes >= 8
-        ? 'watch'
+        ? 'warning'
         : summary.readyForDelivery > 0
-          ? 'watch'
-          : 'healthy';
+          ? 'info'
+          : 'success';
 
-  const sessionTone: MetricTone = stalledCount >= 2 ? 'alert' : stalledCount >= 1 ? 'watch' : 'healthy';
+  const sessionTone: MetricTone = stalledCount >= 2 ? 'danger' : stalledCount >= 1 ? 'warning' : 'info';
   const billingTone: MetricTone =
     summary.billableQty >= 12 || summary.deferredCustomerCount >= 6
-      ? 'alert'
+      ? 'danger'
       : summary.billableQty > 0 || summary.deferredCustomerCount > 0
-        ? 'watch'
-        : 'healthy';
+        ? 'warning'
+        : 'success';
 
   return (
     <div className={['grid grid-cols-1 gap-2 sm:grid-cols-2', className].join(' ')}>
-      <div className={['rounded-2xl border px-3 py-3 text-sm', metricToneClass(syncTone(syncState))].join(' ')}>
-        <div className="text-xs font-semibold">حالة النظام</div>
-        <div className="mt-1 text-base font-bold">{syncLabel(syncState)}</div>
-        <div className="mt-1 text-[11px] opacity-80">{formatSyncAge(lastLoadedAt)}</div>
+      <div className={opsMetricCard(syncTone(syncState))}>
+        <div className="text-xs font-semibold opacity-80">حالة النظام</div>
+        <div className="mt-1 text-base font-black">{syncLabel(syncState)}</div>
+        <div className="mt-1 text-[11px] opacity-75">{formatSyncAge(lastLoadedAt)}</div>
       </div>
 
-      <div className={['rounded-2xl border px-3 py-3 text-sm', metricToneClass(deliveryTone)].join(' ')}>
-        <div className="text-xs font-semibold">التسليم والانتظار</div>
-        <div className="mt-1 text-base font-bold">{summary.readyForDelivery} جاهز</div>
-        <div className="mt-1 text-[11px] opacity-80">أقدم جاهز: {formatMinutes(readyMinutes)}</div>
+      <div className={opsMetricCard(deliveryTone)}>
+        <div className="text-xs font-semibold opacity-80">التسليم والانتظار</div>
+        <div className="mt-1 text-base font-black">{summary.readyForDelivery} جاهز</div>
+        <div className="mt-1 text-[11px] opacity-75">أقدم جاهز: {formatMinutes(readyMinutes)}</div>
       </div>
 
-      <div className={['rounded-2xl border px-3 py-3 text-sm', metricToneClass(sessionTone)].join(' ')}>
-        <div className="text-xs font-semibold">الجلسات</div>
-        <div className="mt-1 text-base font-bold">{summary.openSessions} مفتوحة</div>
-        <div className="mt-1 text-[11px] opacity-80">متوقفة: {stalledCount}</div>
+      <div className={opsMetricCard(sessionTone)}>
+        <div className="text-xs font-semibold opacity-80">الجلسات</div>
+        <div className="mt-1 text-base font-black">{summary.openSessions} مفتوحة</div>
+        <div className="mt-1 text-[11px] opacity-75">جلسات متوقفة: {stalledCount}</div>
       </div>
 
-      <div className={['rounded-2xl border px-3 py-3 text-sm', metricToneClass(billingTone)].join(' ')}>
-        <div className="text-xs font-semibold">الحساب والآجل</div>
-        <div className="mt-1 text-base font-bold">{summary.billableQty} للحساب</div>
-        <div className="mt-1 text-[11px] opacity-80">عملاء آجل: {summary.deferredCustomerCount}</div>
+      <div className={opsMetricCard(billingTone)}>
+        <div className="text-xs font-semibold opacity-80">الحساب والآجل</div>
+        <div className="mt-1 text-base font-black">{summary.billableQty} للحساب</div>
+        <div className="mt-1 text-[11px] opacity-75">أسماء آجل نشطة: {summary.deferredCustomerCount}</div>
       </div>
     </div>
   );

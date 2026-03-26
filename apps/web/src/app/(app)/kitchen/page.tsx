@@ -11,6 +11,17 @@ import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
+import {
+  opsAlert,
+  opsBadge,
+  opsEmptyState,
+  opsGhostButton,
+  opsMetricCard,
+  opsPrimaryButton,
+  opsSectionHint,
+  opsSectionTitle,
+  opsSurface,
+} from '@/ui/ops/premiumStyles';
 
 export default function KitchenPage() {
   const { can, shift } = useAuthz();
@@ -35,6 +46,7 @@ export default function KitchenPage() {
   if (!can.kitchen && !can.owner) return <AccessDenied title="الباريستا" />;
 
   const totalWaiting = (data?.queue ?? []).reduce((sum, item) => sum + item.qtyWaiting, 0);
+  const totalReplacement = (data?.queue ?? []).reduce((sum, item) => sum + item.qtyWaitingReplacement, 0);
 
   useEffect(() => {
     if (document.visibilityState !== 'visible') {
@@ -57,32 +69,57 @@ export default function KitchenPage() {
   }
 
   return (
-    <MobileShell title="الباريستا" topRight={<Link href="/support?source=in_app&page=/kitchen" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>}>
-      {localError ?? error ? (
-        <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-          {localError ?? error}
+    <MobileShell
+      title="الباريستا"
+      topRight={<Link href="/support?source=in_app&page=/kitchen" className={opsGhostButton}>دعم</Link>}
+    >
+      {localError ?? error ? <div className={`mb-3 ${opsAlert('danger')}`}>{localError ?? error}</div> : null}
+
+      <section className={`${opsSurface} mb-3 p-3`}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className={opsSectionTitle}>محطة الباريستا</div>
+            <div className={`mt-1 ${opsSectionHint}`}>
+              راقب الطابور الحالي، وابدأ بتجهيز البنود الأعلى أولوية للحفاظ على إيقاع الخدمة.
+            </div>
+          </div>
+          <div className={opsBadge('accent')}>تحضير مباشر</div>
         </div>
-      ) : null}
+        <div className="mt-3 grid grid-cols-3 gap-2">
+          <div className={opsMetricCard('warning')}>
+            <div className="text-[11px] font-semibold opacity-70">قيد الانتظار</div>
+            <div className="mt-1 text-xl font-black leading-none">{totalWaiting}</div>
+          </div>
+          <div className={opsMetricCard('info')}>
+            <div className="text-[11px] font-semibold opacity-70">البنود</div>
+            <div className="mt-1 text-xl font-black leading-none">{data?.queue?.length ?? 0}</div>
+          </div>
+          <div className={opsMetricCard(totalReplacement > 0 ? 'warning' : 'success')}>
+            <div className="text-[11px] font-semibold opacity-70">إعادة مجانية</div>
+            <div className="mt-1 text-xl font-black leading-none">{totalReplacement}</div>
+          </div>
+        </div>
+      </section>
 
       <section id="queue-panel" className="space-y-3">
         {(data?.queue ?? []).map((item) => {
           const qty = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, item.qtyWaiting));
           return (
-            <div key={item.orderItemId} className="rounded-3xl border border-slate-200 bg-white p-3 shadow-sm">
+            <div key={item.orderItemId} className={`${opsSurface} p-3`}>
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 text-right">
-                  <div className="text-xs font-semibold text-slate-500">{item.sessionLabel}</div>
-                  <div className="mt-1 text-base font-bold text-slate-900">{item.productName}</div>
+                  <div className="text-xs font-semibold text-[#8d7967]">{item.sessionLabel}</div>
+                  <div className="mt-1 text-base font-bold text-[#1e1712]">{item.productName}</div>
                 </div>
-                <div className="rounded-2xl bg-slate-900 px-3 py-2 text-center text-white">
-                  <div className="text-[10px] font-semibold text-white/70">الكمية</div>
+                <div className="rounded-[18px] bg-[#1e1712] px-3 py-2 text-center text-white shadow-[0_12px_24px_rgba(30,23,18,0.14)]">
+                  <div className="text-[10px] font-semibold text-white/75">الكمية</div>
                   <div className="text-xl font-black leading-none">{item.qtyWaiting}</div>
                 </div>
               </div>
 
               {item.qtyWaitingReplacement > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                  <span className="rounded-full bg-amber-50 px-3 py-1 text-amber-700">إعادة مجانية {item.qtyWaitingReplacement}</span>
+                  <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span>
                 </div>
               ) : null}
 
@@ -98,7 +135,7 @@ export default function KitchenPage() {
                   type="button"
                   disabled={readyCommand.busy}
                   onClick={() => void readyCommand.run(item, qty)}
-                  className="rounded-2xl border border-slate-200 px-3 py-3 font-semibold text-slate-700 disabled:opacity-40"
+                  className={opsGhostButton}
                 >
                   تجهيز المحدد
                 </button>
@@ -106,7 +143,7 @@ export default function KitchenPage() {
                   type="button"
                   disabled={readyCommand.busy}
                   onClick={() => void readyCommand.run(item, item.qtyWaiting)}
-                  className="rounded-2xl bg-slate-900 px-3 py-3 font-semibold text-white disabled:opacity-40"
+                  className={opsPrimaryButton}
                 >
                   تجهيز الكل
                 </button>
@@ -114,7 +151,12 @@ export default function KitchenPage() {
             </div>
           );
         })}
-        {!data?.queue?.length ? <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">لا يوجد طلبات للباريستا الآن.</div> : null}
+
+        {!data?.queue?.length ? (
+          <div className={opsEmptyState()}>
+            لا توجد طلبات للباريستا الآن.
+          </div>
+        ) : null}
       </section>
     </MobileShell>
   );

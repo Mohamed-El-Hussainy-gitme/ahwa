@@ -1,18 +1,19 @@
 'use client';
 
 import type { OpsQueueHealth } from '@/lib/ops/types';
+import { opsMetricCard } from '@/ui/ops/premiumStyles';
 
-function toneForAge(minutes: number | null) {
-  if (minutes == null) return 'border-slate-200 bg-slate-50 text-slate-600';
-  if (minutes >= 15) return 'border-red-200 bg-red-50 text-red-700';
-  if (minutes >= 8) return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+function toneForAge(minutes: number | null): 'neutral' | 'warning' | 'danger' | 'success' {
+  if (minutes == null) return 'neutral';
+  if (minutes >= 15) return 'danger';
+  if (minutes >= 8) return 'warning';
+  return 'success';
 }
 
-function stalledTone(count: number) {
-  if (count >= 3) return 'border-red-200 bg-red-50 text-red-700';
-  if (count >= 1) return 'border-amber-200 bg-amber-50 text-amber-700';
-  return 'border-slate-200 bg-slate-50 text-slate-600';
+function stalledTone(count: number): 'neutral' | 'warning' | 'danger' {
+  if (count >= 3) return 'danger';
+  if (count >= 1) return 'warning';
+  return 'neutral';
 }
 
 function formatMinutes(minutes: number | null) {
@@ -41,18 +42,18 @@ export function QueueHealthStrip({
 
   return (
     <div className={['grid grid-cols-1 gap-2 sm:grid-cols-3', className].join(' ')}>
-      <div className={['rounded-2xl border px-3 py-3 text-sm', toneForAge(health.oldestPendingMinutes)].join(' ')}>
-        <div className="text-xs font-semibold">أقدم انتظار</div>
-        <div className="mt-1 text-base font-bold">{formatMinutes(health.oldestPendingMinutes)}</div>
+      <div className={opsMetricCard(toneForAge(health.oldestPendingMinutes))}>
+        <div className="text-xs font-semibold opacity-80">أقدم انتظار</div>
+        <div className="mt-1 text-base font-black">{formatMinutes(health.oldestPendingMinutes)}</div>
       </div>
-      <div className={['rounded-2xl border px-3 py-3 text-sm', toneForAge(health.oldestReadyMinutes)].join(' ')}>
-        <div className="text-xs font-semibold">أقدم جاهز</div>
-        <div className="mt-1 text-base font-bold">{formatMinutes(health.oldestReadyMinutes)}</div>
+      <div className={opsMetricCard(toneForAge(health.oldestReadyMinutes))}>
+        <div className="text-xs font-semibold opacity-80">أقدم جاهز</div>
+        <div className="mt-1 text-base font-black">{formatMinutes(health.oldestReadyMinutes)}</div>
       </div>
-      <div className={['rounded-2xl border px-3 py-3 text-sm', stalledTone(health.stalledSessionsCount)].join(' ')}>
-        <div className="text-xs font-semibold">جلسات متوقفة</div>
-        <div className="mt-1 text-base font-bold">{health.stalledSessionsCount}</div>
-        <div className="mt-1 text-[11px] opacity-80">بعد {health.stalledThresholdMinutes} دقيقة بلا نشاط</div>
+      <div className={opsMetricCard(stalledTone(health.stalledSessionsCount))}>
+        <div className="text-xs font-semibold opacity-80">جلسات متوقفة</div>
+        <div className="mt-1 text-base font-black">{health.stalledSessionsCount}</div>
+        <div className="mt-1 text-[11px] opacity-75">الحد المتابع {health.stalledThresholdMinutes} دقيقة</div>
       </div>
     </div>
   );
