@@ -2,6 +2,7 @@
 
 import Link, { type LinkProps } from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BottomNav } from '@/ui/BottomNav';
 import { useAuthz } from '@/lib/authz';
 import { useOpsChrome } from '@/lib/ops/chrome';
@@ -35,6 +36,33 @@ function formatMinutes(minutes: number | null) {
   const hours = Math.floor(minutes / 60);
   const rest = minutes % 60;
   return rest ? `${hours}س ${rest}د` : `${hours}س`;
+}
+
+function useElementHeight<T extends HTMLElement>() {
+  const ref = useRef<T | null>(null);
+  const [height, setHeight] = useState(0);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const update = () => {
+      setHeight(Math.ceil(element.getBoundingClientRect().height));
+    };
+
+    update();
+
+    const observer = new ResizeObserver(update);
+    observer.observe(element);
+    window.addEventListener('resize', update);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', update);
+    };
+  }, []);
+
+  return { ref, height } as const;
 }
 
 function syncTone(state: SyncState) {
@@ -290,6 +318,8 @@ export function MobileShell({
   const pathname = usePathname();
   const { can, effectiveRole } = useAuthz();
   const { summary, lastLoadedAt, sync } = useOpsChrome();
+  const stickyFooterBox = useElementHeight<HTMLDivElement>();
+  const bottomNavBox = useElementHeight<HTMLDivElement>();
 
   const role: RoleView = can.owner ? 'owner' : effectiveRole ?? 'unassigned';
   const quickMetrics = buildQuickMetrics({
@@ -299,6 +329,15 @@ export function MobileShell({
   });
 
   const syncBadgeLabel = `${stateLabel(sync.state)} · ${formatSyncAge(lastLoadedAt)}`;
+  const bottomDockHeight = useMemo(() => {
+    const bottomNavHeight = bottomNavBox.height || 82;
+    const stickyFooterHeight = stickyFooter ? stickyFooterBox.height + 12 : 0;
+    return bottomNavHeight + stickyFooterHeight + 20;
+  }, [bottomNavBox.height, stickyFooter, stickyFooterBox.height]);
+  const stickyFooterOffset = useMemo(() => {
+    const bottomNavHeight = bottomNavBox.height || 82;
+    return bottomNavHeight + 8;
+  }, [bottomNavBox.height]);
 
   return (
     <div className="min-h-dvh bg-[linear-gradient(180deg,#f4efe7_0%,#eadcc8_100%)] px-0 md:px-4">
@@ -376,18 +415,20 @@ export function MobileShell({
 
         <main
           className="flex-1 px-3 pt-3"
-          style={{ paddingBottom: stickyFooter ? 'calc(172px + env(safe-area-inset-bottom))' : 'calc(96px + env(safe-area-inset-bottom))' }}
+          style={{ paddingBottom: `calc(${bottomDockHeight}px + env(safe-area-inset-bottom))` }}
         >
           {children}
         </main>
 
         {stickyFooter ? (
-          <div className="fixed bottom-[82px] left-0 right-0 z-20 px-3 pb-3">
-            <div className="mx-auto max-w-md">{stickyFooter}</div>
+          <div className="fixed left-0 right-0 z-20 px-3 pb-3" style={{ bottom: `${stickyFooterOffset}px` }}>
+            <div ref={stickyFooterBox.ref} className="mx-auto max-w-md">
+              {stickyFooter}
+            </div>
           </div>
         ) : null}
 
-        <div className="fixed bottom-0 left-0 right-0 z-20">
+        <div ref={bottomNavBox.ref} className="fixed bottom-0 left-0 right-0 z-20">
           <div className="mx-auto max-w-md px-2 pb-[env(safe-area-inset-bottom)] pt-2">
             <div className="rounded-t-[26px] border border-b-0 border-[#ddcfbf] bg-[linear-gradient(180deg,rgba(255,250,244,0.96)_0%,rgba(248,238,226,0.98)_100%)] px-2 py-2 shadow-[0_-16px_32px_rgba(30,23,18,0.08)] backdrop-blur">
               <BottomNav />

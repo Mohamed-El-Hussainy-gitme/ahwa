@@ -1,0 +1,22 @@
+<svg width="720" height="240" viewBox="0 0 720 240" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="720" height="240" rx="36" fill="#FFF9F2"/>
+  <g transform="translate(54 46)">
+    <rect x="0.75" y="0.75" width="148.5" height="148.5" rx="30.25" fill="#FFF9F2" stroke="#D9CABB" stroke-width="1.5"/>
+    <path d="M44 54H92C103.046 54 112 62.9543 112 74V78C112 88.4934 103.493 97 93 97H68" stroke="#1E1712" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M48 54V100C48 117.673 62.3269 132 80 132C97.6731 132 112 117.673 112 100V90" stroke="#1E1712" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M58 34C65 41 65 50 58 57" stroke="#9B6B2E" stroke-width="8" stroke-linecap="round"/>
+    <path d="M80 28C88 37 88 49 80 58" stroke="#9B6B2E" stroke-width="8" stroke-linecap="round"/>
+    <path d="M102 34C109 41 109 50 102 57" stroke="#9B6B2E" stroke-width="8" stroke-linecap="round"/>
+    <path d="M40 128H120" stroke="#D9CABB" stroke-width="8" stroke-linecap="round"/>
+  </g>
+  <g transform="translate(238 64)">
+    <path d="M0 110V0H28L72 63L116 0H144V110H116V47L83 94H61L28 47V110H0Z" fill="#1E1712"/>
+    <path d="M194 0H220L272 110H242L231 86H183L172 110H142L194 0ZM193 63H221L207 30L193 63Z" fill="#1E1712"/>
+    <path d="M278 110V0H366V24H306V44H360V68H306V110H278Z" fill="#1E1712"/>
+    <path d="M413 0H439L491 110H461L450 86H402L391 110H361L413 0ZM412 63H440L426 30L412 63Z" fill="#1E1712"/>
+  </g>
+  <g transform="translate(239 184)">
+    <path d="M0 12H216" stroke="#D9CABB" stroke-width="2"/>
+    <text x="0" y="27" fill="#6B5A4C" font-family="Segoe UI, Arial, sans-serif" font-size="18" letter-spacing="4">PREMIUM CAFE OPERATIONS</text>
+  </g>
+</svg>
