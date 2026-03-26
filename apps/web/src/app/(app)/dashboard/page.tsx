@@ -31,15 +31,15 @@ function DashboardActionGrid({ actions }: { actions: ActionCard[] }) {
       {actions.map((action) => {
         const tone =
           action.tone === 'primary'
-            ? 'border-slate-900 bg-slate-900 text-white'
+            ? 'border-[#1e1712] bg-[#1e1712] text-white'
             : action.tone === 'support'
-              ? 'border-indigo-200 bg-indigo-50 text-indigo-900'
-              : 'border-slate-200 bg-white text-slate-900';
+              ? 'border-[#e6d3ba] bg-[#f4e7d4] text-[#7c5222]'
+              : 'border-[#d9cabb] bg-[#fffaf4] text-[#1e1712]';
 
         return (
-          <Link key={`${String(action.href)}-${action.label}`} href={action.href} className={`rounded-3xl border p-4 text-right shadow-sm transition hover:-translate-y-0.5 ${tone}`}>
+          <Link key={`${String(action.href)}-${action.label}`} href={action.href} className={`rounded-[24px] border p-4 text-right shadow-sm transition hover:-translate-y-0.5 ${tone}`}>
             <div className="text-base font-bold">{action.label}</div>
-            <div className={`mt-2 text-sm ${action.tone === 'primary' ? 'text-white/80' : action.tone === 'support' ? 'text-indigo-900/80' : 'text-slate-600'}`}>
+            <div className={`mt-2 text-sm ${action.tone === 'primary' ? 'text-white/80' : action.tone === 'support' ? 'text-[#7c5222]/80' : 'text-[#6b5a4c]'}`}>
               {action.description}
             </div>
           </Link>
@@ -59,16 +59,16 @@ function DashboardStatGrid({ cards }: { cards: StatCard[] }) {
           card.tone === 'emerald'
             ? 'border-emerald-200 bg-emerald-50'
             : card.tone === 'amber'
-              ? 'border-amber-200 bg-amber-50'
+              ? 'border-[#e8d5b6] bg-[#fbf3e6]'
               : card.tone === 'sky'
-                ? 'border-sky-200 bg-sky-50'
-                : 'border-slate-200 bg-slate-50';
+                ? 'border-[#d5dee6] bg-[#f4f7f9]'
+                : 'border-[#d9cabb] bg-[#fffaf4]';
 
         return (
-          <div key={card.label} className={`rounded-3xl border p-4 text-right ${tone}`}>
-            <div className="text-2xl font-bold text-slate-900">{card.value}</div>
-            <div className="mt-1 text-sm text-slate-700">{card.label}</div>
-            {card.hint ? <div className="mt-2 text-xs text-slate-500">{card.hint}</div> : null}
+          <div key={card.label} className={`rounded-[24px] border p-4 text-right ${tone}`}>
+            <div className="text-2xl font-bold text-[#1e1712]">{card.value}</div>
+            <div className="mt-1 text-sm text-[#4e4034]">{card.label}</div>
+            {card.hint ? <div className="mt-2 text-xs text-[#7d6b5a]">{card.hint}</div> : null}
           </div>
         );
       })}
@@ -82,7 +82,7 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
 
   if (role === 'owner') {
     return {
-      title: 'المعلم',
+      title: 'المالك',
       cards: [
         { label: 'جاهز للحساب', value: data?.billableQty ?? 0, tone: 'emerald' },
         { label: 'جلسات متأخرة', value: stalledSessions, tone: stalledSessions > 0 ? 'amber' : 'neutral' },
@@ -93,7 +93,7 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
         { href: '/orders', label: 'الطلبات', description: 'الجلسات، التسليم، والمتابعة المباشرة.' },
         { href: '/billing', label: 'الحساب', description: 'تحصيل المحدد أو ترحيله للآجل.' },
         { href: '/complaints', label: 'الشكاوى', description: 'مراجعة المعالجات والإعادة.' },
-        { href: '/owner', label: 'إدارة القهوة', description: 'الموظفون، المنيو، والتقارير.' },
+        { href: '/owner', label: 'الإدارة', description: 'فريق العمل، المنيو، والتقارير.' },
         { href: '/support?source=in_app&page=/dashboard', label: 'الدعم', description: 'مشكلة تشغيل أو دخول دعم مؤقت.', tone: 'support' },
       ],
     };
@@ -101,7 +101,7 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
 
   if (role === 'supervisor') {
     return {
-      title: 'المشرف',
+      title: 'مشرف التشغيل',
       cards: [
         { label: 'جاهز للحساب', value: data?.billableQty ?? 0, tone: 'emerald' },
         { label: 'جلسات متأخرة', value: stalledSessions, tone: stalledSessions > 0 ? 'amber' : 'neutral' },
@@ -134,7 +134,7 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
 
   if (role === 'shisha') {
     return {
-      title: 'الشيشة',
+      title: 'مختص الشيشة',
       cards: [
         { label: 'جلسات مفتوحة', value: data?.openSessions ?? 0, tone: 'sky' },
         { label: 'جلسات متأخرة', value: stalledSessions, tone: stalledSessions > 0 ? 'amber' : 'neutral' },
@@ -148,7 +148,7 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
 
   if (role === 'waiter') {
     return {
-      title: 'الويتر',
+      title: 'مضيف الصالة',
       cards: [
         { label: 'جاهز للحساب', value: data?.billableQty ?? 0, tone: 'emerald' },
         { label: 'جلسات مفتوحة', value: data?.openSessions ?? 0, tone: 'sky' },
@@ -181,16 +181,16 @@ export default function DashboardPage() {
 
   if (!shift) {
     return (
-      <MobileShell title="الرئيسية" topRight={<Link href="/support?source=in_app&page=/dashboard" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>}>
-        <div className="mb-3 rounded-3xl border border-amber-200 bg-amber-50 p-4 text-right text-sm text-amber-950">
+      <MobileShell title="الرئيسية" topRight={<Link href="/support?source=in_app&page=/dashboard" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-[#4e4034]">دعم</Link>}>
+        <div className="mb-3 rounded-3xl border border-[#e8d5b6] bg-[#fbf3e6] p-4 text-right text-sm text-amber-950">
           {can.owner
             ? 'لا توجد وردية مفتوحة الآن. افتح وردية ثم ارجع للمتابعة.'
             : 'لا توجد وردية مفتوحة أو لم يتم تعيينك داخل وردية نشطة.'}
         </div>
         <DashboardActionGrid
           actions={can.owner ? [
-            { href: '/shift', label: 'فتح وردية', description: 'حدد المشرف وباقي الفريق ثم افتح الوردية.', tone: 'primary' },
-            { href: '/owner', label: 'إدارة القهوة', description: 'راجع المنيو والموظفين قبل التشغيل.' },
+            { href: '/shift', label: 'فتح وردية', description: 'حدد مشرف التشغيل وباقي الفريق ثم افتح الوردية.', tone: 'primary' },
+            { href: '/owner', label: 'الإدارة', description: 'راجع المنيو وفريق العمل قبل التشغيل.' },
             { href: '/support?source=in_app&page=/dashboard', label: 'الدعم', description: 'بلاغ تشغيل أو متابعة تقنية.', tone: 'support' },
           ] : [
             { href: '/support?source=in_app&page=/dashboard', label: 'طلب دعم', description: 'أرسل مشكلة التشغيل أو اطلب المساعدة.', tone: 'support' },
@@ -201,7 +201,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <MobileShell title={config.title} topRight={<Link href="/support?source=in_app&page=/dashboard" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">دعم</Link>}>
+    <MobileShell title={config.title} topRight={<Link href="/support?source=in_app&page=/dashboard" className="rounded-xl border border-slate-200 px-3 py-2 text-xs font-semibold text-[#4e4034]">دعم</Link>}>
       {effectiveError ? (
         <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
           {effectiveError}

@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     );
     if (hasForeignOwnerAssignment) {
       return NextResponse.json(
-        { ok: false, error: { code: 'INVALID_OWNER_ASSIGNMENT_TARGET', message: 'يمكنك تعيين نفسك فقط كمعلم داخل الوردية.' } },
+        { ok: false, error: { code: 'INVALID_OWNER_ASSIGNMENT_TARGET', message: 'يمكنك تعيين نفسك فقط كمالك داخل الوردية.' } },
         { status: 403 },
       );
     }
@@ -88,7 +88,7 @@ export async function POST(request: Request) {
               : code === 'duplicate_shift_assignment'
                 ? 'لا يمكن تكرار نفس التعيين داخل نفس الطلب.'
                 : code === 'INVALID_OWNER_ASSIGNMENT_TARGET'
-                  ? 'يمكنك تعيين نفسك فقط كمعلم داخل الوردية.'
+                  ? 'يمكنك تعيين نفسك فقط كمالك داخل الوردية.'
                   : code;
     return NextResponse.json({ ok: false, error: { code, message } }, { status: 400 });
   }

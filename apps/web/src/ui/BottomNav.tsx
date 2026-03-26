@@ -29,7 +29,7 @@ function buildTabs(input: {
       { href: '/kitchen', label: 'باريستا', icon: '☕', badge: summary?.waitingBarista ?? 0 },
       { href: '/shisha', label: 'شيشة', icon: '🔥', badge: summary?.waitingShisha ?? 0 },
       { href: '/billing', label: 'حساب', icon: '💵', badge: summary?.billableQty ?? 0 },
-      { href: '/owner', label: 'إدارة', icon: '👑', badge: 0 },
+      { href: '/owner', label: 'الإدارة', icon: '👑', badge: 0 },
     ];
   }
 
@@ -101,15 +101,15 @@ export function BottomNav() {
             href={t.href}
             className={[
               'relative rounded-2xl border px-2 py-2 text-center transition',
-              'border-slate-200',
-              active ? 'bg-emerald-600 text-white shadow-sm' : 'bg-slate-50 text-slate-900 hover:bg-slate-100',
+              'border-[#d9cabb]',
+              active ? 'bg-[#1e1712] text-white shadow-sm' : 'bg-[#fffaf4] text-[#1e1712] hover:bg-[#f5ece0]',
             ].join(' ')}
           >
             {t.badge > 0 ? (
               <span
                 className={[
                   'absolute -top-1 left-1 inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold',
-                  active ? 'bg-white text-emerald-700' : 'bg-slate-900 text-white',
+                  active ? 'bg-white text-[#7c5222]' : 'bg-[#1e1712] text-white',
                 ].join(' ')}
               >
                 {t.badge > 99 ? '99+' : t.badge}

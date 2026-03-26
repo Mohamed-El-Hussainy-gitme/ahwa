@@ -607,7 +607,7 @@ export function SupportSection({ refreshKey, selectedCafeId }: { refreshKey: num
         </div>
         <div className="mt-4 space-y-4">
           <div className="rounded-2xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-900">
-            إذا طلبت القهوة وصول دعم مؤقت، يمكنك من هنا تفعيل الوصول ثم الدخول إلى نفس القهوة مؤقتًا بصلاحيات المعلم حتى انتهاء الوقت أو إغلاق البلاغ.
+            إذا طلبت القهوة وصول دعم مؤقت، يمكنك من هنا تفعيل الوصول ثم الدخول إلى نفس القهوة مؤقتًا بصلاحيات المالك حتى انتهاء الوقت أو إغلاق البلاغ.
           </div>
           {!data && loading ? <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5 text-sm text-slate-500">جارٍ تحميل رسائل الدعم...</div> : null}
           {data?.items.map((item) => {

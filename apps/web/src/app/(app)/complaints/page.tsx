@@ -172,7 +172,7 @@ export default function ComplaintsPage() {
 
   if (!shift) return <ShiftRequired title="الشكاوى" />;
   if (!(can.owner || can.takeOrders || can.billing || effectiveRole === 'shisha')) {
-    return <AccessDenied title="الشكاوى" message="هذه الصفحة للمشرف أو الويتر أو الشيشة أو المعلم فقط." />;
+    return <AccessDenied title="الشكاوى" message="هذه الصفحة لمشرف التشغيل أو مضيف الصالة أو مختص الشيشة أو المالك فقط." />;
   }
 
   const effectiveError = localError ?? error;
@@ -241,7 +241,7 @@ export default function ComplaintsPage() {
 
           {!canManageComplaintActions ? (
             <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-              يمكن للويتر والشيشة تسجيل ملاحظات فقط. الإلغاء والإعادة المجانية وإسقاط الحساب متاحة للمشرف أو المعلم فقط.
+              يمكن لمضيف الصالة ومختص الشيشة تسجيل ملاحظات فقط. الإلغاء والإعادة المجانية وإسقاط الحساب متاحة لمشرف التشغيل أو المالك فقط.
             </div>
           ) : null}
 

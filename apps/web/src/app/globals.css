@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #f4efe7;
+  --foreground: #1e1712;
+  --brand-surface: #fff9f2;
+  --brand-surface-elevated: #ffffff;
+  --brand-ink: #1e1712;
+  --brand-muted: #6b5a4c;
+  --brand-border: #d9cabb;
+  --brand-accent: #9b6b2e;
+  --brand-accent-strong: #7c5222;
+  --brand-accent-soft: #f1e1cb;
 }
 
 @theme inline {
@@ -12,19 +20,17 @@
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
 body {
-  background: #f8fafc; /* slate-50 */
-  color: #0f172a; /* slate-900 */
+  background: linear-gradient(180deg, var(--background) 0%, #ebe1d4 100%);
+  color: var(--foreground);
   font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Arabic", "Noto Sans", sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+::selection {
+  background: var(--brand-accent-soft);
+  color: var(--brand-ink);
 }
 
 html {

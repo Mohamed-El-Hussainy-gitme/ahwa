@@ -38,7 +38,7 @@ export default function ReadyPage() {
 
   if (!shift) return <ShiftRequired title="جاهز" />;
   if (can.owner || !canAccess) {
-    return <AccessDenied title="جاهز" message="هذه الصفحة للويتر أو المشرف فقط." />;
+    return <AccessDenied title="جاهز" message="هذه الصفحة لمضيف الصالة أو مشرف التشغيل فقط." />;
   }
 
   return (

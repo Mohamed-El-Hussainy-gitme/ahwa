@@ -133,7 +133,7 @@ export default function StaffPage() {
         setMsg(extractApiErrorMessage(json, "PIN_RESET_FAILED"));
         return;
       }
-      alert("تم تحديث الـ PIN. الموظف لازم يسجل دخول من جديد.");
+      alert("تم تحديث الـ PIN. يجب على عضو الفريق تسجيل الدخول من جديد.");
       await refresh();
     } finally {
       setBusy(false);
@@ -146,9 +146,9 @@ export default function StaffPage() {
   );
 
   return (
-    <MobileShell title="الموظفين" backHref="/owner">
+    <MobileShell title="فريق العمل" backHref="/owner">
       <div className="rounded-3xl border border-amber-200/70 bg-white p-4 shadow-sm">
-        <div className="mb-3 text-right font-bold text-amber-950">إضافة موظف</div>
+        <div className="mb-3 text-right font-bold text-amber-950">إضافة عضو للفريق</div>
 
         {msg && (
           <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-right text-sm text-red-600">
@@ -187,7 +187,7 @@ export default function StaffPage() {
         </button>
 
         <div className="mt-2 text-right text-xs text-amber-900/70">
-          تسجيل دخول الموظف: يدخل <b>اسمه/كوده</b> + <b>PIN</b> داخل شاشة القهوة.
+          تسجيل دخول عضو الفريق: يدخل <b>اسمه أو كوده</b> + <b>PIN</b> داخل شاشة القهوة.
         </div>
       </div>
 
@@ -230,7 +230,7 @@ export default function StaffPage() {
         </div>
 
         {visibleStaff.length === 0 ? (
-          <div className="mt-3 text-right text-sm text-amber-900/70">لا يوجد موظفين في هذا التصنيف.</div>
+          <div className="mt-3 text-right text-sm text-amber-900/70">لا يوجد أعضاء في هذا التصنيف.</div>
         ) : (
           <div className="mt-3 space-y-2">
             {visibleStaff.map((s) => {
@@ -272,7 +272,7 @@ export default function StaffPage() {
                           ) : null}
                         </>
                       ) : (
-                        <div className="text-[11px] text-amber-900/60">(لا يمكن تعديل المعلم هنا)</div>
+                        <div className="text-[11px] text-amber-900/60">(لا يمكن تعديل حساب المالك هنا)</div>
                       )}
                     </div>
 
@@ -284,7 +284,7 @@ export default function StaffPage() {
                         <div className="font-semibold text-amber-950">{display}</div>
                       </div>
                       <div className="mt-1 text-xs text-amber-900/70">
-                        الدور الأساسي: <b>{isOwner ? "معلم" : "موظف"}</b>
+                        الدور الأساسي: <b>{isOwner ? "مالك" : "عضو فريق"}</b>
                       </div>
                       {s.employeeCode ? (
                         <div className="mt-1 text-[11px] text-amber-900/60">كود الموظف: {s.employeeCode}</div>

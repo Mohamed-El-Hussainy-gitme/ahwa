@@ -22,7 +22,7 @@ export default function CustomersPrintPage() {
   });
 
   if (!can.owner && !shift) {
-    return <AccessDenied title="تصدير دفتر الآجل" message="النسخة القابلة للطباعة متاحة للمعلم أو المشرف النشط فقط." />;
+    return <AccessDenied title="تصدير دفتر الآجل" message="النسخة القابلة للطباعة متاحة للمالك أو مشرف التشغيل النشط فقط." />;
   }
 
   if (!can.owner && !can.billing) {

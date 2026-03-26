@@ -120,7 +120,7 @@ export default function LoginClient({ cafeSlug }: { cafeSlug: string }) {
             }}
             className="w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 font-semibold text-neutral-900"
           >
-            دخول المعلم (أونر)
+            دخول المالك
           </button>
 
           {err && (
@@ -132,7 +132,7 @@ export default function LoginClient({ cafeSlug }: { cafeSlug: string }) {
                   : err === "NOT_ASSIGNED"
                     ? "لا يوجد لك دور في الوردية"
                     : err === "NEEDS_PIN" || err === "NEEDS_PROVISION"
-                      ? "PIN غير مضبوط بعد — اطلب من الأونر ضبطه"
+                      ? "PIN غير مضبوط بعد — اطلب من المالك ضبطه"
                       : err === "CAFE_NOT_FOUND"
                         ? "القهوة غير موجودة"
                         : err === "STAFF_NOT_FOUND"

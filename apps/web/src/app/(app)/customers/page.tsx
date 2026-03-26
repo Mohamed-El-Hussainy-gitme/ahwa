@@ -120,7 +120,7 @@ export default function CustomersPage() {
       <ShiftRequired
         title="دفتر الآجل"
         backHref="/dashboard"
-        message="لا توجد وردية مفتوحة لك الآن. دفتر الآجل متاح للمشرف النشط أو المعلم فقط."
+        message="لا توجد وردية مفتوحة لك الآن. دفتر الآجل متاح لمشرف التشغيل النشط أو المالك فقط."
       />
     );
   }

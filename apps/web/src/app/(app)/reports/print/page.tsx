@@ -208,7 +208,7 @@ export default function ReportsPrintPage() {
   }, [data, tab]);
 
   if (user?.baseRole !== 'owner') {
-    return <AccessDenied title="تصدير التقارير" message="هذه الصفحة للمعلم فقط." />;
+    return <AccessDenied title="تصدير التقارير" message="هذه الصفحة للمالك فقط." />;
   }
 
   return (

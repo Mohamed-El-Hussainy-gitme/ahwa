@@ -111,15 +111,15 @@ export default function LoginLandingClient() {
             : null;
 
   return (
-    <div className="min-h-dvh bg-gradient-to-b from-amber-50 to-slate-50 p-4 flex items-center justify-center">
-      <div className="w-full max-w-sm rounded-3xl border border-neutral-200/70 bg-white p-5 shadow-sm">
+    <div className="flex min-h-dvh items-center justify-center bg-[linear-gradient(180deg,#f4efe7_0%,#eadcc8_100%)] p-4">
+      <div className="w-full max-w-sm rounded-[28px] border border-[#d9cabb] bg-[#fffaf4] p-6 shadow-[0_18px_48px_rgba(30,23,18,0.08)]">
         <div className="mb-3">
           <BrandLogo className="mx-auto w-[220px]" priority />
         </div>
 
         <div className="text-center">
-          <div className="text-xl font-semibold text-neutral-900">دخول القهوة</div>
-          <div className="mt-0.5 text-sm text-neutral-500">اكتب كود القهوة (slug) للمتابعة</div>
+          <div className="text-xl font-semibold text-[#1e1712]">دخول القهوة</div>
+          <div className="mt-1 text-sm text-[#6b5a4c]">اكتب رمز القهوة للمتابعة</div>
         </div>
 
         {msg && (
@@ -127,7 +127,7 @@ export default function LoginLandingClient() {
         )}
 
         <input
-          className="mt-4 w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-right"
+          className="mt-4 w-full rounded-2xl border border-[#d9cabb] bg-white px-4 py-3 text-right text-[#1e1712] outline-none placeholder:text-[#9d8b79]"
           placeholder="مثال: fishawy"
           value={slug}
           onChange={(e2) => setSlug(e2.target.value)}
@@ -146,7 +146,7 @@ export default function LoginLandingClient() {
         <button
           onClick={go}
           disabled={busy}
-          className="mt-3 w-full rounded-2xl bg-neutral-900 px-4 py-3 font-semibold text-white disabled:opacity-60"
+          className="mt-3 w-full rounded-2xl bg-[#1e1712] px-4 py-3 font-semibold text-white disabled:opacity-60"
         >
           {busy ? "..." : "متابعة"}
         </button>
@@ -154,14 +154,14 @@ export default function LoginLandingClient() {
         <button
           onClick={goOwner}
           disabled={busy}
-          className="mt-2 w-full rounded-2xl border border-neutral-200 bg-white px-4 py-3 font-semibold text-neutral-900 disabled:opacity-60"
+          className="mt-2 w-full rounded-2xl border border-[#d9cabb] bg-[#f7efe4] px-4 py-3 font-semibold text-[#1e1712] disabled:opacity-60"
         >
-          دخول المعلم (أونر)
+          دخول المالك
         </button>
 
         <a
           href={`/support?source=login${slug ? `&slug=${encodeURIComponent(slug)}` : ''}`}
-          className="mt-2 block w-full rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-center font-semibold text-sky-800"
+          className="mt-2 block w-full rounded-2xl border border-[#e6d3ba] bg-[#f3e7d7] px-4 py-3 text-center font-semibold text-[#7c5222]"
         >
           تحتاج مساعدة؟
         </a>

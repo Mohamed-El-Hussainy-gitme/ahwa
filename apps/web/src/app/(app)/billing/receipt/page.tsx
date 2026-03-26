@@ -85,7 +85,7 @@ export default function BillingReceiptPage() {
   });
 
   if (!can.owner && !shift) {
-    return <AccessDenied title="بون الفاتورة" message="هذه الصفحة للمعلم أو المشرف النشط فقط." />;
+    return <AccessDenied title="بون الفاتورة" message="هذه الصفحة للمالك أو مشرف التشغيل النشط فقط." />;
   }
 
   if (!can.owner && !can.billing) {

@@ -15,8 +15,8 @@ function formatMoney(value: number) {
 }
 
 function actorLabel(label: string | null) {
-  if (label === 'owner') return 'المعلم';
-  if (label === 'staff') return 'الموظف';
+  if (label === 'owner') return 'المالك';
+  if (label === 'staff') return 'فريق التشغيل';
   return 'غير محدد';
 }
 
@@ -31,7 +31,7 @@ export default function CustomerLedgerPrintPage() {
   });
 
   if (!can.owner && !shift) {
-    return <AccessDenied title="كشف العميل" message="النسخة القابلة للطباعة متاحة للمعلم أو المشرف النشط فقط." />;
+    return <AccessDenied title="كشف العميل" message="النسخة القابلة للطباعة متاحة للمالك أو مشرف التشغيل النشط فقط." />;
   }
 
   if (!can.owner && !can.billing) {

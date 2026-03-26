@@ -299,20 +299,20 @@ export function MobileShell({
   const syncBadgeLabel = `${stateLabel(sync.state)} · ${formatSyncAge(lastLoadedAt)}`;
 
   return (
-    <div className="min-h-dvh bg-slate-50">
-      <div className="mx-auto max-w-md min-h-dvh bg-white md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-3xl md:border md:border-slate-200 md:shadow-sm">
-        <header className="sticky top-0 z-10 border-b border-slate-200 bg-white/95 px-4 py-3 backdrop-blur">
+    <div className="min-h-dvh bg-[#f4efe7]">
+      <div className="mx-auto max-w-md min-h-dvh bg-[#fffaf4] md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-[28px] md:border md:border-[#d9cabb] md:shadow-[0_18px_48px_rgba(30,23,18,0.08)]">
+        <header className="sticky top-0 z-10 border-b border-[#e5d7c8] bg-[#fffaf4]/95 px-4 py-3 backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2">
               {backHref ? (
                 <Link
                   href={backHref}
-                  className="shrink-0 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 active:scale-[.99]"
+                  className="shrink-0 rounded-xl border border-[#d9cabb] bg-white px-3 py-2 text-xs font-semibold text-[#6b5a4c] active:scale-[.99]"
                 >
                   رجوع
                 </Link>
               ) : null}
-              <div className="min-w-0 truncate text-[15px] font-semibold tracking-wide text-slate-900">{title}</div>
+              <div className="min-w-0 truncate text-[15px] font-semibold tracking-wide text-[#1e1712]">{title}</div>
             </div>
             <div className="shrink-0">{topRight}</div>
           </div>

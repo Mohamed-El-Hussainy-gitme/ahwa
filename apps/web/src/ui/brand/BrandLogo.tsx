@@ -11,9 +11,9 @@ export default function BrandLogo({ className, priority = false, withWordmark = 
     <div className={className}>
       <Image
         src="/brand/ahwa-logo.svg"
-        alt={withWordmark ? "Ahwa logo" : "Ahwa mark"}
-        width={withWordmark ? 320 : 120}
-        height={withWordmark ? 192 : 120}
+        alt={withWordmark ? "Ahwa brand" : "Ahwa mark"}
+        width={withWordmark ? 360 : 132}
+        height={withWordmark ? 120 : 132}
         priority={priority}
         className="h-auto w-full object-contain"
       />

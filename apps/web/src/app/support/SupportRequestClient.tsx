@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { ownerAccountLabel, shiftRoleLabel } from '@/lib/ui/labels';
 import { useEffect, useMemo, useState } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
 
@@ -63,11 +64,11 @@ export default function SupportRequestClient() {
 
   const actorLabel = useMemo(() => {
     if (!runtimeMe) return null;
-    if (runtimeMe.accountKind === 'owner') return runtimeMe.ownerLabel === 'partner' ? 'شريك' : 'معلم / مالك';
-    if (runtimeMe.shiftRole === 'supervisor') return 'مشرف';
-    if (runtimeMe.shiftRole === 'barista') return 'باريستا';
-    if (runtimeMe.shiftRole === 'shisha') return 'شيشة';
-    if (runtimeMe.shiftRole === 'waiter') return 'ويتر';
+    if (runtimeMe.accountKind === 'owner') return ownerAccountLabel(runtimeMe.ownerLabel);
+    if (runtimeMe.shiftRole === 'supervisor') return shiftRoleLabel(runtimeMe.shiftRole, 'person');
+    if (runtimeMe.shiftRole === 'barista') return shiftRoleLabel(runtimeMe.shiftRole, 'person');
+    if (runtimeMe.shiftRole === 'shisha') return shiftRoleLabel(runtimeMe.shiftRole, 'person');
+    if (runtimeMe.shiftRole === 'waiter') return shiftRoleLabel(runtimeMe.shiftRole, 'person');
     return 'مستخدم داخل النظام';
   }, [runtimeMe]);
 
@@ -175,7 +176,7 @@ export default function SupportRequestClient() {
           <ul className="mt-2 space-y-1">
             <li>• الاسم + رقم الهاتف + اسم القهوة أو الـ slug مطلوبة من صفحة الدخول.</li>
             <li>• في حال وجود رد أو متابعة سيتم التواصل معك عبر الهاتف.</li>
-            <li>• طلب الدخول المؤقت الكامل يظهر فقط من داخل القهوة للمعلم أو المشرف.</li>
+            <li>• طلب الدخول المؤقت الكامل يظهر فقط من داخل القهوة للمالك أو مشرف التشغيل.</li>
           </ul>
         </div>
       </div>

@@ -45,8 +45,8 @@ function agingMeta(bucket: DeferredAgingBucket) {
 }
 
 function actorLabel(label: string | null) {
-  if (label === 'owner') return 'المعلم';
-  if (label === 'staff') return 'الموظف';
+  if (label === 'owner') return 'المالك';
+  if (label === 'staff') return 'فريق التشغيل';
   return 'غير محدد';
 }
 

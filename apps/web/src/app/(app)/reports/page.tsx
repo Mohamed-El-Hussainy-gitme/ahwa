@@ -428,7 +428,7 @@ export default function ReportsPage() {
   );
 
   if (session.user?.baseRole !== 'owner') {
-    return <AccessDenied title="التقارير" message="هذه الصفحة للمعلم فقط." />;
+    return <AccessDenied title="التقارير" message="هذه الصفحة للمالك فقط." />;
   }
 
   const currentShift = data?.currentShift ?? null;

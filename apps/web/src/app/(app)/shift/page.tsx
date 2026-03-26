@@ -131,13 +131,13 @@ type NormalizedSnapshot = {
 function roleLabel(role: ShiftRole) {
   switch (role) {
     case "supervisor":
-      return "مشرف";
+      return "مشرف التشغيل";
     case "waiter":
-      return "ويتر";
+      return "مضيف الصالة";
     case "barista":
-      return "باريستا";
+      return "الباريستا";
     case "shisha":
-      return "شيشة";
+      return "مختص الشيشة";
   }
 }
 
@@ -393,7 +393,7 @@ export default function ShiftPage() {
   }
 
   if (!canViewShift) {
-    return <AccessDenied title="الوردية" message="هذه الصفحة متاحة للمعلم والمشرف فقط." />;
+    return <AccessDenied title="الوردية" message="هذه الصفحة متاحة للمالك ومشرف التشغيل فقط." />;
   }
 
   return (
@@ -406,16 +406,16 @@ export default function ShiftPage() {
 
       {!canManageShift && effectiveRole === 'supervisor' ? (
         <div className="mb-3 rounded-2xl border border-sky-200 bg-sky-50 p-3 text-right text-sm text-sky-900">
-          يمكنك متابعة حالة الوردية الحالية والسناب شوت فقط، بينما الفتح والتقفيل وتوزيع الأدوار للمعلم فقط.
+          يمكنك متابعة حالة الوردية الحالية والسناب شوت فقط، بينما الفتح والتقفيل وتوزيع الأدوار متاحة لصلاحيات الإدارة فقط.
         </div>
       ) : null}
 
       <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 p-3 text-right text-sm text-slate-700">
         {!shift
-          ? 'ابدأ من هنا فقط: اختر نوع الوردية، حدد المشرف والباريستا وباقي الفريق، ثم اضغط فتح الوردية.'
+          ? 'ابدأ من هنا فقط: اختر نوع الوردية، حدد مشرف التشغيل والباريستا وباقي الفريق، ثم اضغط فتح الوردية.'
           : canManageShift
             ? 'هذه الصفحة لإدارة حالة الوردية الحالية. إذا كانت الوردية مفتوحة فتستطيع مراجعة التعيينات ثم التقفيل بعد إنهاء الجلسات والحسابات.'
-            : 'هذه الصفحة للمتابعة فقط بالنسبة لك الآن. راقب حالة الوردية الحالية والسناب شوت، ولأي تعديل ارجع للمعلم.'}
+            : 'هذه الصفحة للمتابعة فقط بالنسبة لك الآن. راقب حالة الوردية الحالية والسناب شوت، ولأي تعديل ارجع إلى المالك.'}
       </div>
 
       {shift ? (
@@ -451,7 +451,7 @@ export default function ShiftPage() {
                         {roleLabel(item.role)}
                       </div>
                       <div className="text-right text-sm font-semibold text-emerald-950">
-                        {item.fullName ?? item.id}{item.actorType === 'owner' ? ' • المعلم' : ''}
+                        {item.fullName ?? item.id}{item.actorType === 'owner' ? ' • المالك' : ''}
                       </div>
                     </div>
                   ))
@@ -538,7 +538,7 @@ export default function ShiftPage() {
           </div>
 
           <div className="mt-3 rounded-2xl border border-amber-200/70 bg-amber-50/60 p-3 text-right text-xs text-amber-900/80">
-            يمكنك تعيين نفسك داخل الوردية كمعلم من نفس الشاشة. هذا التعيين يدخل في التقارير وسجل الوردية مثل باقي الأدوار.
+            يمكنك تعيين نفسك داخل الوردية كمالك من نفس الشاشة. هذا التعيين يدخل في التقارير وسجل الوردية مثل باقي الأدوار.
           </div>
 
           <div className="mt-4 rounded-3xl border border-amber-200/70 bg-amber-50/40 p-3">
@@ -554,20 +554,20 @@ export default function ShiftPage() {
                     className="flex items-center gap-2 rounded-2xl border border-amber-200/70 bg-white p-2"
                   >
                     <select
-                      aria-label={item.actorType === 'owner' ? 'اختر دورك أنت كمعلم في الوردية' : 'اختر دور الموظف في الوردية'}
+                      aria-label={item.actorType === 'owner' ? 'اختر دورك أنت كمالك في الوردية' : 'اختر دور عضو الفريق في الوردية'}
                       className="w-1/2 rounded-2xl border border-amber-200/70 bg-amber-50/50 p-2"
                       value={currentRole}
                       onChange={(event) => setRole(item.id, event.target.value as ShiftRole | '')}
                     >
                       <option value="">بدون دور</option>
-                      <option value="supervisor">مشرف</option>
-                      <option value="waiter">ويتر</option>
-                      <option value="barista">باريستا</option>
-                      <option value="shisha">شيشة</option>
+                      <option value="supervisor">مشرف التشغيل</option>
+                      <option value="waiter">مضيف الصالة</option>
+                      <option value="barista">الباريستا</option>
+                      <option value="shisha">مختص الشيشة</option>
                     </select>
                     <div className="flex-1 text-right">
                       <div className="text-sm font-semibold text-amber-950">
-                        {item.fullName ?? item.id}{item.actorType === 'owner' ? ' • المعلم' : ''}
+                        {item.fullName ?? item.id}{item.actorType === 'owner' ? ' • المالك' : ''}
                       </div>
                       <div className="text-[11px] text-amber-900/60">
                         {currentRole ? `الدور الحالي: ${roleLabel(currentRole as ShiftRole)}` : 'بدون دور'}

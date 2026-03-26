@@ -45,7 +45,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <div>
               <div className="text-sm font-bold">أنت داخل القهوة الآن بوصول دعم مؤقت</div>
               <div className="mt-1 text-xs text-indigo-100">
-                هذه الجلسة تعمل بصلاحيات المعلم مؤقتًا حتى انتهاء الوقت أو إغلاق البلاغ. ينتهي الوصول عند {formatDateTime(me.supportAccess.expiresAt)}.
+                هذه الجلسة تعمل بصلاحيات المالك مؤقتًا حتى انتهاء الوقت أو إغلاق البلاغ. ينتهي الوصول عند {formatDateTime(me.supportAccess.expiresAt)}.
               </div>
             </div>
             <div className="flex flex-wrap gap-2">

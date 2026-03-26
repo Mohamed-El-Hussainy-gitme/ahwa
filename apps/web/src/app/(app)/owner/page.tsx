@@ -10,7 +10,7 @@ const cards = [
   { href: '/shift', title: 'الوردية', icon: '🕒', description: 'فتح وتقفيل وتوزيع الأدوار.' },
   { href: '/customers', title: 'دفتر الآجل', icon: '👥', description: 'الأرصدة والسداد والحركات.' },
   { href: '/complaints', title: 'الشكاوى', icon: '🛟', description: 'المتابعة والإعادة أو الإسقاط.' },
-  { href: '/staff', title: 'الموظفون', icon: '👤', description: 'البيانات والحالة والـ PIN.' },
+  { href: '/staff', title: 'فريق العمل', icon: '👤', description: 'البيانات، الحالة، والـ PIN.' },
   { href: '/menu', title: 'المنيو', icon: '📋', description: 'الأقسام والأصناف والأسعار.' },
   { href: '/reports', title: 'التقارير', icon: '📊', description: 'اليومي والأسبوعي والشهري.' },
   { href: '/support?source=in_app&page=/owner', title: 'الدعم', icon: '🧰', description: 'بلاغ أو دخول دعم مؤقت.' },
@@ -21,12 +21,12 @@ export default function OwnerPage() {
   const session = useSession();
 
   if (!can.owner) {
-    return <AccessDenied title="المعلم" />;
+    return <AccessDenied title="الإدارة" />;
   }
 
   return (
     <MobileShell
-      title="إدارة القهوة"
+      title="الإدارة"
       backHref="/dashboard"
       topRight={<div className="text-xs text-neutral-500">{session.user?.name}</div>}
     >
@@ -35,7 +35,7 @@ export default function OwnerPage() {
           <Link
             key={card.href}
             href={card.href}
-            className="rounded-2xl border border-neutral-200 bg-white px-4 py-4 text-right shadow-sm hover:bg-neutral-50"
+            className="rounded-2xl border border-[#d9cabb] bg-[#fffaf4] px-4 py-4 text-right shadow-sm hover:bg-[#f7efe4]"
           >
             <div className="flex items-center justify-between gap-3">
               <div className="font-semibold">{card.title}</div>

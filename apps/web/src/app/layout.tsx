@@ -3,7 +3,7 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Ahwa",
-  description: "نظام تشغيل قهوة للموبايل: ويتر، مطبخ، شيشة، وحساب.",
+  description: "منصة تشغيل يومية للقهاوي الراقية: الصالة، الباريستا، الشيشة، والتحصيل.",
   icons: {
     icon: "/brand/ahwa-logo.svg",
     shortcut: "/brand/ahwa-logo.svg",
@@ -11,7 +11,7 @@ export const metadata: Metadata = {
   },
   openGraph: {
     title: "Ahwa",
-    description: "نظام تشغيل قهوة للموبايل: ويتر، مطبخ، شيشة، وحساب.",
+    description: "منصة تشغيل يومية للقهاوي الراقية: الصالة، الباريستا، الشيشة، والتحصيل.",
     images: ["/brand/ahwa-logo.png"],
   },
 };
