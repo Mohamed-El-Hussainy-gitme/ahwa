@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
@@ -39,13 +39,35 @@ export default function BillingPage() {
   const [lastTotals, setLastTotals] = useState<BillingTotals | null>(null);
 
   const loader = useCallback(() => opsClient.billingWorkspace(), []);
-  const { data, setData, error } = useOpsWorkspace<BillingWorkspace>(loader, { enabled: Boolean(shift) });
+  const billingEnabled = Boolean(shift) && (can.billing || can.owner);
+  const { data, setData, error } = useOpsWorkspace<BillingWorkspace>(loader, {
+    enabled: billingEnabled,
+    pollIntervalMs: billingEnabled ? 1500 : undefined,
+  });
 
   const effectiveSessionId = sessionId || data?.sessions[0]?.sessionId || '';
   const current = useMemo(
     () => data?.sessions.find((session) => session.sessionId === effectiveSessionId) ?? null,
     [data, effectiveSessionId],
   );
+
+  useEffect(() => {
+    const sessions = data?.sessions ?? [];
+
+    if (!sessions.length) {
+      if (sessionId) {
+        setSessionId('');
+      }
+      return;
+    }
+
+    if (sessionId && !sessions.some((session) => session.sessionId === sessionId)) {
+      setSessionId(sessions[0]?.sessionId ?? '');
+      setSelectedQty({});
+      setLastReceiptUrl(null);
+      setLastTotals(null);
+    }
+  }, [data?.sessions, sessionId]);
 
   const allocations = useCallback(() => {
     return (current?.items ?? [])

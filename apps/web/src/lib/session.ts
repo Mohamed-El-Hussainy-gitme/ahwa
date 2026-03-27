@@ -7,6 +7,7 @@ import type { BaseRole } from "@/lib/authz/policy";
 export type SessionUser = {
   id: string; // canonical runtime actor id (owner_user.id or staff_member.id)
   cafeId: string;
+  cafeName?: string;
   name: string;
   baseRole: BaseRole;
 };

@@ -4,8 +4,39 @@ import { redirect } from 'next/navigation';
 import ClientProviders from './ClientProviders';
 import { getRuntimeMe } from '@/lib/runtime/server';
 import { decodePlatformAdminSession, PLATFORM_ADMIN_COOKIE } from '@/lib/platform-auth/session';
+import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 
 export const dynamic = 'force-dynamic';
+
+
+async function loadCafeDisplayName(cafeId: string, fallbackSlug: string) {
+  try {
+    const { data, error } = await controlPlaneAdmin()
+      .schema('ops')
+      .from('cafes')
+      .select('display_name, slug')
+      .eq('id', cafeId)
+      .maybeSingle<{ display_name: string | null; slug: string | null }>();
+
+    if (error) {
+      throw error;
+    }
+
+    const displayName = String(data?.display_name ?? '').trim();
+    if (displayName) {
+      return displayName;
+    }
+
+    const slug = String(data?.slug ?? '').trim();
+    if (slug) {
+      return slug;
+    }
+  } catch {
+    // Fall back to the tenant slug already present in the runtime session.
+  }
+
+  return fallbackSlug;
+}
 
 function formatDateTime(value: string | null | undefined) {
   if (!value) return '—';
@@ -21,18 +52,21 @@ function formatDateTime(value: string | null | undefined) {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const me = await getRuntimeMe();
-  if (!me) {
+  const runtimeMe = await getRuntimeMe();
+  if (!runtimeMe) {
     const jar = await cookies();
     const platformSession = decodePlatformAdminSession(jar.get(PLATFORM_ADMIN_COOKIE)?.value);
     redirect(platformSession ? '/platform/support' : '/login');
   }
 
+  const me = runtimeMe;
   const baseRole: 'owner' | 'staff' = me.accountKind === 'owner' ? 'owner' : 'staff';
+  const cafeName = await loadCafeDisplayName(me.tenantId, me.tenantSlug);
 
   const user = {
     id: me.userId,
     cafeId: me.tenantId,
+    cafeName,
     name: me.fullName,
     baseRole,
   };
