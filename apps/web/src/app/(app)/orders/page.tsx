@@ -19,7 +19,6 @@ import {
   opsDashed,
   opsGhostButton,
   opsInset,
-  opsMetricCard,
   opsPrimaryButton,
   opsSurface,
 } from '@/ui/ops/premiumStyles';
@@ -210,31 +209,9 @@ export default function OrdersPage() {
         </div>
       ) : null}
 
-      <section className={[opsSurface, 'mb-3 p-3'].join(' ')}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="text-right">
-            <div className="text-sm font-semibold text-[#1e1712]">إدارة الجلسات والطلب</div>
-            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
-              اختر جلسة مفتوحة أو ابدأ جلسة جديدة، ثم حدّد الأصناف من المنيو وأرسلها دفعة واحدة لتبقى الحركة أوضح.
-            </div>
-          </div>
-          <div className={opsBadge('accent')}>{creatingNew ? 'جلسة جديدة' : 'تشغيل مباشر'}</div>
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          <div className={opsMetricCard('info')}>
-            <div className="text-[11px] font-semibold opacity-70">الجلسات</div>
-            <div className="mt-1 text-xl font-black leading-none">{sessions.length}</div>
-          </div>
-          <div className={opsMetricCard('success')}>
-            <div className="text-[11px] font-semibold opacity-70">جاهز للتسليم</div>
-            <div className="mt-1 text-xl font-black leading-none">{data?.readyItems?.length ?? 0}</div>
-          </div>
-          <div className={opsMetricCard('warning')}>
-            <div className="text-[11px] font-semibold opacity-70">المحدد الآن</div>
-            <div className="mt-1 text-xl font-black leading-none">{draftQtyTotal}</div>
-          </div>
-        </div>
-      </section>
+      <div className="mb-3 rounded-[22px] border border-[#e0d1bf] bg-[#f7efe4] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">
+        اختر جلسة أو أنشئ جلسة جديدة ثم أضف الأصناف.
+      </div>
 
       <div className="space-y-3">
         <section id="sessions-panel" className={[opsSurface, 'p-3'].join(' ')}>

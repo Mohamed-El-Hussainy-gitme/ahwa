@@ -27,9 +27,7 @@ import {
   opsEmptyState,
   opsGhostButton,
   opsInput,
-  opsMetricCard,
   opsPrimaryButton,
-  opsSectionHint,
   opsSectionTitle,
   opsSurface,
 } from '@/ui/ops/premiumStyles';
@@ -255,31 +253,9 @@ export default function ShishaPage() {
       {effectiveError ? <div className={`mb-3 ${opsAlert('danger')}`}>{effectiveError}</div> : null}
       {sessionWarning ? <div className={`mb-3 ${opsAlert('warning')} font-semibold`}>{sessionWarning}</div> : null}
 
-      <section className={`${opsSurface} mb-3 p-3`}>
-        <div className="flex items-start justify-between gap-3">
-          <div className="text-right">
-            <div className={opsSectionTitle}>محطة الشيشة</div>
-            <div className={`mt-1 ${opsSectionHint}`}>
-              افتح جلسة أو اختر الجلسة الحالية، ثم أضف أصناف الشيشة وتابع الطابور والجاهز من نفس المساحة.
-            </div>
-          </div>
-          <div className={opsBadge('accent')}>{creatingNew ? 'جلسة جديدة' : 'تشغيل مباشر'}</div>
-        </div>
-        <div className="mt-3 grid grid-cols-3 gap-2">
-          <div className={opsMetricCard('warning')}>
-            <div className="text-[11px] font-semibold opacity-70">قيد الانتظار</div>
-            <div className="mt-1 text-xl font-black leading-none">{totalQueueWaiting}</div>
-          </div>
-          <div className={opsMetricCard('success')}>
-            <div className="text-[11px] font-semibold opacity-70">جاهز للتسليم</div>
-            <div className="mt-1 text-xl font-black leading-none">{readyItems.length}</div>
-          </div>
-          <div className={opsMetricCard('info')}>
-            <div className="text-[11px] font-semibold opacity-70">الجلسات</div>
-            <div className="mt-1 text-xl font-black leading-none">{sessions.length}</div>
-          </div>
-        </div>
-      </section>
+      <div className="mb-3 rounded-[22px] border border-[#e0d1bf] bg-[#f7efe4] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">
+        اختر جلسة شيشة أو أنشئ جلسة جديدة ثم أضف الأصناف.
+      </div>
 
       <div className="space-y-3">
         <section id="sessions-panel" className={`${opsSurface} p-3`}>
