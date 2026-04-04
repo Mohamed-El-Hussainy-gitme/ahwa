@@ -67,6 +67,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     id: me.userId,
     cafeId: me.tenantId,
     cafeName,
+    cafeSlug: me.tenantSlug,
     name: me.fullName,
     baseRole,
   };

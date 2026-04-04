@@ -8,6 +8,7 @@ export type SessionUser = {
   id: string; // canonical runtime actor id (owner_user.id or staff_member.id)
   cafeId: string;
   cafeName?: string;
+  cafeSlug?: string;
   name: string;
   baseRole: BaseRole;
 };
