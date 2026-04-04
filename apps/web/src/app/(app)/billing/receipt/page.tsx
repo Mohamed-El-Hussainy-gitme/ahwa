@@ -80,7 +80,7 @@ export default function BillingReceiptPage() {
     [paymentId, previewSessionId, previewAllocations, previewDebtorName],
   );
   const { data, error } = useOpsWorkspace<BillingReceipt>(loader, {
-    cacheKey: `workspace:billing:receipt:${paymentId || sessionId || 'preview'}`,
+    cacheKey: `workspace:billing:receipt:${paymentId || previewSessionId || 'preview'}`,
     staleTimeMs: 60_000,
     enabled: Boolean(paymentId) || (Boolean(previewSessionId) && previewAllocations.length > 0 && (can.owner || can.billing)),
     shouldReloadOnEvent: () => false,
