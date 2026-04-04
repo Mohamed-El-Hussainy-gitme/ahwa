@@ -22,8 +22,10 @@ export type AuthzState = {
 
 const AuthzCtx = createContext<AuthzState | null>(null);
 
-const SHIFT_STALE_TIME_MS = 15_000;
-const SHIFT_REALTIME_DEBOUNCE_MS = 120;
+const authzCache = new Map<string, { shift: RuntimeShift | null; loadedAt: number }>();
+
+const SHIFT_STALE_TIME_MS = 30_000;
+const SHIFT_REALTIME_DEBOUNCE_MS = 180;
 
 type ShiftApi = {
   ok: boolean;
@@ -77,12 +79,16 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch("/api/authz/state", { cache: "no-store" });
         const json = (await res.json().catch(() => null)) as ShiftApi | null;
         if (!json?.ok || !json.shift) {
+          const loadedAt = Date.now();
           setShift(null);
-          setLastLoadedAt(Date.now());
+          setLastLoadedAt(loadedAt);
+          if (session.user?.id) {
+            authzCache.set(session.user.id, { shift: null, loadedAt });
+          }
           return;
         }
 
-        setShift({
+        const nextShift = {
           id: json.shift.id,
           kind: json.shift.kind,
           startedAt: Number(json.shift.startedAt),
@@ -90,8 +96,13 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
           isOpen: !!json.shift.isOpen,
           supervisorUserId: String(json.shift.supervisorUserId ?? ""),
           assignments: (json.assignments ?? []).map((item) => ({ userId: item.userId, role: item.role })),
-        });
-        setLastLoadedAt(Date.now());
+        };
+        const loadedAt = Date.now();
+        setShift(nextShift);
+        setLastLoadedAt(loadedAt);
+        if (session.user?.id) {
+          authzCache.set(session.user.id, { shift: nextShift, loadedAt });
+        }
       } catch {
         setShift(null);
       } finally {
@@ -109,6 +120,21 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
   }, [session.user]);
 
   useEffect(() => {
+    if (!session.user?.id) {
+      setShift(null);
+      setLoading(false);
+      setLastLoadedAt(null);
+      return;
+    }
+
+    const cached = authzCache.get(session.user.id);
+    if (cached && Date.now() - cached.loadedAt < SHIFT_STALE_TIME_MS) {
+      setShift(cached.shift);
+      setLoading(false);
+      setLastLoadedAt(cached.loadedAt);
+      return;
+    }
+
     setLoading(true);
     void runReload();
   }, [runReload, session.user?.id, session.user?.cafeId]);

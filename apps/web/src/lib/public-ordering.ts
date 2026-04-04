@@ -1,12 +1,24 @@
+import { unstable_cache } from 'next/cache';
 import { resolveCafeBindingBySlug } from '@/lib/control-plane/cafes';
 import { adminOps, buildMenuWorkspace } from '@/app/api/ops/_server';
 import { requireOpenOpsShift } from '@/app/api/ops/_helpers';
+
+export const PUBLIC_MENU_REVALIDATE_SECONDS = 60;
 
 export type PublicCafeContext = {
   cafeId: string;
   cafeSlug: string;
   cafeName: string;
   databaseKey: string;
+};
+
+export type PublicMenuPayload = {
+  cafe: PublicCafeContext;
+  menu: {
+    sections: Awaited<ReturnType<typeof buildMenuWorkspace>>['sections'];
+    products: Awaited<ReturnType<typeof buildMenuWorkspace>>['products'];
+    billingSettings: Awaited<ReturnType<typeof buildMenuWorkspace>>['billingSettings'];
+  };
 };
 
 export async function resolvePublicCafeContext(slug: string): Promise<PublicCafeContext> {
@@ -23,7 +35,7 @@ export async function resolvePublicCafeContext(slug: string): Promise<PublicCafe
   };
 }
 
-export async function loadPublicMenu(slug: string) {
+async function loadPublicMenuUncached(slug: string): Promise<PublicMenuPayload> {
   const cafe = await resolvePublicCafeContext(slug);
   const workspace = await buildMenuWorkspace(cafe.cafeId, cafe.databaseKey);
 
@@ -35,6 +47,19 @@ export async function loadPublicMenu(slug: string) {
       billingSettings: workspace.billingSettings,
     },
   };
+}
+
+export async function loadPublicMenu(slug: string): Promise<PublicMenuPayload> {
+  const cachedLoader = unstable_cache(
+    async () => loadPublicMenuUncached(slug),
+    ['public-menu', slug],
+    {
+      revalidate: PUBLIC_MENU_REVALIDATE_SECONDS,
+      tags: [`public-menu:${slug}`],
+    },
+  );
+
+  return cachedLoader();
 }
 
 export async function requirePublicOrderingContext(slug: string) {

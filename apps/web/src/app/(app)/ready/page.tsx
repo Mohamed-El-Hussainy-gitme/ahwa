@@ -22,7 +22,9 @@ export default function ReadyPage() {
   const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
   const { data, setData, error } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift) && canAccess,
-    pollIntervalMs: canAccess ? 1500 : undefined,
+    cacheKey: 'workspace:ready',
+    staleTimeMs: 10_000,
+    pollIntervalMs: canAccess ? 4000 : undefined,
   });
 
   const deliverCommand = useOpsCommand(

@@ -60,7 +60,11 @@ export default function MenuPage() {
   });
 
   const loader = useCallback(() => opsClient.menuWorkspace(), []);
-  const { data, error, setData } = useOpsWorkspace<MenuWorkspace>(loader, { enabled: can.manageMenu });
+  const { data, error, setData } = useOpsWorkspace<MenuWorkspace>(loader, {
+    enabled: can.manageMenu,
+    cacheKey: 'workspace:menu',
+    staleTimeMs: 60_000,
+  });
 
   useEffect(() => {
     if (data?.billingSettings) {

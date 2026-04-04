@@ -68,6 +68,8 @@ export default function CustomerLedgerPage() {
 
   const loader = useCallback(() => opsClient.deferredCustomerLedger(debtorName), [debtorName]);
   const { data, error } = useOpsWorkspace<DeferredCustomerLedgerWorkspace>(loader, {
+    cacheKey: `workspace:customer-ledger:${debtorName}`,
+    staleTimeMs: 60_000,
     enabled: Boolean(debtorName),
   });
 

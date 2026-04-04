@@ -261,7 +261,11 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
 export default function DashboardPage() {
   const { can, shift, effectiveRole } = useAuthz();
   const loader = useCallback(() => opsClient.dashboardWorkspace(), []);
-  const { data, error } = useOpsWorkspace<DashboardWorkspace>(loader, { enabled: Boolean(shift) });
+  const { data, error } = useOpsWorkspace<DashboardWorkspace>(loader, {
+    enabled: Boolean(shift),
+    cacheKey: 'workspace:dashboard',
+    staleTimeMs: 30_000,
+  });
   const { summary } = useOpsChrome();
 
   const role: RoleView = can.owner ? 'owner' : effectiveRole ?? 'unassigned';

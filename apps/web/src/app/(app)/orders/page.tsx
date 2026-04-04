@@ -37,7 +37,9 @@ export default function OrdersPage() {
   const loader = useCallback(() => opsClient.waiterWorkspace(), []);
   const { data, setData, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
     enabled: Boolean(shift),
-    pollIntervalMs: 1500,
+    cacheKey: 'workspace:orders',
+    staleTimeMs: 12_000,
+    pollIntervalMs: 4000,
   });
 
   const [commandError, setCommandError] = useState<string | null>(null);

@@ -52,13 +52,17 @@ export default function ShishaPage() {
     stationLoader,
     {
       enabled: Boolean(shift),
-      pollIntervalMs: 1500,
+      cacheKey: 'workspace:shisha:station',
+      staleTimeMs: 10_000,
+      pollIntervalMs: 4000,
     },
   );
 
   const { data: orderData, setData: setOrderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
-    pollIntervalMs: 1500,
+    cacheKey: 'workspace:shisha:orders',
+    staleTimeMs: 10_000,
+    pollIntervalMs: 4000,
   });
 
   const previousQueueQtyRef = useRef(0);

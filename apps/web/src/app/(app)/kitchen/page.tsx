@@ -30,7 +30,9 @@ export default function KitchenPage() {
   const loader = useCallback(() => opsClient.stationWorkspace('barista'), []);
   const { data, setData, error } = useOpsWorkspace<StationWorkspace>(loader, {
     enabled: Boolean(shift),
-    pollIntervalMs: 1500,
+    cacheKey: 'workspace:kitchen:barista',
+    staleTimeMs: 10_000,
+    pollIntervalMs: 4000,
   });
   const previousWaitingQtyRef = useRef(0);
   const readyCommand = useOpsCommand(

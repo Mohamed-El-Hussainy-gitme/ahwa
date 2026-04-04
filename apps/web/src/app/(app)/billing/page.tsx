@@ -42,7 +42,9 @@ export default function BillingPage() {
   const billingEnabled = Boolean(shift) && (can.billing || can.owner);
   const { data, setData, error } = useOpsWorkspace<BillingWorkspace>(loader, {
     enabled: billingEnabled,
-    pollIntervalMs: billingEnabled ? 1500 : undefined,
+    cacheKey: 'workspace:billing',
+    staleTimeMs: 12_000,
+    pollIntervalMs: billingEnabled ? 4000 : undefined,
   });
 
   const effectiveSessionId = sessionId || data?.sessions[0]?.sessionId || '';

@@ -421,7 +421,11 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>('current');
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const loader = useCallback(() => opsClient.reportsWorkspace(), []);
-  const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, { enabled: session.user?.baseRole === 'owner' });
+  const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, {
+    enabled: session.user?.baseRole === 'owner',
+    cacheKey: 'workspace:reports',
+    staleTimeMs: 60_000,
+  });
   const selectedPeriod = useMemo(
     () => data && (tab === 'day' || tab === 'week' || tab === 'month' || tab === 'year') ? data.periods[tab] : null,
     [data, tab],

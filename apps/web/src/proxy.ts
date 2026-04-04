@@ -12,7 +12,11 @@ function isPublicPath(path: string) {
     path === '/owner-password' ||
     path === '/partner/login' ||
     path === '/platform/login' ||
+
+    /^\/c\/[^/]+\/?$/.test(path) ||
+
     /^\/c\/[^/]+\/(login|activate)\/?$/.test(path) ||
+
     path.startsWith('/api/auth/') ||
     path.startsWith('/api/device-gate/') ||
     path === '/api/platform/auth/login' ||

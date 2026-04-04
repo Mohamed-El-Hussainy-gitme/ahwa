@@ -1,13 +1,20 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 
 export const metadata: Metadata = {
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ahwa.app"),
+  applicationName: "AHWA",
   title: "Ahwa",
   description: "منصة تشغيل يومية للقهاوي الراقية: الصالة، الباريستا، الشيشة، والتحصيل.",
+  manifest: "/manifest.webmanifest",
   icons: {
-    icon: "/brand/ahwa-logo.svg",
-    shortcut: "/brand/ahwa-logo.svg",
-    apple: "/brand/ahwa-logo.svg",
+    icon: [
+      { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icon-512x512.png", sizes: "512x512", type: "image/png" },
+    ],
+    shortcut: "/icon-192x192.png",
+    apple: "/apple-icon.png",
   },
   openGraph: {
     title: "Ahwa",
@@ -16,10 +23,17 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  themeColor: "#111827",
+};
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="ar" dir="rtl">
-      <body className="antialiased">{children}</body>
+      <body className="antialiased">
+        <ServiceWorkerRegistrar />
+        {children}
+      </body>
     </html>
   );
 }

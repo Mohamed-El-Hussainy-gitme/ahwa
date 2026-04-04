@@ -12,12 +12,20 @@ type WorkspaceOptions = {
   realtimeDebounceMs?: number;
   pollIntervalMs?: number;
   pollWhenHidden?: boolean;
+  cacheKey?: string;
 };
 
 type ReloadMode = 'manual' | 'background';
 
-const DEFAULT_STALE_TIME_MS = 15_000;
-const DEFAULT_REALTIME_DEBOUNCE_MS = 120;
+const DEFAULT_STALE_TIME_MS = 30_000;
+const DEFAULT_REALTIME_DEBOUNCE_MS = 180;
+
+type WorkspaceCacheEntry = {
+  data: unknown;
+  loadedAt: number;
+};
+
+const workspaceCache = new Map<string, WorkspaceCacheEntry>();
 
 function isStale(lastLoadedAt: number | null, staleTimeMs: number, hasError: boolean) {
   if (hasError || lastLoadedAt === null) {
@@ -34,6 +42,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
     realtimeDebounceMs = DEFAULT_REALTIME_DEBOUNCE_MS,
     pollIntervalMs = 0,
     pollWhenHidden = false,
+    cacheKey,
   } = options;
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
@@ -86,6 +95,9 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
           setData(next);
           setError(null);
           setLastLoadedAt(loadedAt);
+          if (cacheKey) {
+            workspaceCache.set(cacheKey, { data: next, loadedAt });
+          }
           return next;
         } catch (loadError) {
           const message = loadError instanceof Error ? loadError.message : 'REQUEST_FAILED';
@@ -120,8 +132,27 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
   }, [clearReloadTimer, realtimeDebounceMs, runReload]);
 
   useEffect(() => {
+    if (!enabled) {
+      setData(null);
+      setError(null);
+      setLoading(false);
+      setLastLoadedAt(null);
+      return;
+    }
+
+    if (cacheKey) {
+      const cached = workspaceCache.get(cacheKey);
+      if (cached && !isStale(cached.loadedAt, staleTimeMs, false)) {
+        setData(cached.data as T);
+        setError(null);
+        setLoading(false);
+        setLastLoadedAt(cached.loadedAt);
+        return;
+      }
+    }
+
     void runReload('manual');
-  }, [runReload]);
+  }, [cacheKey, enabled, runReload, staleTimeMs]);
 
   useEffect(() => {
     if (!enabled || pollIntervalMs <= 0) {

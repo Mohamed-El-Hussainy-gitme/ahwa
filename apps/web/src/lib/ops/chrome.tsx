@@ -16,9 +16,11 @@ export type OpsChromeState = {
 };
 
 const OpsChromeContext = createContext<OpsChromeState | null>(null);
-const SUMMARY_STALE_TIME_MS = 15_000;
-const SUMMARY_DEBOUNCE_MS = 150;
-const SUMMARY_POLL_INTERVAL_MS = 2000;
+
+const opsSummaryCache = new Map<string, { summary: OpsNavSummary; loadedAt: number }>();
+const SUMMARY_STALE_TIME_MS = 30_000;
+const SUMMARY_DEBOUNCE_MS = 180;
+const SUMMARY_POLL_INTERVAL_MS = 10000;
 const PATCHABLE_SUMMARY_EVENTS = new Set(['station.order_submitted', 'station.ready', 'delivery.delivered', 'billing.settled', 'billing.deferred', 'session.opened', 'session.resumed', 'session.closed']);
 
 function toPositiveInteger(value: unknown) {
@@ -159,8 +161,12 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
     const request = (async () => {
       try {
         const next = await loadSummary();
+        const loadedAt = Date.now();
         setSummary(next);
-        setLastLoadedAt(Date.now());
+        setLastLoadedAt(loadedAt);
+        if (user?.id) {
+          opsSummaryCache.set(user.id, { summary: next, loadedAt });
+        }
       } catch {
         setSummary((current) => current);
       } finally {
@@ -192,8 +198,23 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
   }, [clearReloadTimer, runReload]);
 
   useEffect(() => {
+    if (!enabled || !user?.id) {
+      setSummary(null);
+      setLastLoadedAt(null);
+      setLoading(false);
+      return;
+    }
+
+    const cached = opsSummaryCache.get(user.id);
+    if (cached && Date.now() - cached.loadedAt < SUMMARY_STALE_TIME_MS) {
+      setSummary(cached.summary);
+      setLastLoadedAt(cached.loadedAt);
+      setLoading(false);
+      return;
+    }
+
     void runReload('manual');
-  }, [runReload, shift?.id]);
+  }, [enabled, runReload, shift?.id, user?.id]);
 
   useEffect(() => {
     if (!enabled) return;
