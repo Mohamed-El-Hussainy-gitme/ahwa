@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { loadPublicMenu, PUBLIC_MENU_REVALIDATE_SECONDS } from '@/lib/public-ordering';
 
-export const revalidate = PUBLIC_MENU_REVALIDATE_SECONDS;
+export const revalidate = 60;
 
 export async function GET(_: Request, context: { params: Promise<{ slug: string }> }) {
   const { slug } = await context.params;
