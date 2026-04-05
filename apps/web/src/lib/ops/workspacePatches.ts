@@ -19,13 +19,15 @@ function buildReadyItemFromSessionItem(item: SessionOrderItem): ReadyItem {
 
 export function appendOrTouchSession<T extends Pick<WaiterLiveWorkspace, 'sessions'>>(workspace: T | null, sessionId: string, label: string): T | null {
   if (!workspace) return workspace;
-  const exists = workspace.sessions.some((session) => session.id === sessionId);
-  if (exists) {
-    return workspace;
-  }
+  const touchedAt = new Date().toISOString();
+  const existing = workspace.sessions.find((session) => session.id === sessionId) ?? null;
+  const rest = workspace.sessions.filter((session) => session.id !== sessionId);
+  const nextSession = existing
+    ? { ...existing, label: label || existing.label, openedAt: touchedAt }
+    : { id: sessionId, label, status: 'open', openedAt: touchedAt, billableCount: 0, readyCount: 0 };
   return {
     ...workspace,
-    sessions: [{ id: sessionId, label, status: 'open', openedAt: new Date().toISOString(), billableCount: 0, readyCount: 0 }, ...workspace.sessions],
+    sessions: [nextSession, ...rest],
   };
 }
 

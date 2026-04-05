@@ -1,18 +1,12 @@
-import { adminOps } from '@/app/api/ops/_server';
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
 import {
-  enqueueOpsMutation,
   jsonError,
-  kickOpsOutboxDispatch,
   ok,
-  publishOpsMutation,
   requireOpenOpsShift,
   requireOpsActorContext,
-  requireScopedOrderSelectionAccess,
   requireSessionOrderAccess,
 } from '@/app/api/ops/_helpers';
-import { normalizeNullableStationCode } from '@/lib/ops/stations';
-import type { StationCode } from '@/lib/ops/types';
+import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '../_station-events';
 
 type CreateOrderRequestBody = {
   serviceSessionId?: string;
@@ -24,11 +18,6 @@ type CreateOrderRpcResult = {
   service_session_id?: string;
 };
 
-type MenuProductRow = {
-  id?: string | null;
-  station_code?: StationCode | null;
-  is_active?: boolean | null;
-};
 
 export async function POST(req: Request) {
   try {
@@ -50,42 +39,10 @@ export async function POST(req: Request) {
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
 
-    const uniqueProductIds = Array.from(new Set(items.map((item) => item.menu_product_id)));
-    const { data: productRows, error: productError } = await adminOps(ctx.databaseKey)
-      .from('menu_products')
-      .select('id, station_code, is_active')
-      .eq('cafe_id', ctx.cafeId)
-      .in('id', uniqueProductIds);
-
-    if (productError) {
-      throw productError;
-    }
-
-    const products = (productRows ?? []) as MenuProductRow[];
-    if (products.length !== uniqueProductIds.length) {
-      throw new Error('INVALID_INPUT');
-    }
-
-    const productStationCodes = new Map<string, StationCode>();
-    const stationCodes = products.map((product) => {
-      const stationCode = normalizeNullableStationCode(product.station_code);
-      if (!product.id || !stationCode || product.is_active !== true) {
-        throw new Error('INVALID_INPUT');
-      }
-      productStationCodes.set(String(product.id), stationCode);
-      return stationCode;
-    });
-
-    requireScopedOrderSelectionAccess(ctx, stationCodes);
-
-    const stationQuantities = new Map<StationCode, number>();
-    for (const item of items) {
-      const stationCode = productStationCodes.get(item.menu_product_id);
-      if (!stationCode) {
-        throw new Error('INVALID_INPUT');
-      }
-      stationQuantities.set(stationCode, (stationQuantities.get(stationCode) ?? 0) + item.qty);
-    }
+    const { productStationCodes } = await requireOrderSelectionStationCodes(
+      ctx,
+      items.map((item) => item.menu_product_id),
+    );
 
     const rpc = await callOpsRpc<CreateOrderRpcResult>('ops_create_order_with_items_with_outbox', {
       p_cafe_id: ctx.cafeId,
@@ -101,35 +58,17 @@ export async function POST(req: Request) {
       throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
     }
 
-    const stationEventTasks = Array.from(stationQuantities.entries()).map(async ([stationCode, quantity]) => {
-      if (quantity <= 0) return;
-      const eventData = {
-        serviceSessionId,
-        stationCode,
-        quantity,
-        itemsCount: quantity,
-      };
-      const eventId = await enqueueOpsMutation(ctx, {
-        type: 'station.order_submitted',
-        entityId: orderId,
-        shiftId: shift.id,
-        data: eventData,
-        scopes: [stationCode, 'dashboard', 'nav-summary'],
-      });
-      void publishOpsMutation(ctx, {
-        id: eventId,
-        type: 'station.order_submitted',
-        entityId: orderId,
-        shiftId: shift.id,
-        data: eventData,
-        scopes: [stationCode, 'dashboard', 'nav-summary'],
-      });
+    dispatchStationOrderSubmittedInBackground(ctx, {
+      orderId,
+      serviceSessionId,
+      items: body.items.map((item) => ({
+        productId: String(item.productId ?? ''),
+        quantity: Number(item.quantity ?? 0),
+      })),
+      productStationCodes,
     });
 
-    await Promise.all(stationEventTasks);
-    kickOpsOutboxDispatch(ctx);
-
-    return ok({ ok: true, orderId });
+    return ok({ ok: true, orderId, serviceSessionId });
   } catch (e) {
     return jsonError(e, 400);
   }
