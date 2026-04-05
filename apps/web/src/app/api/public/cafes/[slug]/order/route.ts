@@ -14,7 +14,6 @@ const publicOrderSchema = z.object({
   })).min(1).max(30),
 });
 
-
 type OpenSessionRpcResult = {
   service_session_id?: string;
   session_label?: string;
@@ -53,7 +52,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         tenantSlug: cafe.cafeSlug,
         databaseKey: cafe.databaseKey,
         runtimeUserId: owner.ownerId,
-        fullName: owner.fullName,
+        fullName: owner.ownerName,
         accountKind: 'owner',
         shiftId: String(shift.id),
         shiftRole: null,
@@ -72,13 +71,17 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       `القناة: public_qr`,
     ].filter(Boolean);
 
-    const openRpc = await callOpsRpc<OpenSessionRpcResult>('ops_open_or_resume_service_session_with_outbox', {
-      p_cafe_id: cafe.cafeId,
-      p_shift_id: shift.id,
-      p_session_label: sessionLabel,
-      p_staff_member_id: null,
-      p_owner_user_id: owner.ownerId,
-    }, cafe.databaseKey);
+    const openRpc = await callOpsRpc<OpenSessionRpcResult>(
+      'ops_open_or_resume_service_session_with_outbox',
+      {
+        p_cafe_id: cafe.cafeId,
+        p_shift_id: shift.id,
+        p_session_label: sessionLabel,
+        p_staff_member_id: null,
+        p_owner_user_id: owner.ownerId,
+      },
+      cafe.databaseKey,
+    );
 
     const createdSessionId = String(openRpc.service_session_id ?? '').trim();
     const createdSessionLabel = String(openRpc.session_label ?? sessionLabel).trim();
@@ -86,16 +89,20 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       throw new Error('INVALID_RPC_RESPONSE:ops_open_or_resume_service_session');
     }
 
-    const createRpc = await callOpsRpc<CreateOrderRpcResult>('ops_create_order_with_items_with_outbox', {
-      p_cafe_id: cafe.cafeId,
-      p_shift_id: shift.id,
-      p_service_session_id: createdSessionId,
-      p_session_label: createdSessionLabel,
-      p_created_by_staff_id: null,
-      p_created_by_owner_id: owner.ownerId,
-      p_items: items,
-      p_notes: noteSegments.join(' | '),
-    }, cafe.databaseKey);
+    const createRpc = await callOpsRpc<CreateOrderRpcResult>(
+      'ops_create_order_with_items_with_outbox',
+      {
+        p_cafe_id: cafe.cafeId,
+        p_shift_id: shift.id,
+        p_service_session_id: createdSessionId,
+        p_session_label: createdSessionLabel,
+        p_created_by_staff_id: null,
+        p_created_by_owner_id: owner.ownerId,
+        p_items: items,
+        p_notes: noteSegments.join(' | '),
+      },
+      cafe.databaseKey,
+    );
 
     const orderId = String(createRpc.order_id ?? '').trim();
     if (!orderId) {
