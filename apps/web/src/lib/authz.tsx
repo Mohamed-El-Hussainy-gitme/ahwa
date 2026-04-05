@@ -2,7 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/lib/session";
-import { subscribeOpsRealtime } from '@/lib/ops/realtime';
+import { getOpsRealtimeSnapshot, isOpsRealtimeHealthy, subscribeOpsRealtime } from '@/lib/ops/realtime';
 import {
   resolveEffectiveRole,
   resolvePermissions,
@@ -26,6 +26,7 @@ const authzCache = new Map<string, { shift: RuntimeShift | null; loadedAt: numbe
 
 const SHIFT_STALE_TIME_MS = 30_000;
 const SHIFT_REALTIME_DEBOUNCE_MS = 180;
+const SHIFT_POLL_INTERVAL_MS = 60_000;
 
 type ShiftApi = {
   ok: boolean;
@@ -78,8 +79,9 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
       try {
         const res = await fetch("/api/authz/state", { cache: "no-store" });
         const json = (await res.json().catch(() => null)) as ShiftApi | null;
+        const loadedAt = Date.now();
+
         if (!json?.ok || !json.shift) {
-          const loadedAt = Date.now();
           setShift(null);
           setLastLoadedAt(loadedAt);
           if (session.user?.id) {
@@ -97,14 +99,14 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
           supervisorUserId: String(json.shift.supervisorUserId ?? ""),
           assignments: (json.assignments ?? []).map((item) => ({ userId: item.userId, role: item.role })),
         };
-        const loadedAt = Date.now();
+
         setShift(nextShift);
         setLastLoadedAt(loadedAt);
         if (session.user?.id) {
           authzCache.set(session.user.id, { shift: nextShift, loadedAt });
         }
       } catch {
-        setShift(null);
+        setShift((current) => current);
       } finally {
         setLoading(false);
         inFlightRef.current = null;
@@ -118,6 +120,15 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
     inFlightRef.current = request;
     return request;
   }, [session.user]);
+
+  const shouldRevalidate = useCallback(() => {
+    if (lastLoadedAtRef.current === null) {
+      return true;
+    }
+    return Date.now() - lastLoadedAtRef.current >= SHIFT_STALE_TIME_MS;
+  }, []);
+
+  const shouldUsePollingFallback = useCallback(() => !isOpsRealtimeHealthy(getOpsRealtimeSnapshot()), []);
 
   useEffect(() => {
     if (!session.user?.id) {
@@ -150,13 +161,6 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
       }, SHIFT_REALTIME_DEBOUNCE_MS);
     };
 
-    const shouldRevalidate = () => {
-      if (lastLoadedAtRef.current === null) {
-        return true;
-      }
-      return Date.now() - lastLoadedAtRef.current >= SHIFT_STALE_TIME_MS;
-    };
-
     const unsubscribe = subscribeOpsRealtime((event) => {
       if (event.type.startsWith('shift.') || event.type.startsWith('runtime.')) {
         scheduleReload();
@@ -164,15 +168,28 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
     });
 
     const onFocus = () => {
-      if (shouldRevalidate()) {
+      if (shouldRevalidate() && shouldUsePollingFallback()) {
         scheduleReload();
       }
     };
     const onVis = () => {
-      if (document.visibilityState === "visible" && shouldRevalidate()) {
+      if (document.visibilityState === "visible" && shouldRevalidate() && shouldUsePollingFallback()) {
         scheduleReload();
       }
     };
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+      if (!shouldUsePollingFallback()) {
+        return;
+      }
+      if (!shouldRevalidate()) {
+        return;
+      }
+      void runReload();
+    }, SHIFT_POLL_INTERVAL_MS);
 
     window.addEventListener("focus", onFocus);
     document.addEventListener("visibilitychange", onVis);
@@ -180,10 +197,11 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
     return () => {
       unsubscribe();
       clearReloadTimer();
+      window.clearInterval(interval);
       window.removeEventListener("focus", onFocus);
       document.removeEventListener("visibilitychange", onVis);
     };
-  }, [clearReloadTimer, runReload, session.user]);
+  }, [clearReloadTimer, runReload, session.user, shouldRevalidate, shouldUsePollingFallback]);
 
   const user = useMemo<RuntimeViewer | null>(() => {
     if (!session.user) return null;

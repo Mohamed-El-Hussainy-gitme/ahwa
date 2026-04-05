@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { SessionOrderItem, StationQueueItem, StationWorkspace, WaiterWorkspace } from '@/lib/ops/types';
+import type { SessionOrderItem, StationQueueItem, StationWorkspace, WaiterCatalogWorkspace, WaiterLiveWorkspace } from '@/lib/ops/types';
 import {
   appendOrTouchSession,
   applyDeliverToWaiterWorkspace,
@@ -19,6 +19,7 @@ import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
+import { shouldReloadStationWorkspace, shouldReloadWaiterCatalogWorkspace, shouldReloadWaiterLiveWorkspace } from '@/lib/ops/reload-rules';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import {
   opsAccentButton,
@@ -46,7 +47,8 @@ export default function ShishaPage() {
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
 
   const stationLoader = useCallback(() => opsClient.stationWorkspace('shisha'), []);
-  const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
+  const waiterLiveLoader = useCallback(() => opsClient.waiterLiveWorkspace(), []);
+  const waiterCatalogLoader = useCallback(() => opsClient.waiterCatalogWorkspace(), []);
 
   const { data: stationData, setData: setStationData, error: stationError } = useOpsWorkspace<StationWorkspace>(
     stationLoader,
@@ -55,31 +57,40 @@ export default function ShishaPage() {
       cacheKey: 'workspace:shisha:station',
       staleTimeMs: 10_000,
       pollIntervalMs: 4000,
+      shouldReloadOnEvent: (event) => shouldReloadStationWorkspace(event, 'shisha'),
     },
   );
 
-  const { data: orderData, setData: setOrderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
+  const { data: liveData, setData: setLiveData, error: liveError } = useOpsWorkspace<WaiterLiveWorkspace>(waiterLiveLoader, {
     enabled: Boolean(shift),
-    cacheKey: 'workspace:shisha:orders',
+    cacheKey: 'workspace:shisha:live',
     staleTimeMs: 10_000,
     pollIntervalMs: 4000,
+    shouldReloadOnEvent: shouldReloadWaiterLiveWorkspace,
+  });
+
+  const { data: catalogData, error: catalogError } = useOpsWorkspace<WaiterCatalogWorkspace>(waiterCatalogLoader, {
+    enabled: Boolean(shift),
+    cacheKey: 'workspace:shisha:catalog',
+    staleTimeMs: 120_000,
+    shouldReloadOnEvent: shouldReloadWaiterCatalogWorkspace,
   });
 
   const previousQueueQtyRef = useRef(0);
 
   const queue = stationData?.queue ?? [];
-  const sessions = orderData?.sessions ?? [];
-  const sections = (orderData?.sections ?? []).filter((section) => section.stationCode === 'shisha');
-  const products = (orderData?.products ?? []).filter((product) => product.stationCode === 'shisha');
+  const sessions = liveData?.sessions ?? [];
+  const sections = (catalogData?.sections ?? []).filter((section) => section.stationCode === 'shisha');
+  const products = (catalogData?.products ?? []).filter((product) => product.stationCode === 'shisha');
   const effectiveSessionId = !creatingNew ? sessionId || sessions[0]?.id || '' : '';
   const effectiveSelectedSectionId = selectedSectionId || sections[0]?.id || '';
   const filteredProducts = products.filter(
     (product) => !effectiveSelectedSectionId || product.sectionId === effectiveSelectedSectionId,
   );
-  const readyItems = readyItemsForStation(orderData?.readyItems ?? [], 'shisha');
+  const readyItems = readyItemsForStation(liveData?.readyItems ?? [], 'shisha');
   const currentSessionItems = useMemo(
-    () => sessionItemsForSession(orderData?.sessionItems ?? [], effectiveSessionId, 'shisha'),
-    [orderData?.sessionItems, effectiveSessionId],
+    () => sessionItemsForSession(liveData?.sessionItems ?? [], effectiveSessionId, 'shisha'),
+    [liveData?.sessionItems, effectiveSessionId],
   );
   const draftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
@@ -110,7 +121,7 @@ export default function ShishaPage() {
       await opsClient.markReady(item.orderItemId, quantity);
       setQueueSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
       setStationData((current) => applyReadyToStationWorkspace(current, item, quantity));
-      setOrderData((current) => applyReadyToWaiterWorkspace(current, item, quantity));
+      setLiveData((current) => applyReadyToWaiterWorkspace(current, item, quantity));
     },
     { onError: setLocalError },
   );
@@ -119,7 +130,7 @@ export default function ShishaPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.deliver(orderItemId, quantity);
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
-      setOrderData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
+      setLiveData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
     },
     { onError: setLocalError },
   );
@@ -141,7 +152,7 @@ export default function ShishaPage() {
 
   const submitCommand = useOpsCommand(
     async () => {
-      if (!orderData || !draftLines.length) return;
+      if (!liveData || !draftLines.length) return;
 
       if (creatingNew || !effectiveSessionId) {
         const created = await opsClient.openAndCreateOrder({
@@ -150,7 +161,7 @@ export default function ShishaPage() {
         });
         setSessionId(created.sessionId);
         setCreatingNew(false);
-        setOrderData((current) => appendOrTouchSession(current, created.sessionId, created.label));
+        setLiveData((current) => appendOrTouchSession(current, created.sessionId, created.label));
       } else {
         await opsClient.createOrderWithItems({
           serviceSessionId: effectiveSessionId,
@@ -214,7 +225,7 @@ export default function ShishaPage() {
     setSessionWarning(null);
   }
 
-  const effectiveError = localError ?? stationError ?? orderError;
+  const effectiveError = localError ?? stationError ?? liveError ?? catalogError;
 
   return (
     <MobileShell

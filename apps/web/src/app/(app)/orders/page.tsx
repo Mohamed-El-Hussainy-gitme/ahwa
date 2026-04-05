@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { SessionOrderItem, WaiterWorkspace } from '@/lib/ops/types';
+import type { SessionOrderItem, WaiterCatalogWorkspace, WaiterLiveWorkspace } from '@/lib/ops/types';
 import { appendOrTouchSession, applyDeliverToWaiterWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
@@ -13,6 +13,7 @@ import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
+import { shouldReloadWaiterCatalogWorkspace, shouldReloadWaiterLiveWorkspace } from '@/lib/ops/reload-rules';
 import {
   opsAccentButton,
   opsBadge,
@@ -34,28 +35,36 @@ export default function OrdersPage() {
   const [remakeSelection, setRemakeSelection] = useState<Record<string, number>>({});
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
 
-  const loader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data, setData, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
+  const liveLoader = useCallback(() => opsClient.waiterLiveWorkspace(), []);
+  const catalogLoader = useCallback(() => opsClient.waiterCatalogWorkspace(), []);
+  const { data: liveData, setData: setLiveData, error: liveError } = useOpsWorkspace<WaiterLiveWorkspace>(liveLoader, {
     enabled: Boolean(shift),
-    cacheKey: 'workspace:orders',
+    cacheKey: 'workspace:orders:live',
     staleTimeMs: 12_000,
     pollIntervalMs: 4000,
+    shouldReloadOnEvent: shouldReloadWaiterLiveWorkspace,
+  });
+  const { data: catalogData, error: catalogError } = useOpsWorkspace<WaiterCatalogWorkspace>(catalogLoader, {
+    enabled: Boolean(shift),
+    cacheKey: 'workspace:orders:catalog',
+    staleTimeMs: 120_000,
+    shouldReloadOnEvent: shouldReloadWaiterCatalogWorkspace,
   });
 
   const [commandError, setCommandError] = useState<string | null>(null);
 
-  const sessions = data?.sessions ?? [];
-  const sections = data?.sections ?? [];
+  const sessions = liveData?.sessions ?? [];
+  const sections = catalogData?.sections ?? [];
   const effectiveSessionId = !creatingNew ? (sessionId || sessions[0]?.id || '') : '';
   const effectiveSelectedSectionId = selectedSectionId || sections[0]?.id || '';
-  const filteredProducts = (data?.products ?? []).filter(
+  const filteredProducts = (catalogData?.products ?? []).filter(
     (product) => !effectiveSelectedSectionId || product.sectionId === effectiveSelectedSectionId,
   );
   const draftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
   const currentSessionLabel = sessions.find((session) => session.id === effectiveSessionId)?.label ?? '';
   const currentSessionItems = useMemo(
-    () => sessionItemsForSession(data?.sessionItems ?? [], effectiveSessionId),
-    [data?.sessionItems, effectiveSessionId],
+    () => sessionItemsForSession(liveData?.sessionItems ?? [], effectiveSessionId),
+    [liveData?.sessionItems, effectiveSessionId],
   );
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const canManageComplaintActions = can.owner || can.billing;
@@ -69,7 +78,7 @@ export default function OrdersPage() {
 
   const submitCommand = useOpsCommand(
     async () => {
-      if (!data) return;
+      if (!liveData) return;
       const nextDraftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
       if (!nextDraftLines.length) return;
 
@@ -80,7 +89,7 @@ export default function OrdersPage() {
         });
         setSessionId(created.sessionId);
         setCreatingNew(false);
-        setData((current) => appendOrTouchSession(current, created.sessionId, created.label));
+        setLiveData((current) => appendOrTouchSession(current, created.sessionId, created.label));
       } else {
         await opsClient.createOrderWithItems({
           serviceSessionId: effectiveSessionId,
@@ -98,7 +107,7 @@ export default function OrdersPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.deliver(orderItemId, quantity);
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
-      setData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
+      setLiveData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
     },
     { onError: setCommandError },
   );
@@ -118,7 +127,7 @@ export default function OrdersPage() {
     { onError: setCommandError },
   );
 
-  const effectiveError = commandError ?? workspaceError;
+  const effectiveError = commandError ?? liveError ?? catalogError;
 
   if (!shift) return <ShiftRequired title="الطلبات" />;
   if (!can.takeOrders && !can.owner) return <AccessDenied title="الطلبات" />;
@@ -337,7 +346,7 @@ export default function OrdersPage() {
           <section id="ready-panel">
             <ReadyDeliveryPanel
               title="جاهز للتسليم"
-              items={data?.readyItems ?? []}
+              items={liveData?.readyItems ?? []}
               selectedQty={readySelection}
               onChangeQty={(orderItemId, nextQty, maxQty) => {
                 setReadySelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));

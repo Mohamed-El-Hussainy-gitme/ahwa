@@ -5,9 +5,8 @@ import Link, { type LinkProps } from 'next/link';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { DashboardWorkspace } from '@/lib/ops/types';
+import type { OpsNavSummary } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
-import { useOpsChrome } from '@/lib/ops/chrome';
 import { AppIcon } from '@/ui/icons/AppIcon';
 
 type StatCard = {
@@ -154,7 +153,7 @@ function DashboardHero({ title, eyebrow, summary }: { title: string; eyebrow: st
   );
 }
 
-function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, deferredCustomerCount = 0): RoleConfig {
+function buildRoleConfig(role: RoleView, data: OpsNavSummary | undefined, deferredCustomerCount = 0): RoleConfig {
   const stalledSessions = data?.queueHealth.stalledSessionsCount ?? 0;
   const deferredOutstanding = Math.round(data?.deferredOutstanding ?? 0);
 
@@ -260,16 +259,14 @@ function buildRoleConfig(role: RoleView, data: DashboardWorkspace | undefined, d
 
 export default function DashboardPage() {
   const { can, shift, effectiveRole } = useAuthz();
-  const loader = useCallback(() => opsClient.dashboardWorkspace(), []);
-  const { data, error } = useOpsWorkspace<DashboardWorkspace>(loader, {
+  const loader = useCallback(() => opsClient.navSummary(), []);
+  const { data, error } = useOpsWorkspace<OpsNavSummary>(loader, {
     enabled: Boolean(shift),
     cacheKey: 'workspace:dashboard',
     staleTimeMs: 30_000,
   });
-  const { summary } = useOpsChrome();
-
   const role: RoleView = can.owner ? 'owner' : effectiveRole ?? 'unassigned';
-  const config = buildRoleConfig(role, data ?? undefined, summary?.deferredCustomerCount ?? 0);
+  const config = buildRoleConfig(role, data ?? undefined, data?.deferredCustomerCount ?? 0);
 
   const effectiveError = error ?? null;
 

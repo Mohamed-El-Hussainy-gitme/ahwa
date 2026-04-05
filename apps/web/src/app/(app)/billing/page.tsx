@@ -1,6 +1,7 @@
 'use client';
 
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
@@ -12,6 +13,8 @@ import { applyBillingToWorkspace } from '@/lib/ops/workspacePatches';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import { buildBillingPreviewUrl, computeBillingTotals } from '@/lib/ops/billing';
+import { saveBillingReceiptPreviewDraft } from '@/lib/ops/receipt-preview';
+import { shouldReloadBillingWorkspace } from '@/lib/ops/reload-rules';
 import {
   opsAccentButton,
   opsBadge,
@@ -31,6 +34,7 @@ function formatMoney(value: number) {
 
 export default function BillingPage() {
   const { can, shift } = useAuthz();
+  const router = useRouter();
   const [sessionId, setSessionId] = useState('');
   const [debtorName, setDebtorName] = useState('');
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
@@ -45,6 +49,7 @@ export default function BillingPage() {
     cacheKey: 'workspace:billing',
     staleTimeMs: 12_000,
     pollIntervalMs: billingEnabled ? 4000 : undefined,
+    shouldReloadOnEvent: shouldReloadBillingWorkspace,
   });
 
   const effectiveSessionId = sessionId || data?.sessions[0]?.sessionId || '';
@@ -190,7 +195,7 @@ export default function BillingPage() {
                 {lastReceiptUrl ? (
                   <Link
                     href={lastReceiptUrl}
-                    target="_blank"
+                   
                     className="rounded-[18px] border border-[#c0d8cb] px-4 py-2 text-sm font-semibold text-[#2e6a4e]"
                   >
                     عرض المستند النهائي
@@ -311,9 +316,20 @@ export default function BillingPage() {
                 </div>
               </div>
 
-              <Link href={previewReceiptUrl} target="_blank" className={opsPrimaryButton}>
+              <button
+                type="button"
+                onClick={() => {
+                  saveBillingReceiptPreviewDraft({
+                    sessionId: effectiveSessionId,
+                    allocations: printableAllocations,
+                    debtorName,
+                  });
+                  router.push(previewReceiptUrl);
+                }}
+                className={opsPrimaryButton}
+              >
                 طباعة الفاتورة
-              </Link>
+              </button>
             </div>
           ) : null}
         </div>

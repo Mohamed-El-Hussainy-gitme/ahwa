@@ -1,4 +1,4 @@
-import type { BillingWorkspace, ReadyItem, SessionOrderItem, StationQueueItem, StationWorkspace, WaiterWorkspace } from './types';
+import type { BillingWorkspace, ReadyItem, SessionOrderItem, StationQueueItem, StationWorkspace, WaiterLiveWorkspace, WaiterWorkspace } from './types';
 
 function clamp(value: number) {
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
@@ -17,7 +17,7 @@ function buildReadyItemFromSessionItem(item: SessionOrderItem): ReadyItem {
   };
 }
 
-export function appendOrTouchSession(workspace: WaiterWorkspace | null, sessionId: string, label: string): WaiterWorkspace | null {
+export function appendOrTouchSession<T extends Pick<WaiterLiveWorkspace, 'sessions'>>(workspace: T | null, sessionId: string, label: string): T | null {
   if (!workspace) return workspace;
   const exists = workspace.sessions.some((session) => session.id === sessionId);
   if (exists) {
@@ -55,7 +55,7 @@ export function applyReadyToStationWorkspace(workspace: StationWorkspace | null,
   };
 }
 
-export function applyReadyToWaiterWorkspace(workspace: WaiterWorkspace | null, item: StationQueueItem, quantity: number): WaiterWorkspace | null {
+export function applyReadyToWaiterWorkspace<T extends Pick<WaiterLiveWorkspace, 'readyItems' | 'sessionItems' | 'sessions'>>(workspace: T | null, item: StationQueueItem, quantity: number): T | null {
   if (!workspace) return workspace;
   const qty = clamp(quantity);
   if (!qty) return workspace;
@@ -108,7 +108,7 @@ export function applyReadyToWaiterWorkspace(workspace: WaiterWorkspace | null, i
   };
 }
 
-export function applyDeliverToWaiterWorkspace(workspace: WaiterWorkspace | null, orderItemId: string, quantity: number): WaiterWorkspace | null {
+export function applyDeliverToWaiterWorkspace<T extends Pick<WaiterLiveWorkspace, 'readyItems' | 'sessionItems' | 'sessions'>>(workspace: T | null, orderItemId: string, quantity: number): T | null {
   if (!workspace) return workspace;
   const qty = clamp(quantity);
   if (!qty) return workspace;

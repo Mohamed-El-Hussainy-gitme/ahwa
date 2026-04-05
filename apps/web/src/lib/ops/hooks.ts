@@ -118,7 +118,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       inFlightRef.current = request;
       return request;
     },
-    [enabled, loader],
+    [cacheKey, enabled, loader],
   );
 
   const reload = useCallback(async () => runReload('manual'), [runReload]);
@@ -130,6 +130,18 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       void runReload('background');
     }, realtimeDebounceMs);
   }, [clearReloadTimer, realtimeDebounceMs, runReload]);
+
+  const shouldRevalidate = useCallback(
+    () => isStale(lastLoadedAtRef.current, staleTimeMs, Boolean(errorRef.current)),
+    [staleTimeMs],
+  );
+
+  const shouldUsePollingFallback = useCallback(() => {
+    if (errorRef.current) {
+      return true;
+    }
+    return !isOpsRealtimeHealthy(getOpsRealtimeSnapshot());
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
@@ -163,7 +175,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       if (!pollWhenHidden && document.visibilityState !== 'visible') {
         return;
       }
-      if (isOpsRealtimeHealthy(getOpsRealtimeSnapshot())) {
+      if (!shouldUsePollingFallback()) {
         return;
       }
       void runReload('background');
@@ -172,15 +184,13 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
     return () => {
       window.clearInterval(interval);
     };
-  }, [enabled, pollIntervalMs, pollWhenHidden, runReload]);
+  }, [enabled, pollIntervalMs, pollWhenHidden, runReload, shouldUsePollingFallback]);
 
   useEffect(() => {
     if (!enabled) {
       clearReloadTimer();
       return;
     }
-
-    const shouldRevalidate = () => isStale(lastLoadedAtRef.current, staleTimeMs, Boolean(errorRef.current));
 
     const unsubscribeRealtime = subscribeOpsRealtime((event) => {
       if (shouldReloadOnEvent && !shouldReloadOnEvent(event)) {
@@ -194,13 +204,13 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
     });
 
     const onFocus = () => {
-      if (shouldRevalidate()) {
+      if (shouldRevalidate() && shouldUsePollingFallback()) {
         scheduleBackgroundReload();
       }
     };
 
     const onVisible = () => {
-      if (document.visibilityState === 'visible' && shouldRevalidate()) {
+      if (document.visibilityState === 'visible' && shouldRevalidate() && shouldUsePollingFallback()) {
         scheduleBackgroundReload();
       }
     };
@@ -215,7 +225,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [clearReloadTimer, enabled, realtimeDebounceMs, scheduleBackgroundReload, shouldReloadOnEvent, staleTimeMs]);
+  }, [clearReloadTimer, enabled, scheduleBackgroundReload, shouldReloadOnEvent, shouldRevalidate, shouldUsePollingFallback]);
 
   return useMemo(
     () => ({ data, setData, loading, error, reload, lastLoadedAt }),

@@ -26,10 +26,7 @@ export async function GET(req: Request) {
     me = await getEnrichedRuntimeMeFromCookie();
   } catch (error) {
     if (isUnboundRuntimeSessionError(error)) {
-      return NextResponse.json(
-        { error: 'UNBOUND_RUNTIME_SESSION' },
-        { status: 409 },
-      );
+      return NextResponse.json({ error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
     }
     throw error;
   }
@@ -67,7 +64,9 @@ export async function GET(req: Request) {
             cursor: lastCursor,
             signal: abortController.signal,
             onError: () => {
-              controller.enqueue(encoder.encode(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false })}\n\n`));
+              controller.enqueue(
+                encoder.encode(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false })}\n\n`),
+              );
             },
           },
           send,
@@ -78,8 +77,8 @@ export async function GET(req: Request) {
       }
 
       heartbeat = setInterval(() => {
-        controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
-      }, 15000);
+        controller.enqueue(encoder.encode(`event: ping\ndata: ${Date.now()}\n\n`));
+      }, 15_000);
     },
     cancel() {
       abortController.abort();
