@@ -200,7 +200,6 @@ export async function buildMenuWorkspace(cafeId: string, databaseKey: string): P
   return { sections: catalog.sections, products: catalog.products, billingSettings };
 }
 
-
 export async function loadBillingSettings(cafeId: string, databaseKey: string): Promise<BillingExtrasSettings> {
   return readThroughCache(cacheKey('billing-settings', cafeId, databaseKey), BILLING_SETTINGS_CACHE_TTL_MS, async () => {
     const { data, error } = await adminOps(databaseKey)
@@ -224,6 +223,48 @@ function allowStationCode(stationCode: StationCode, allowed: readonly StationCod
   return !allowed || allowed.includes(stationCode);
 }
 
+function buildSessionSummaries(rawSessions: any[], itemRows: any[]): OpsSessionSummary[] {
+  return rawSessions.map((row: any) => {
+    const sessionId = String(row.id);
+    const relatedItems = itemRows.filter((item) => String(item.service_session_id ?? '') === sessionId);
+
+    let readyCount = 0;
+    let billableCount = 0;
+
+    for (const item of relatedItems) {
+      const qtyReady = Number(item.qty_ready ?? 0);
+      const qtyTotal = Number(item.qty_total ?? 0);
+      const qtyCancelled = Number(item.qty_cancelled ?? 0);
+      const qtyDelivered = Number(item.qty_delivered ?? 0);
+      const qtyReplacementDelivered = Number(item.qty_replacement_delivered ?? 0);
+      const qtyPaid = Number(item.qty_paid ?? 0);
+      const qtyDeferred = Number(item.qty_deferred ?? 0);
+      const qtyWaived = Number(item.qty_waived ?? 0);
+
+      const totalOriginalReady = Math.min(qtyReady, Math.max(qtyTotal - qtyCancelled, 0));
+      const qtyReadyForNormalDelivery = Math.max(totalOriginalReady - qtyDelivered, 0);
+      const qtyReadyForReplacementDelivery = Math.max(
+        qtyReady - totalOriginalReady - qtyReplacementDelivered,
+        0,
+      );
+      const qtyReadyForDelivery = qtyReadyForNormalDelivery + qtyReadyForReplacementDelivery;
+      const qtyBillable = Math.max(qtyDelivered - qtyPaid - qtyDeferred - qtyWaived, 0);
+
+      readyCount += qtyReadyForDelivery;
+      billableCount += qtyBillable;
+    }
+
+    return {
+      id: sessionId,
+      label: String(row.session_label ?? ''),
+      status: String(row.status ?? 'open'),
+      openedAt: String(row.opened_at ?? ''),
+      billableCount,
+      readyCount,
+    } satisfies OpsSessionSummary;
+  });
+}
+
 export async function buildWaiterWorkspace(
   cafeId: string,
   databaseKey: string,
@@ -234,7 +275,7 @@ export async function buildWaiterWorkspace(
   const includeCatalog = scope.includeCatalog !== false;
   const includeSessionItems = scope.includeSessionItems !== false;
   const includeReadyItems = scope.includeReadyItems !== false;
-  const sessions = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
+  const rawSessions = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
 
   let sections: OpsSection[] = [];
   let products: OpsProduct[] = [];
@@ -245,7 +286,7 @@ export async function buildWaiterWorkspace(
     products = catalog.products.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes) && allowedSectionIds.has(row.sectionId));
   }
 
-  const openSessionIds = sessions.map((session: any) => String(session.id));
+  const openSessionIds = rawSessions.map((session: any) => String(session.id));
   const openSessionIdsSet = new Set(openSessionIds);
 
   let itemRows: any[] = [];
@@ -260,6 +301,8 @@ export async function buildWaiterWorkspace(
     if (error) throw error;
     itemRows = (data ?? []) as any[];
   }
+
+  const sessions = buildSessionSummaries(rawSessions, itemRows);
 
   const sessionItems: SessionOrderItem[] = includeSessionItems
     ? itemRows
@@ -519,7 +562,6 @@ export async function buildBillingWorkspace(cafeId: string, databaseKey: string)
   return { shift: normalizedShift, sessions: Array.from(bySession.values()), deferredNames, billingSettings };
 }
 
-
 type DeferredDerivedState = {
   status: DeferredCustomerSummary['status'];
   agingBucket: DeferredCustomerSummary['agingBucket'];
@@ -778,19 +820,14 @@ export async function buildComplaintsWorkspace(
         serviceSessionId: String(row.service_session_id),
         sessionLabel: String(row.service_sessions?.session_label ?? ''),
         productName: String(row.menu_products?.product_name ?? ''),
-        stationCode: normalizeStationCode(row.station_code),
+        stationCode: normalizeNullableStationCode(row.station_code),
         unitPrice: Number(row.unit_price ?? 0),
         availableCancelQty,
         availableRemakeQty,
         availableWaiveQty,
-        qtyDelivered: Number(row.qty_delivered ?? 0),
-        qtyReplacementDelivered: Number(row.qty_replacement_delivered ?? 0),
-        qtyPaid: Number(row.qty_paid ?? 0),
-        qtyDeferred: Number(row.qty_deferred ?? 0),
-        qtyWaived: Number(row.qty_waived ?? 0),
       } satisfies ComplaintItemCandidate;
     })
-    .filter((item) => item.availableCancelQty > 0 || item.availableRemakeQty > 0 || item.availableWaiveQty > 0);
+    .filter((row) => row.availableCancelQty > 0 || row.availableRemakeQty > 0 || row.availableWaiveQty > 0);
 
   const complaints: ComplaintRecord[] = (complaintRows ?? [])
     .filter((row: any) => {
@@ -798,31 +835,31 @@ export async function buildComplaintsWorkspace(
       return allowStationCode(normalizeStationCode(row.station_code), scope.itemStationCodes);
     })
     .map((row: any) => {
-    const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
-    const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
-    return {
-      id: String(row.id),
-      orderItemId: row.order_item_id ? String(row.order_item_id) : null,
-      serviceSessionId: String(row.service_session_id),
-      sessionLabel: String(row.service_sessions?.session_label ?? ''),
-      productName: menuProductRef?.product_name ? String(menuProductRef.product_name) : null,
-      stationCode: row.station_code ? (normalizeStationCode(row.station_code)) : null,
-      complaintKind: String(row.complaint_kind) as ComplaintRecord['complaintKind'],
-      status: String(row.status) as ComplaintRecord['status'],
-      resolutionKind: row.resolution_kind && String(row.resolution_kind) === 'dismissed'
-        ? 'dismissed'
-        : row.status === 'resolved'
-          ? 'resolved'
-          : null,
-      requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
-      resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
-      notes: row.notes ? String(row.notes) : null,
-      createdAt: String(row.created_at),
-      resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
-      createdByLabel: row.created_by_owner_id ? 'owner' : row.created_by_staff_id ? 'staff' : null,
-      resolvedByLabel: row.resolved_by_owner_id ? 'owner' : row.resolved_by_staff_id ? 'staff' : null,
-    } satisfies ComplaintRecord;
-  });
+      const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
+      const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
+      return {
+        id: String(row.id),
+        orderItemId: row.order_item_id ? String(row.order_item_id) : null,
+        serviceSessionId: String(row.service_session_id),
+        sessionLabel: String(row.service_sessions?.session_label ?? ''),
+        productName: menuProductRef?.product_name ? String(menuProductRef.product_name) : null,
+        stationCode: row.station_code ? normalizeStationCode(row.station_code) : null,
+        complaintKind: String(row.complaint_kind) as ComplaintRecord['complaintKind'],
+        status: String(row.status) as ComplaintRecord['status'],
+        resolutionKind: row.resolution_kind && String(row.resolution_kind) === 'dismissed'
+          ? 'dismissed'
+          : row.status === 'resolved'
+            ? 'resolved'
+            : null,
+        requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
+        resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
+        notes: row.notes ? String(row.notes) : null,
+        createdAt: String(row.created_at),
+        resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
+        createdByLabel: row.created_by_owner_id ? 'owner' : row.created_by_staff_id ? 'staff' : null,
+        resolvedByLabel: row.resolved_by_owner_id ? 'owner' : row.resolved_by_staff_id ? 'staff' : null,
+      } satisfies ComplaintRecord;
+    });
 
   const itemIssues = (issueRows ?? [])
     .filter((row: any) => {
@@ -830,27 +867,27 @@ export async function buildComplaintsWorkspace(
       return allowStationCode(normalizeStationCode(row.station_code), scope.itemStationCodes);
     })
     .map((row: any) => {
-    const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
-    const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
-    return {
-      id: String(row.id),
-      orderItemId: String(row.order_item_id),
-      serviceSessionId: String(row.service_session_id),
-      sessionLabel: String(row.service_sessions?.session_label ?? ''),
-      productName: String(menuProductRef?.product_name ?? ''),
-      stationCode: row.station_code ? (normalizeStationCode(row.station_code)) : null,
-      issueKind: String(row.issue_kind ?? 'other') as ComplaintsWorkspace['itemIssues'][number]['issueKind'],
-      actionKind: String(row.action_kind ?? 'note') as ComplaintsWorkspace['itemIssues'][number]['actionKind'],
-      status: String(row.status ?? 'logged') as ComplaintsWorkspace['itemIssues'][number]['status'],
-      requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
-      resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
-      notes: row.notes ? String(row.notes) : null,
-      createdAt: String(row.created_at),
-      resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
-      createdByLabel: row.created_by_owner_id ? 'owner' : row.created_by_staff_id ? 'staff' : null,
-      resolvedByLabel: row.resolved_by_owner_id ? 'owner' : row.resolved_by_staff_id ? 'staff' : null,
-    } satisfies ComplaintsWorkspace['itemIssues'][number];
-  });
+      const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
+      const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
+      return {
+        id: String(row.id),
+        orderItemId: String(row.order_item_id),
+        serviceSessionId: String(row.service_session_id),
+        sessionLabel: String(row.service_sessions?.session_label ?? ''),
+        productName: String(menuProductRef?.product_name ?? ''),
+        stationCode: row.station_code ? normalizeStationCode(row.station_code) : null,
+        issueKind: String(row.issue_kind ?? 'other') as ComplaintsWorkspace['itemIssues'][number]['issueKind'],
+        actionKind: String(row.action_kind ?? 'note') as ComplaintsWorkspace['itemIssues'][number]['actionKind'],
+        status: String(row.status ?? 'logged') as ComplaintsWorkspace['itemIssues'][number]['status'],
+        requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
+        resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
+        notes: row.notes ? String(row.notes) : null,
+        createdAt: String(row.created_at),
+        resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
+        createdByLabel: row.created_by_owner_id ? 'owner' : row.created_by_staff_id ? 'staff' : null,
+        resolvedByLabel: row.resolved_by_owner_id ? 'owner' : row.resolved_by_staff_id ? 'staff' : null,
+      } satisfies ComplaintsWorkspace['itemIssues'][number];
+    });
 
   return { shift: normalizedShift, sessions, items, complaints, itemIssues };
 }
