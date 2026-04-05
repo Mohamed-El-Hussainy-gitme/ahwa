@@ -15,6 +15,8 @@ export type RealtimeSnapshot = {
   lastErrorAt: number | null;
 };
 
+const HEALTHY_CONNECTION_IDLE_WINDOW_MS = 45_000;
+
 type RealtimeState = {
   source: EventSource | null;
   listeners: Set<Listener>;
@@ -163,6 +165,19 @@ export function subscribeOpsRealtime(listener: Listener) {
 
 export function getOpsRealtimeSnapshot(): RealtimeSnapshot {
   return { ...state.snapshot };
+}
+
+export function isOpsRealtimeHealthy(snapshot: RealtimeSnapshot = state.snapshot) {
+  if (snapshot.state !== 'connected') {
+    return false;
+  }
+
+  const referenceTime = snapshot.lastEventAt ?? snapshot.lastConnectAt;
+  if (referenceTime === null) {
+    return false;
+  }
+
+  return Date.now() - referenceTime <= HEALTHY_CONNECTION_IDLE_WINDOW_MS;
 }
 
 export function subscribeOpsRealtimeStatus(listener: StatusListener) {

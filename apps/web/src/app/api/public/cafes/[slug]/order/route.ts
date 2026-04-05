@@ -131,7 +131,8 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       shiftId: String(shift.id),
     };
 
-    for (const [stationCode, quantity] of stationQuantities.entries()) {
+    const stationEventTasks = Array.from(stationQuantities.entries()).map(async ([stationCode, quantity]) => {
+      if (quantity <= 0) return;
       const eventData = {
         serviceSessionId: createdSessionId,
         sessionLabel: createdSessionLabel,
@@ -147,7 +148,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         data: eventData,
         scopes: [stationCode, 'dashboard', 'nav-summary'],
       });
-      await publishOpsMutation({ cafeId: cafe.cafeId, shiftId: String(shift.id) }, {
+      void publishOpsMutation({ cafeId: cafe.cafeId, shiftId: String(shift.id) }, {
         id: eventId,
         type: 'station.order_submitted',
         entityId: orderId,
@@ -155,8 +156,9 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         data: eventData,
         scopes: [stationCode, 'dashboard', 'nav-summary'],
       });
-    }
+    });
 
+    await Promise.all(stationEventTasks);
     kickOpsOutboxDispatch({ cafeId: cafe.cafeId, databaseKey: cafe.databaseKey });
 
     return NextResponse.json({

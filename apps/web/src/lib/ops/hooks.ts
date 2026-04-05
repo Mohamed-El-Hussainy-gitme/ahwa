@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OpsRealtimeEvent } from './types';
-import { subscribeOpsRealtime } from './realtime';
+import { getOpsRealtimeSnapshot, isOpsRealtimeHealthy, subscribeOpsRealtime } from './realtime';
 import { subscribeOpsInvalidation } from './invalidation';
 
 type WorkspaceOptions = {
@@ -161,6 +161,9 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
 
     const interval = window.setInterval(() => {
       if (!pollWhenHidden && document.visibilityState !== 'visible') {
+        return;
+      }
+      if (isOpsRealtimeHealthy(getOpsRealtimeSnapshot())) {
         return;
       }
       void runReload('background');

@@ -106,8 +106,8 @@ export async function POST(req: Request) {
     const orderId = String(createRpc.order_id ?? '').trim();
     if (!orderId) throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
 
-    for (const [stationCode, quantity] of stationQuantities.entries()) {
-      if (quantity <= 0) continue;
+    const stationEventTasks = Array.from(stationQuantities.entries()).map(async ([stationCode, quantity]) => {
+      if (quantity <= 0) return;
       const eventData = {
         serviceSessionId: sessionId,
         sessionLabel,
@@ -122,7 +122,7 @@ export async function POST(req: Request) {
         data: eventData,
         scopes: [stationCode, 'dashboard', 'nav-summary'],
       });
-      await publishOpsMutation(ctx, {
+      void publishOpsMutation(ctx, {
         id: eventId,
         type: 'station.order_submitted',
         entityId: orderId,
@@ -130,8 +130,9 @@ export async function POST(req: Request) {
         data: eventData,
         scopes: [stationCode, 'dashboard', 'nav-summary'],
       });
-    }
+    });
 
+    await Promise.all(stationEventTasks);
     kickOpsOutboxDispatch(ctx);
     return ok({ ok: true, orderId, sessionId, label: sessionLabel });
   } catch (e) {

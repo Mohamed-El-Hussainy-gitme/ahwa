@@ -3,7 +3,7 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthz } from '@/lib/authz';
 import { useOpsRealtimeNotifications } from '@/lib/ops/notifications';
-import { subscribeOpsRealtime, useOpsRealtimeStatus } from '@/lib/ops/realtime';
+import { getOpsRealtimeSnapshot, isOpsRealtimeHealthy, subscribeOpsRealtime, useOpsRealtimeStatus } from '@/lib/ops/realtime';
 import { subscribeOpsInvalidation } from '@/lib/ops/invalidation';
 import type { OpsNavSummary } from '@/lib/ops/types';
 
@@ -221,6 +221,9 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
 
     const interval = window.setInterval(() => {
       if (document.visibilityState !== 'visible') {
+        return;
+      }
+      if (isOpsRealtimeHealthy(getOpsRealtimeSnapshot())) {
         return;
       }
       void runReload('background');
