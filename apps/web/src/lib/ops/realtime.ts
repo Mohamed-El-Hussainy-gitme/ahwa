@@ -38,6 +38,10 @@ const state: RealtimeState = {
   reconnectAttempts: 0,
 };
 
+function isDocumentVisible() {
+  return typeof document === 'undefined' || document.visibilityState === 'visible';
+}
+
 function emitStatus() {
   const snapshot = { ...state.snapshot };
   for (const listener of state.statusListeners) {
@@ -64,7 +68,7 @@ function scheduleReconnect() {
 
   const attempt = Math.min(state.reconnectAttempts + 1, 6);
   state.reconnectAttempts = attempt;
-  const delay = Math.min(1000 * 2 ** (attempt - 1), 8000);
+  const delay = Math.min(1000 * 2 ** (attempt - 1), 30000);
   setSnapshot({ state: 'reconnecting' });
   state.reconnectTimer = setTimeout(() => {
     state.reconnectTimer = null;
@@ -92,7 +96,7 @@ function handleEvent(event: MessageEvent<string>) {
 }
 
 function ensureSource() {
-  if (state.source || typeof window === 'undefined' || !state.listeners.size) {
+  if (state.source || typeof window === 'undefined' || !state.listeners.size || !isDocumentVisible()) {
     return;
   }
 
@@ -116,10 +120,8 @@ function ensureSource() {
       lastErrorAt: Date.now(),
     });
 
-    if (source.readyState === EventSource.CLOSED) {
-      disposeSource();
-      scheduleReconnect();
-    }
+    disposeSource();
+    scheduleReconnect();
   };
 
   state.source = source;
@@ -127,9 +129,28 @@ function ensureSource() {
 
 export function subscribeOpsRealtime(listener: Listener) {
   state.listeners.add(listener);
+
+  const onVisibilityChange = () => {
+    if (isDocumentVisible()) {
+      ensureSource();
+      return;
+    }
+
+    clearReconnectTimer();
+    disposeSource();
+    setSnapshot({ state: state.listeners.size ? 'idle' : 'disconnected' });
+  };
+
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', onVisibilityChange);
+  }
+
   ensureSource();
 
   return () => {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    }
     state.listeners.delete(listener);
 
     if (!state.listeners.size) {

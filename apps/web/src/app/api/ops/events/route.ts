@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { clearAuthCookies } from '@/lib/auth/cookies';
 import {
   getEnrichedRuntimeMeFromCookie,
   isUnboundRuntimeSessionError,
@@ -27,20 +26,16 @@ export async function GET(req: Request) {
     me = await getEnrichedRuntimeMeFromCookie();
   } catch (error) {
     if (isUnboundRuntimeSessionError(error)) {
-      const response = NextResponse.json(
+      return NextResponse.json(
         { error: 'UNBOUND_RUNTIME_SESSION' },
         { status: 409 },
       );
-      clearAuthCookies(response);
-      return response;
     }
     throw error;
   }
 
   if (!me?.tenantId) {
-    const response = NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
-    clearAuthCookies(response);
-    return response;
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
   const cafeId = String(me.tenantId);
