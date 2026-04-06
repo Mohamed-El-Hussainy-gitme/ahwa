@@ -1,13 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import type { RealtimeReloadDirective } from './reload-rules';
 import type { OpsRealtimeEvent } from './types';
 import { subscribeOpsRealtime } from './realtime';
 import { subscribeOpsInvalidation } from './invalidation';
 
 type WorkspaceOptions<T> = {
   enabled?: boolean;
-  shouldReloadOnEvent?: (event: OpsRealtimeEvent) => boolean;
+  shouldReloadOnEvent?: (event: OpsRealtimeEvent) => RealtimeReloadDirective;
   applyRealtimeEvent?: (current: T | null, event: OpsRealtimeEvent) => T | null;
   staleTimeMs?: number;
   realtimeDebounceMs?: number;
@@ -17,14 +18,41 @@ type WorkspaceOptions<T> = {
 
 type ReloadMode = 'manual' | 'background';
 
+type NormalizedRealtimeDirective = {
+  reload: 'none' | 'background' | 'immediate';
+  debounceMs?: number;
+  burstMs?: number;
+  fastPollIntervalMs?: number;
+  onlyIfStale?: boolean;
+};
+
 const DEFAULT_STALE_TIME_MS = 15_000;
 const DEFAULT_REALTIME_DEBOUNCE_MS = 120;
+const DEFAULT_FAST_POLL_INTERVAL_MS = 900;
 
 function isStale(lastLoadedAt: number | null, staleTimeMs: number, hasError: boolean) {
   if (hasError || lastLoadedAt === null) {
     return true;
   }
   return Date.now() - lastLoadedAt >= staleTimeMs;
+}
+
+function normalizeDirective(directive: RealtimeReloadDirective | undefined): NormalizedRealtimeDirective {
+  if (!directive) {
+    return { reload: 'none' };
+  }
+
+  if (directive === true) {
+    return { reload: 'background' };
+  }
+
+  return {
+    reload: directive.reload ?? 'background',
+    debounceMs: directive.debounceMs,
+    burstMs: directive.burstMs,
+    fastPollIntervalMs: directive.fastPollIntervalMs,
+    onlyIfStale: directive.onlyIfStale,
+  };
 }
 
 export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceOptions<T> = {}) {
@@ -44,6 +72,8 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
   const inFlightRef = useRef<Promise<T | null> | null>(null);
   const queuedRef = useRef(false);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const burstIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const burstUntilRef = useRef<number | null>(null);
   const lastLoadedAtRef = useRef<number | null>(null);
   const errorRef = useRef<string | null>(null);
 
@@ -60,6 +90,14 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       clearTimeout(reloadTimerRef.current);
       reloadTimerRef.current = null;
     }
+  }, []);
+
+  const clearBurstInterval = useCallback(() => {
+    if (burstIntervalRef.current) {
+      clearInterval(burstIntervalRef.current);
+      burstIntervalRef.current = null;
+    }
+    burstUntilRef.current = null;
   }, []);
 
   const runReload = useCallback(
@@ -113,13 +151,47 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
 
   const reload = useCallback(async () => runReload('manual'), [runReload]);
 
-  const scheduleBackgroundReload = useCallback(() => {
-    clearReloadTimer();
-    reloadTimerRef.current = setTimeout(() => {
-      reloadTimerRef.current = null;
-      void runReload('background');
-    }, realtimeDebounceMs);
-  }, [clearReloadTimer, realtimeDebounceMs, runReload]);
+  const scheduleBackgroundReload = useCallback(
+    (overrideDebounceMs?: number) => {
+      clearReloadTimer();
+      reloadTimerRef.current = setTimeout(() => {
+        reloadTimerRef.current = null;
+        void runReload('background');
+      }, overrideDebounceMs ?? realtimeDebounceMs);
+    },
+    [clearReloadTimer, realtimeDebounceMs, runReload],
+  );
+
+  const startBurstPolling = useCallback(
+    (burstMs?: number, fastPollIntervalMs?: number) => {
+      if (!enabled || !burstMs || burstMs <= 0) {
+        return;
+      }
+
+      const nextUntil = Date.now() + burstMs;
+      burstUntilRef.current = Math.max(burstUntilRef.current ?? 0, nextUntil);
+
+      if (burstIntervalRef.current) {
+        return;
+      }
+
+      const intervalMs = Math.max(250, fastPollIntervalMs ?? DEFAULT_FAST_POLL_INTERVAL_MS);
+      burstIntervalRef.current = setInterval(() => {
+        if (!pollWhenHidden && document.visibilityState !== 'visible') {
+          return;
+        }
+
+        const burstUntil = burstUntilRef.current;
+        if (!burstUntil || Date.now() >= burstUntil) {
+          clearBurstInterval();
+          return;
+        }
+
+        void runReload('background');
+      }, intervalMs);
+    },
+    [clearBurstInterval, enabled, pollWhenHidden, runReload],
+  );
 
   useEffect(() => {
     void runReload('manual');
@@ -148,6 +220,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
   useEffect(() => {
     if (!enabled) {
       clearReloadTimer();
+      clearBurstInterval();
       return;
     }
 
@@ -157,10 +230,26 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       if (applyRealtimeEvent) {
         setData((current) => applyRealtimeEvent(current, event));
       }
-      if (shouldReloadOnEvent && !shouldReloadOnEvent(event)) {
+
+      const directive = normalizeDirective(shouldReloadOnEvent?.(event));
+      if (directive.reload === 'none') {
         return;
       }
-      scheduleBackgroundReload();
+
+      if (directive.burstMs) {
+        startBurstPolling(directive.burstMs, directive.fastPollIntervalMs);
+      }
+
+      if (directive.onlyIfStale && !shouldRevalidate()) {
+        return;
+      }
+
+      if (directive.reload === 'immediate') {
+        void runReload('background');
+        return;
+      }
+
+      scheduleBackgroundReload(directive.debounceMs);
     });
 
     const unsubscribeInvalidation = subscribeOpsInvalidation(() => {
@@ -186,10 +275,11 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       unsubscribeRealtime();
       unsubscribeInvalidation();
       clearReloadTimer();
+      clearBurstInterval();
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [applyRealtimeEvent, clearReloadTimer, enabled, scheduleBackgroundReload, shouldReloadOnEvent, staleTimeMs]);
+  }, [applyRealtimeEvent, clearBurstInterval, clearReloadTimer, enabled, scheduleBackgroundReload, shouldReloadOnEvent, staleTimeMs, startBurstPolling, runReload]);
 
   return useMemo(
     () => ({ data, setData, loading, error, reload, lastLoadedAt }),
@@ -227,5 +317,5 @@ export function useOpsCommand<TArgs extends unknown[], TResult>(
     [command, options],
   );
 
-  return { run, busy, error };
+  return { run, busy, error, setError };
 }

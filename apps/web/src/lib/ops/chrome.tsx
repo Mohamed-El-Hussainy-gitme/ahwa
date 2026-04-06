@@ -19,6 +19,7 @@ export type OpsChromeState = {
 const OpsChromeContext = createContext<OpsChromeState | null>(null);
 const SUMMARY_STALE_TIME_MS = 15_000;
 const SUMMARY_DEBOUNCE_MS = 150;
+const SUMMARY_FAST_FOLLOWUP_MS = 900;
 
 function toPositiveInteger(value: unknown) {
   const num = Number(value ?? 0);
@@ -118,6 +119,7 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const followupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seenRealtimeEventIdsRef = useRef<string[]>([]);
   const seenRealtimeEventIdsSetRef = useRef<Set<string>>(new Set());
   const inFlightRef = useRef<Promise<void> | null>(null);
@@ -135,6 +137,10 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
     if (reloadTimerRef.current) {
       clearTimeout(reloadTimerRef.current);
       reloadTimerRef.current = null;
+    }
+    if (followupTimerRef.current) {
+      clearTimeout(followupTimerRef.current);
+      followupTimerRef.current = null;
     }
   }, []);
 
@@ -182,8 +188,16 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
     await runReload('manual');
   }, [runReload]);
 
-  const scheduleReload = useCallback(() => {
+  const scheduleReload = useCallback((immediate = false) => {
     clearReloadTimer();
+    if (immediate) {
+      void runReload('background');
+      followupTimerRef.current = setTimeout(() => {
+        followupTimerRef.current = null;
+        void runReload('background');
+      }, SUMMARY_FAST_FOLLOWUP_MS);
+      return;
+    }
     reloadTimerRef.current = setTimeout(() => {
       reloadTimerRef.current = null;
       void runReload('background');
