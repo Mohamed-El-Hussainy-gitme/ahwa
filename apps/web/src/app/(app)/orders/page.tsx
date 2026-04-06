@@ -422,7 +422,7 @@ export default function OrdersPage() {
           </div>
 
           {sessionCards.length ? (
-            <div className="space-y-2">
+            <div className="grid grid-cols-2 gap-2">
               {sessionCards.map((session) => {
                 const active = !creatingNew && effectiveSessionId === session.id;
                 return (
@@ -432,38 +432,15 @@ export default function OrdersPage() {
                     onClick={() => selectExistingSession(session.id)}
                     disabled={composerOpen || submitCommand.busy}
                     className={[
-                      'w-full rounded-[22px] border px-4 py-3 text-right transition disabled:opacity-60',
+                      'rounded-[20px] border px-3 py-3 text-right transition disabled:opacity-60',
                       active
                         ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]'
                         : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
                     ].join(' ')}
                   >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-base font-black">{session.label}</div>
-                        <div className={['mt-1 text-xs', active ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
-                          آخر نشاط {session.activityLabel} • فُتحت {session.openedLabel}
-                        </div>
-                      </div>
-                      <div className={opsBadge(active ? 'accent' : 'neutral')}>{active ? 'الحالية' : 'اختر'}</div>
-                    </div>
-                    <div className={['mt-3 grid grid-cols-4 gap-2 text-center text-[11px]', active ? 'text-white' : 'text-[#5e4d3f]'].join(' ')}>
-                      <div className={[active ? 'bg-white/10' : 'bg-[#fff8ef]', 'rounded-[16px] px-2 py-2'].join(' ')}>
-                        <div className="text-sm font-black">{session.totalProductCount}</div>
-                        <div>طلبات</div>
-                      </div>
-                      <div className={[active ? 'bg-white/10' : 'bg-[#fff8ef]', 'rounded-[16px] px-2 py-2'].join(' ')}>
-                        <div className="text-sm font-black">{session.totalItemQty}</div>
-                        <div>كمية</div>
-                      </div>
-                      <div className={[active ? 'bg-white/10' : 'bg-[#fff8ef]', 'rounded-[16px] px-2 py-2'].join(' ')}>
-                        <div className="text-sm font-black">{session.readyCount}</div>
-                        <div>جاهز</div>
-                      </div>
-                      <div className={[active ? 'bg-white/10' : 'bg-[#fff8ef]', 'rounded-[16px] px-2 py-2'].join(' ')}>
-                        <div className="text-sm font-black">{session.billableCount}</div>
-                        <div>للحساب</div>
-                      </div>
+                    <div className="truncate text-sm font-bold">{session.label}</div>
+                    <div className={['mt-1 text-xs', active ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
+                      {session.totalItemQty} صنف • جاهز {session.readyCount}
                     </div>
                   </button>
                 );
