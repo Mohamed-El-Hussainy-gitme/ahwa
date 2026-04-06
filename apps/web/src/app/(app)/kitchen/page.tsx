@@ -10,7 +10,6 @@ import { applyReadyToStationWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
-import { shouldReloadStationWorkspace } from '@/lib/ops/reload-rules';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import {
   opsAlert,
@@ -31,10 +30,7 @@ export default function KitchenPage() {
   const loader = useCallback(() => opsClient.stationWorkspace('barista'), []);
   const { data, setData, error } = useOpsWorkspace<StationWorkspace>(loader, {
     enabled: Boolean(shift),
-    cacheKey: 'workspace:kitchen:barista',
-    staleTimeMs: 10_000,
-    pollIntervalMs: 4000,
-    shouldReloadOnEvent: (event) => shouldReloadStationWorkspace(event, 'barista'),
+    pollIntervalMs: 1500,
   });
   const previousWaitingQtyRef = useRef(0);
   const readyCommand = useOpsCommand(

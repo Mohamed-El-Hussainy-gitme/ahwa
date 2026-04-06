@@ -61,8 +61,6 @@ export default function CustomersPage() {
 
   const loader = useCallback(() => opsClient.deferredCustomersWorkspace(), []);
   const { data, error } = useOpsWorkspace<{ items: DeferredCustomerSummary[] }>(loader, {
-    cacheKey: 'workspace:customers',
-    staleTimeMs: 20_000,
     enabled: can.owner || can.billing,
   });
 
@@ -148,7 +146,7 @@ export default function CustomersPage() {
               <div className="font-semibold text-[#1e1712]">تصدير كشف الآجل</div>
               <div className="mt-1 text-xs text-[#8a7763]">افتح نسخة مرتبة للطباعة أو الحفظ بصيغة PDF.</div>
             </div>
-            <Link href="/customers/print" className="rounded-2xl border bg-[#fffdf9] px-4 py-2 text-sm font-semibold text-[#5e4d3f]">تصدير PDF</Link>
+            <Link href="/customers/print" target="_blank" className="rounded-2xl border bg-[#fffdf9] px-4 py-2 text-sm font-semibold text-[#5e4d3f]">تصدير PDF</Link>
           </div>
         </div>
 

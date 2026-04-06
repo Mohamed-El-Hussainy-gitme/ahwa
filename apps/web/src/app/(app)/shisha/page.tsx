@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { SessionOrderItem, StationQueueItem, StationWorkspace, WaiterCatalogWorkspace, WaiterLiveWorkspace } from '@/lib/ops/types';
+import type { SessionOrderItem, StationQueueItem, StationWorkspace, WaiterWorkspace } from '@/lib/ops/types';
 import {
   appendOrTouchSession,
   applyDeliverToWaiterWorkspace,
@@ -19,7 +19,6 @@ import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
-import { shouldReloadStationWorkspace, shouldReloadWaiterCatalogWorkspace, shouldReloadWaiterLiveWorkspace } from '@/lib/ops/reload-rules';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import {
   opsAccentButton,
@@ -28,18 +27,9 @@ import {
   opsEmptyState,
   opsGhostButton,
   opsPrimaryButton,
+  opsSectionTitle,
   opsSurface,
 } from '@/ui/ops/premiumStyles';
-
-function buildDisplaySessionLabel(label: string | null | undefined, sessionId: string | null | undefined) {
-  const normalizedLabel = typeof label === 'string' ? label.trim() : '';
-  if (normalizedLabel && normalizedLabel !== 'جلسة') {
-    return normalizedLabel;
-  }
-  const normalizedId = typeof sessionId === 'string' ? sessionId.replace(/[^0-9a-zA-Z]/g, '').slice(-4) : '';
-  return normalizedId ? `جلسة ${normalizedId}` : 'جلسة';
-}
-
 
 export default function ShishaPage() {
   const { can, shift, effectiveRole } = useAuthz();
@@ -50,66 +40,48 @@ export default function ShishaPage() {
   const [label, setLabel] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [creatingNew, setCreatingNew] = useState(false);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerLabel, setComposerLabel] = useState('');
   const [selectedSectionId, setSelectedSectionId] = useState('');
   const [draft, setDraft] = useState<Record<string, number>>({});
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
-  const [submitLatencyMs, setSubmitLatencyMs] = useState<number | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerLabel, setComposerLabel] = useState('');
   const composerInputRef = useRef<HTMLInputElement | null>(null);
 
   const stationLoader = useCallback(() => opsClient.stationWorkspace('shisha'), []);
-  const waiterLiveLoader = useCallback(() => opsClient.waiterLiveWorkspace(), []);
-  const waiterCatalogLoader = useCallback(() => opsClient.waiterCatalogWorkspace(), []);
+  const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
 
   const { data: stationData, setData: setStationData, error: stationError } = useOpsWorkspace<StationWorkspace>(
     stationLoader,
     {
       enabled: Boolean(shift),
-      cacheKey: 'workspace:shisha:station',
-      staleTimeMs: 10_000,
-      pollIntervalMs: 4000,
-      shouldReloadOnEvent: (event) => shouldReloadStationWorkspace(event, 'shisha'),
+      pollIntervalMs: 1500,
     },
   );
 
-  const { data: liveData, setData: setLiveData, error: liveError } = useOpsWorkspace<WaiterLiveWorkspace>(waiterLiveLoader, {
+  const { data: orderData, setData: setOrderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
-    cacheKey: 'workspace:shisha:live',
-    staleTimeMs: 10_000,
-    pollIntervalMs: 4000,
-    shouldReloadOnEvent: shouldReloadWaiterLiveWorkspace,
-  });
-
-  const { data: catalogData, error: catalogError } = useOpsWorkspace<WaiterCatalogWorkspace>(waiterCatalogLoader, {
-    enabled: Boolean(shift),
-    cacheKey: 'workspace:shisha:catalog',
-    staleTimeMs: 120_000,
-    shouldReloadOnEvent: shouldReloadWaiterCatalogWorkspace,
+    pollIntervalMs: 1500,
   });
 
   const previousQueueQtyRef = useRef(0);
 
   const queue = stationData?.queue ?? [];
-  const sessions = useMemo(() => (liveData?.sessions ?? []).map((session) => ({
-    ...session,
-    label: buildDisplaySessionLabel(session.label, session.id),
-  })), [liveData?.sessions]);
-  const sections = (catalogData?.sections ?? []).filter((section) => section.stationCode === 'shisha');
-  const products = (catalogData?.products ?? []).filter((product) => product.stationCode === 'shisha');
+  const sessions = orderData?.sessions ?? [];
+  const sections = (orderData?.sections ?? []).filter((section) => section.stationCode === 'shisha');
+  const products = (orderData?.products ?? []).filter((product) => product.stationCode === 'shisha');
   const effectiveSessionId = !creatingNew ? sessionId || sessions[0]?.id || '' : '';
   const effectiveSelectedSectionId = selectedSectionId || sections[0]?.id || '';
   const filteredProducts = products.filter(
     (product) => !effectiveSelectedSectionId || product.sectionId === effectiveSelectedSectionId,
   );
-  const readyItems = readyItemsForStation(liveData?.readyItems ?? [], 'shisha');
+  const readyItems = readyItemsForStation(orderData?.readyItems ?? [], 'shisha');
   const currentSessionItems = useMemo(
-    () => sessionItemsForSession(liveData?.sessionItems ?? [], effectiveSessionId, 'shisha'),
-    [liveData?.sessionItems, effectiveSessionId],
+    () => sessionItemsForSession(orderData?.sessionItems ?? [], effectiveSessionId, 'shisha'),
+    [orderData?.sessionItems, effectiveSessionId],
   );
   const draftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
-  const currentSessionLabel = creatingNew ? (label ? `جلسة جديدة: ${label}` : 'جلسة جديدة') : sessions.find((session) => session.id === effectiveSessionId)?.label ?? '';
+  const currentSessionLabel = sessions.find((session) => session.id === effectiveSessionId)?.label ?? '';
   const canManageComplaintActions = can.owner || can.billing;
 
   const totalQueueWaiting = queue.reduce((sum, item) => sum + item.qtyWaiting, 0);
@@ -133,8 +105,8 @@ export default function ShishaPage() {
 
   useEffect(() => {
     if (!composerOpen) return;
-    const timer = window.setTimeout(() => composerInputRef.current?.focus(), 30);
-    return () => window.clearTimeout(timer);
+    const id = window.setTimeout(() => composerInputRef.current?.focus(), 120);
+    return () => window.clearTimeout(id);
   }, [composerOpen]);
 
   const readyCommand = useOpsCommand(
@@ -142,7 +114,7 @@ export default function ShishaPage() {
       await opsClient.markReady(item.orderItemId, quantity);
       setQueueSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
       setStationData((current) => applyReadyToStationWorkspace(current, item, quantity));
-      setLiveData((current) => applyReadyToWaiterWorkspace(current, item, quantity));
+      setOrderData((current) => applyReadyToWaiterWorkspace(current, item, quantity));
     },
     { onError: setLocalError },
   );
@@ -151,7 +123,7 @@ export default function ShishaPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.deliver(orderItemId, quantity);
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
-      setLiveData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
+      setOrderData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
     },
     { onError: setLocalError },
   );
@@ -173,8 +145,7 @@ export default function ShishaPage() {
 
   const submitCommand = useOpsCommand(
     async () => {
-      if (!liveData || !draftLines.length) return;
-      const submitStartedAt = performance.now();
+      if (!orderData || !draftLines.length) return;
 
       if (creatingNew || !effectiveSessionId) {
         const created = await opsClient.openAndCreateOrder({
@@ -183,7 +154,7 @@ export default function ShishaPage() {
         });
         setSessionId(created.sessionId);
         setCreatingNew(false);
-        setLiveData((current) => appendOrTouchSession(current, created.sessionId, created.label));
+        setOrderData((current) => appendOrTouchSession(current, created.sessionId, created.label));
       } else {
         await opsClient.createOrderWithItems({
           serviceSessionId: effectiveSessionId,
@@ -193,7 +164,6 @@ export default function ShishaPage() {
 
       setDraft({});
       setLabel('');
-      setSubmitLatencyMs(Math.round(performance.now() - submitStartedAt));
     },
     { onError: setLocalError },
   );
@@ -216,9 +186,7 @@ export default function ShishaPage() {
   }
 
   function inc(id: string) {
-    if (composerOpen) {
-      return;
-    }
+    if (composerOpen) return;
     if (!creatingNew && !effectiveSessionId) {
       warnSessionRequired();
       return;
@@ -237,9 +205,7 @@ export default function ShishaPage() {
   }
 
   function selectExistingSession(nextSessionId: string) {
-    if (composerOpen || submitCommand.busy) {
-      return;
-    }
+    if (composerOpen || submitCommand.busy) return;
     setSessionId(nextSessionId);
     setCreatingNew(false);
     setLabel('');
@@ -247,9 +213,7 @@ export default function ShishaPage() {
   }
 
   function beginNewSession() {
-    if (submitCommand.busy) {
-      return;
-    }
+    if (submitCommand.busy) return;
     setComposerLabel(label);
     setComposerOpen(true);
     setSessionWarning(null);
@@ -270,7 +234,7 @@ export default function ShishaPage() {
     setComposerOpen(false);
   }
 
-  const effectiveError = localError ?? stationError ?? liveError ?? catalogError;
+  const effectiveError = localError ?? stationError ?? orderError;
 
   return (
     <MobileShell
@@ -292,7 +256,7 @@ export default function ShishaPage() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 text-right">
               <div className="text-sm font-semibold text-[#1e1712]">
-                {currentSessionLabel || 'اختر جلسة شيشة'}
+                {creatingNew ? 'جلسة شيشة جديدة' : currentSessionLabel || 'اختر جلسة شيشة'}
               </div>
               <div className="mt-1 text-xs text-[#7d6a59]">
                 {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر أصناف الشيشة ثم أرسل الطلب دفعة واحدة'}
@@ -322,7 +286,7 @@ export default function ShishaPage() {
           <div className="mb-3 flex items-center justify-between gap-2">
             <div className="flex items-center gap-2">
               {sessions.length ? <div className={opsBadge('info')}>{sessions.length}</div> : null}
-              <div className="text-sm font-semibold text-[#3d3128]">جلسات الشيشة المفتوحة</div>
+              <div className={opsSectionTitle}>جلسات الشيشة المفتوحة</div>
             </div>
             <button type="button" onClick={beginNewSession} className={opsAccentButton}>
               + جلسة شيشة جديدة
@@ -340,25 +304,14 @@ export default function ShishaPage() {
                     onClick={() => selectExistingSession(session.id)}
                     disabled={composerOpen || submitCommand.busy}
                     className={[
-                      'rounded-[20px] border px-3 py-3 text-right transition disabled:opacity-60',
+                      'rounded-[20px] border px-3 py-3 text-right transition duration-150 hover:-translate-y-[1px]',
                       active
                         ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]'
-                        : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
+                        : 'border-[#decdb9] bg-[#f8f1e7] text-[#2f241b] hover:bg-[#f3e8da]',
                     ].join(' ')}
                   >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="text-xs font-semibold opacity-80">جلسة</div>
-                      {active ? <span className="rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[10px] font-bold text-white">الحالية</span> : null}
-                    </div>
-                    <div className="mt-2 flex justify-end">
-                      <span className={[
-                        'inline-flex max-w-full items-center rounded-full border px-3 py-1 text-xs font-bold',
-                        active ? 'border-white/20 bg-white/10 text-white' : 'border-[#e2d4c3] bg-[#f8f1e7] text-[#6b4b1f]',
-                      ].join(' ')}>
-                        <span className="truncate">{session.label}</span>
-                      </span>
-                    </div>
-                    <div className={['mt-2 text-xs', active ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
+                    <div className="truncate text-sm font-bold">{session.label}</div>
+                    <div className={['mt-1 text-xs', active ? 'text-white/75' : 'text-[#8a7763]'].join(' ')}>
                       جاهز {session.readyCount} • للحساب {session.billableCount}
                     </div>
                   </button>
@@ -373,7 +326,7 @@ export default function ShishaPage() {
 
         <section id="menu-panel" className={`${opsSurface} p-3`}>
           <div className="mb-3 flex items-center justify-between gap-2">
-            <div className="text-sm font-semibold text-[#3d3128]">منيو الشيشة</div>
+            <div className={opsSectionTitle}>منيو الشيشة</div>
             {creatingNew ? (
               <div className={opsBadge('accent')}>جلسة جديدة</div>
             ) : currentSessionLabel ? (
@@ -515,8 +468,6 @@ export default function ShishaPage() {
             />
           </section>
         ) : null}
-
-
       {composerOpen ? (
         <div className="fixed inset-0 z-[60] flex items-end justify-center bg-[#1e1712]/30 p-4">
           <div className="w-full max-w-md rounded-[28px] border border-[#eadcca] bg-[#fffdf8] p-5 shadow-[0_26px_60px_rgba(30,23,18,0.22)]">

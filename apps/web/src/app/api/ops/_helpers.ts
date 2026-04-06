@@ -256,71 +256,26 @@ export function requireStationAccess(ctx: OpsActorContext, stationCode: OpsStati
   throw new Error('FORBIDDEN');
 }
 
-type OpenShiftRow = {
-  id: string;
-  shift_kind: string | null;
-  status: string | null;
-  opened_at: string | null;
-};
+export async function requireOpenOpsShift(cafeId: string, databaseKey: string) {
+  const admin = adminOps(databaseKey);
+  const { data, error } = await admin
+    .from('shifts')
+    .select('id, shift_kind, status, opened_at')
+    .eq('cafe_id', cafeId)
+    .eq('status', 'open')
+    .order('opened_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-type OpenShiftCacheEntry = {
-  value: OpenShiftRow;
-  expiresAt: number;
-};
-
-const OPEN_SHIFT_CACHE_TTL_MS = 15_000;
-const openShiftCache = new Map<string, OpenShiftCacheEntry>();
-const openShiftInflight = new Map<string, Promise<OpenShiftRow>>();
-
-function buildOpenShiftCacheKey(cafeId: string, databaseKey: string) {
-  return `${databaseKey.trim()}:${cafeId.trim()}`;
-}
-
-export async function requireOpenOpsShift(cafeId: string, databaseKey: string): Promise<OpenShiftRow> {
-  const cacheKey = buildOpenShiftCacheKey(cafeId, databaseKey);
-  const now = Date.now();
-  const cached = openShiftCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    return cached.value;
+  if (error) {
+    throw error;
   }
 
-  const pending = openShiftInflight.get(cacheKey);
-  if (pending) {
-    return pending;
+  if (!data) {
+    throw new Error('NO_OPEN_SHIFT');
   }
 
-  const request = (async () => {
-    const admin = adminOps(databaseKey);
-    const { data, error } = await admin
-      .from('shifts')
-      .select('id, shift_kind, status, opened_at')
-      .eq('cafe_id', cafeId)
-      .eq('status', 'open')
-      .order('opened_at', { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) {
-      throw error;
-    }
-
-    if (!data) {
-      openShiftCache.delete(cacheKey);
-      throw new Error('NO_OPEN_SHIFT');
-    }
-
-    openShiftCache.set(cacheKey, {
-      value: data,
-      expiresAt: Date.now() + OPEN_SHIFT_CACHE_TTL_MS,
-    });
-
-    return data;
-  })().finally(() => {
-    openShiftInflight.delete(cacheKey);
-  });
-
-  openShiftInflight.set(cacheKey, request);
-  return request;
+  return data;
 }
 
 function stableStringify(value: unknown): string {
