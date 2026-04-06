@@ -8,6 +8,7 @@ import { opsClient } from '@/lib/ops/client';
 import type { BillingTotals, BillingWorkspace } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { BILLING_POLL_INTERVAL_MS, shouldReloadBillingWorkspace } from '@/lib/ops/reload-rules';
 import { applyBillingToWorkspace } from '@/lib/ops/workspacePatches';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
@@ -42,7 +43,8 @@ export default function BillingPage() {
   const billingEnabled = Boolean(shift) && (can.billing || can.owner);
   const { data, setData, error } = useOpsWorkspace<BillingWorkspace>(loader, {
     enabled: billingEnabled,
-    pollIntervalMs: billingEnabled ? 1500 : undefined,
+    pollIntervalMs: billingEnabled ? BILLING_POLL_INTERVAL_MS : undefined,
+    shouldReloadOnEvent: shouldReloadBillingWorkspace,
   });
 
   const effectiveSessionId = sessionId || data?.sessions[0]?.sessionId || '';

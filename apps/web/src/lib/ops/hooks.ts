@@ -5,9 +5,10 @@ import type { OpsRealtimeEvent } from './types';
 import { subscribeOpsRealtime } from './realtime';
 import { subscribeOpsInvalidation } from './invalidation';
 
-type WorkspaceOptions = {
+type WorkspaceOptions<T> = {
   enabled?: boolean;
   shouldReloadOnEvent?: (event: OpsRealtimeEvent) => boolean;
+  applyRealtimeEvent?: (current: T | null, event: OpsRealtimeEvent) => T | null;
   staleTimeMs?: number;
   realtimeDebounceMs?: number;
   pollIntervalMs?: number;
@@ -26,10 +27,11 @@ function isStale(lastLoadedAt: number | null, staleTimeMs: number, hasError: boo
   return Date.now() - lastLoadedAt >= staleTimeMs;
 }
 
-export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceOptions = {}) {
+export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceOptions<T> = {}) {
   const {
     enabled = true,
     shouldReloadOnEvent,
+    applyRealtimeEvent,
     staleTimeMs = DEFAULT_STALE_TIME_MS,
     realtimeDebounceMs = DEFAULT_REALTIME_DEBOUNCE_MS,
     pollIntervalMs = 0,
@@ -132,13 +134,16 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       if (!pollWhenHidden && document.visibilityState !== 'visible') {
         return;
       }
+      if (!isStale(lastLoadedAtRef.current, staleTimeMs, Boolean(errorRef.current))) {
+        return;
+      }
       void runReload('background');
     }, pollIntervalMs);
 
     return () => {
       window.clearInterval(interval);
     };
-  }, [enabled, pollIntervalMs, pollWhenHidden, runReload]);
+  }, [enabled, pollIntervalMs, pollWhenHidden, runReload, staleTimeMs]);
 
   useEffect(() => {
     if (!enabled) {
@@ -149,6 +154,9 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
     const shouldRevalidate = () => isStale(lastLoadedAtRef.current, staleTimeMs, Boolean(errorRef.current));
 
     const unsubscribeRealtime = subscribeOpsRealtime((event) => {
+      if (applyRealtimeEvent) {
+        setData((current) => applyRealtimeEvent(current, event));
+      }
       if (shouldReloadOnEvent && !shouldReloadOnEvent(event)) {
         return;
       }
@@ -181,7 +189,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [clearReloadTimer, enabled, realtimeDebounceMs, scheduleBackgroundReload, shouldReloadOnEvent, staleTimeMs]);
+  }, [applyRealtimeEvent, clearReloadTimer, enabled, scheduleBackgroundReload, shouldReloadOnEvent, staleTimeMs]);
 
   return useMemo(
     () => ({ data, setData, loading, error, reload, lastLoadedAt }),
@@ -219,5 +227,5 @@ export function useOpsCommand<TArgs extends unknown[], TResult>(
     [command, options],
   );
 
-  return useMemo(() => ({ run, busy, error, setError }), [run, busy, error]);
+  return { run, busy, error };
 }

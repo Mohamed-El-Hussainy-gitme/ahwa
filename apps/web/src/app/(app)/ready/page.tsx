@@ -5,8 +5,9 @@ import { useCallback, useMemo, useState } from 'react';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { READY_POLL_INTERVAL_MS, shouldReloadReadyWorkspace } from '@/lib/ops/reload-rules';
 import type { WaiterWorkspace } from '@/lib/ops/types';
-import { applyDeliverToWaiterWorkspace } from '@/lib/ops/workspacePatches';
+import { applyDeliverToWaiterWorkspace, applyRealtimeEventToWaiterWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { MobileShell } from '@/ui/MobileShell';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
@@ -22,7 +23,9 @@ export default function ReadyPage() {
   const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
   const { data, setData, error } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift) && canAccess,
-    pollIntervalMs: canAccess ? 1500 : undefined,
+    pollIntervalMs: canAccess ? READY_POLL_INTERVAL_MS : undefined,
+    shouldReloadOnEvent: shouldReloadReadyWorkspace,
+    applyRealtimeEvent: applyRealtimeEventToWaiterWorkspace,
   });
 
   const deliverCommand = useOpsCommand(

@@ -6,9 +6,10 @@ import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import type { SessionOrderItem, WaiterWorkspace } from '@/lib/ops/types';
-import { appendOrTouchSession, applyDeliverToWaiterWorkspace } from '@/lib/ops/workspacePatches';
+import { appendOrTouchSession, applyDeliverToWaiterWorkspace, applyRealtimeEventToWaiterWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { ORDERS_POLL_INTERVAL_MS, shouldReloadWaiterWorkspace } from '@/lib/ops/reload-rules';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { StickyActionBar } from '@/ui/StickyActionBar';
@@ -40,7 +41,9 @@ export default function OrdersPage() {
   const loader = useCallback(() => opsClient.waiterWorkspace(), []);
   const { data, setData, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
     enabled: Boolean(shift),
-    pollIntervalMs: 1500,
+    pollIntervalMs: ORDERS_POLL_INTERVAL_MS,
+    shouldReloadOnEvent: shouldReloadWaiterWorkspace,
+    applyRealtimeEvent: applyRealtimeEventToWaiterWorkspace,
   });
 
   const [commandError, setCommandError] = useState<string | null>(null);

@@ -6,9 +6,10 @@ import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import type { StationQueueItem, StationWorkspace } from '@/lib/ops/types';
-import { applyReadyToStationWorkspace } from '@/lib/ops/workspacePatches';
+import { applyReadyToStationWorkspace, applyRealtimeEventToStationWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { KITCHEN_POLL_INTERVAL_MS, shouldReloadStationWorkspace } from '@/lib/ops/reload-rules';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import {
@@ -30,7 +31,9 @@ export default function KitchenPage() {
   const loader = useCallback(() => opsClient.stationWorkspace('barista'), []);
   const { data, setData, error } = useOpsWorkspace<StationWorkspace>(loader, {
     enabled: Boolean(shift),
-    pollIntervalMs: 1500,
+    pollIntervalMs: KITCHEN_POLL_INTERVAL_MS,
+    shouldReloadOnEvent: (event) => shouldReloadStationWorkspace('barista', event),
+    applyRealtimeEvent: applyRealtimeEventToStationWorkspace,
   });
   const previousWaitingQtyRef = useRef(0);
   const readyCommand = useOpsCommand(

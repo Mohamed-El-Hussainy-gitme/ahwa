@@ -11,9 +11,12 @@ import {
   applyDeliverToWaiterWorkspace,
   applyReadyToStationWorkspace,
   applyReadyToWaiterWorkspace,
+  applyRealtimeEventToStationWorkspace,
+  applyRealtimeEventToWaiterWorkspace,
 } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { SHISHA_POLL_INTERVAL_MS, shouldReloadStationWorkspace, shouldReloadWaiterWorkspace } from '@/lib/ops/reload-rules';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { StickyActionBar } from '@/ui/StickyActionBar';
@@ -54,13 +57,17 @@ export default function ShishaPage() {
     stationLoader,
     {
       enabled: Boolean(shift),
-      pollIntervalMs: 1500,
+      pollIntervalMs: SHISHA_POLL_INTERVAL_MS,
+      shouldReloadOnEvent: (event) => shouldReloadStationWorkspace('shisha', event),
+      applyRealtimeEvent: applyRealtimeEventToStationWorkspace,
     },
   );
 
   const { data: orderData, setData: setOrderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
-    pollIntervalMs: 1500,
+    pollIntervalMs: SHISHA_POLL_INTERVAL_MS,
+    shouldReloadOnEvent: shouldReloadWaiterWorkspace,
+    applyRealtimeEvent: applyRealtimeEventToWaiterWorkspace,
   });
 
   const previousQueueQtyRef = useRef(0);

@@ -5,6 +5,7 @@ import { useAuthz } from '@/lib/authz';
 import { useOpsRealtimeNotifications } from '@/lib/ops/notifications';
 import { subscribeOpsRealtime, useOpsRealtimeStatus } from '@/lib/ops/realtime';
 import { subscribeOpsInvalidation } from '@/lib/ops/invalidation';
+import { SUMMARY_POLL_INTERVAL_MS, shouldScheduleSummaryReload } from '@/lib/ops/reload-rules';
 import type { OpsNavSummary } from '@/lib/ops/types';
 
 export type OpsChromeState = {
@@ -18,8 +19,6 @@ export type OpsChromeState = {
 const OpsChromeContext = createContext<OpsChromeState | null>(null);
 const SUMMARY_STALE_TIME_MS = 15_000;
 const SUMMARY_DEBOUNCE_MS = 150;
-const SUMMARY_POLL_INTERVAL_MS = 2000;
-const PATCHABLE_SUMMARY_EVENTS = new Set(['station.order_submitted', 'station.ready', 'delivery.delivered', 'billing.settled', 'billing.deferred', 'session.opened', 'session.resumed', 'session.closed']);
 
 function toPositiveInteger(value: unknown) {
   const num = Number(value ?? 0);
@@ -243,7 +242,7 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
       setSummary((current) => patchSummaryFromRealtimeEvent(current, event));
       void notifyRealtime(event);
 
-      if (!PATCHABLE_SUMMARY_EVENTS.has(event.type) || shouldRevalidate()) {
+      if (shouldScheduleSummaryReload(event, shouldRevalidate())) {
         scheduleReload();
       }
     });
