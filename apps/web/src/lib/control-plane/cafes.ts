@@ -94,6 +94,15 @@ type ErrorLike = {
 };
 
 const CAFE_SCAN_PAGE_SIZE = 500;
+const CAFE_BINDING_CACHE_TTL_MS = 60_000;
+
+type CafeBindingCacheEntry = {
+  value: ResolvedCafeBinding | null;
+  expiresAt: number;
+};
+
+const cafeBindingCache = new Map<string, CafeBindingCacheEntry>();
+const cafeBindingInflight = new Map<string, Promise<ResolvedCafeBinding | null>>();
 
 function isControlSchemaPermissionError(error: unknown): boolean {
   if (!error || typeof error !== 'object') {
@@ -457,52 +466,81 @@ export async function resolveCafeBindingBySlug(slug: string): Promise<ResolvedCa
     return null;
   }
 
-  let cafe: ResolvedCafe | null = null;
-  let preferredDatabaseKey: string | null = null;
+  const now = Date.now();
+  const cached = cafeBindingCache.get(normalizedSlug);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const existingInflight = cafeBindingInflight.get(normalizedSlug);
+  if (existingInflight) {
+    return existingInflight;
+  }
+
+  const loadPromise = (async () => {
+    let cafe: ResolvedCafe | null = null;
+    let preferredDatabaseKey: string | null = null;
+
+    try {
+      cafe = await loadCafeBySlugFromControlPlane(normalizedSlug);
+    } catch {
+      cafe = null;
+    }
+
+    if (cafe) {
+      try {
+        const binding = await resolveCafeDatabaseBinding(cafe.id);
+        if (binding) {
+          preferredDatabaseKey = binding.databaseKey;
+          const operationalCafe = await loadCafeBySlugFromOperationalDatabase(binding.databaseKey, normalizedSlug);
+          if (operationalCafe) {
+            const resolved = {
+              ...operationalCafe,
+              isActive: cafe.isActive,
+              displayName: operationalCafe.displayName || cafe.displayName,
+              databaseKey: binding.databaseKey,
+              bindingSource: binding.bindingSource,
+              bindingCreatedAt: binding.createdAt,
+              bindingUpdatedAt: binding.updatedAt,
+            } satisfies ResolvedCafeBinding;
+            cafeBindingCache.set(normalizedSlug, {
+              value: resolved,
+              expiresAt: Date.now() + CAFE_BINDING_CACHE_TTL_MS,
+            });
+            return resolved;
+          }
+        }
+      } catch {
+        preferredDatabaseKey = null;
+      }
+    }
+
+    const fallback = await scanOperationalCafeBindingBySlug(normalizedSlug, preferredDatabaseKey);
+    const resolved = !fallback
+      ? null
+      : !cafe
+        ? fallback
+        : {
+            ...fallback,
+            isActive: cafe.isActive,
+            displayName: fallback.displayName || cafe.displayName,
+          } satisfies ResolvedCafeBinding;
+
+    cafeBindingCache.set(normalizedSlug, {
+      value: resolved,
+      expiresAt: Date.now() + CAFE_BINDING_CACHE_TTL_MS,
+    });
+
+    return resolved;
+  })();
+
+  cafeBindingInflight.set(normalizedSlug, loadPromise);
 
   try {
-    cafe = await loadCafeBySlugFromControlPlane(normalizedSlug);
-  } catch {
-    cafe = null;
+    return await loadPromise;
+  } finally {
+    cafeBindingInflight.delete(normalizedSlug);
   }
-
-  if (cafe) {
-    try {
-      const binding = await resolveCafeDatabaseBinding(cafe.id);
-      if (binding) {
-        preferredDatabaseKey = binding.databaseKey;
-        const operationalCafe = await loadCafeBySlugFromOperationalDatabase(binding.databaseKey, normalizedSlug);
-        if (operationalCafe) {
-          return {
-            ...operationalCafe,
-            isActive: cafe.isActive,
-            displayName: operationalCafe.displayName || cafe.displayName,
-            databaseKey: binding.databaseKey,
-            bindingSource: binding.bindingSource,
-            bindingCreatedAt: binding.createdAt,
-            bindingUpdatedAt: binding.updatedAt,
-          };
-        }
-      }
-    } catch {
-      preferredDatabaseKey = null;
-    }
-  }
-
-  const fallback = await scanOperationalCafeBindingBySlug(normalizedSlug, preferredDatabaseKey);
-  if (!fallback) {
-    return null;
-  }
-
-  if (!cafe) {
-    return fallback;
-  }
-
-  return {
-    ...fallback,
-    isActive: cafe.isActive,
-    displayName: fallback.displayName || cafe.displayName,
-  };
 }
 
 export async function resolveCafeBySlug(slug: string): Promise<ResolvedCafe | null> {

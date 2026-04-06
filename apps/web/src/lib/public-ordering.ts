@@ -4,6 +4,8 @@ import { adminOps, buildMenuWorkspace } from '@/app/api/ops/_server';
 import { requireOpenOpsShift } from '@/app/api/ops/_helpers';
 
 export const PUBLIC_MENU_REVALIDATE_SECONDS = 60;
+const PUBLIC_ORDER_OWNER_CACHE_TTL_MS = 60_000;
+
 
 export type PublicCafeContext = {
   cafeId: string;
@@ -62,36 +64,85 @@ export async function loadPublicMenu(slug: string): Promise<PublicMenuPayload> {
   return cachedLoader();
 }
 
-export async function requirePublicOrderingContext(slug: string) {
-  const cafe = await resolvePublicCafeContext(slug);
-  const shift = await requireOpenOpsShift(cafe.cafeId, cafe.databaseKey);
-  return { cafe, shift };
+type PublicOwnerActor = {
+  ownerId: string;
+  fullName: string;
+  ownerName: string;
+};
+
+type PublicOwnerActorCacheEntry = {
+  value: PublicOwnerActor;
+  expiresAt: number;
+};
+
+const publicOwnerActorCache = new Map<string, PublicOwnerActorCacheEntry>();
+const publicOwnerActorInflight = new Map<string, Promise<PublicOwnerActor>>();
+
+function buildPublicOwnerActorCacheKey(cafeId: string, databaseKey: string) {
+  return `${databaseKey}:${cafeId}`;
 }
 
-export async function resolveFallbackOwnerActor(cafeId: string, databaseKey: string) {
-  const { data, error } = await adminOps(databaseKey)
-    .from('owner_users')
-    .select('id, full_name, is_active')
-    .eq('cafe_id', cafeId)
-    .eq('is_active', true)
-    .order('created_at', { ascending: true })
-    .limit(1)
-    .maybeSingle();
+export async function requirePublicOrderingContext(slug: string) {
+  const cafe = await resolvePublicCafeContext(slug);
+  const [shift, owner] = await Promise.all([
+    requireOpenOpsShift(cafe.cafeId, cafe.databaseKey),
+    resolveFallbackOwnerActor(cafe.cafeId, cafe.databaseKey),
+  ]);
+  return { cafe, shift, owner };
+}
 
-  if (error) {
-    throw error;
+export async function resolveFallbackOwnerActor(cafeId: string, databaseKey: string): Promise<PublicOwnerActor> {
+  const cacheKey = buildPublicOwnerActorCacheKey(cafeId, databaseKey);
+  const now = Date.now();
+  const cached = publicOwnerActorCache.get(cacheKey);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
   }
 
-  const ownerId = String(data?.id ?? '').trim();
-  if (!ownerId) {
-    throw new Error('PUBLIC_ORDER_OWNER_NOT_FOUND');
+  const existingInflight = publicOwnerActorInflight.get(cacheKey);
+  if (existingInflight) {
+    return existingInflight;
   }
 
-  const fullName = String(data?.full_name ?? '').trim() || 'QR Customer';
+  const loadPromise = (async () => {
+    const { data, error } = await adminOps(databaseKey)
+      .from('owner_users')
+      .select('id, full_name, is_active')
+      .eq('cafe_id', cafeId)
+      .eq('is_active', true)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
 
-  return {
-    ownerId,
-    fullName,
-    ownerName: fullName,
-  };
+    if (error) {
+      throw error;
+    }
+
+    const ownerId = String(data?.id ?? '').trim();
+    if (!ownerId) {
+      throw new Error('PUBLIC_ORDER_OWNER_NOT_FOUND');
+    }
+
+    const fullName = String(data?.full_name ?? '').trim() || 'QR Customer';
+    const resolved = {
+      ownerId,
+      fullName,
+      ownerName: fullName,
+    } satisfies PublicOwnerActor;
+
+    publicOwnerActorCache.set(cacheKey, {
+      value: resolved,
+      expiresAt: Date.now() + PUBLIC_ORDER_OWNER_CACHE_TTL_MS,
+    });
+
+    return resolved;
+  })();
+
+  publicOwnerActorInflight.set(cacheKey, loadPromise);
+
+  try {
+    return await loadPromise;
+  } finally {
+    publicOwnerActorInflight.delete(cacheKey);
+  }
 }

@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { callOpsRpc } from '@/app/api/ops/_rpc';
 import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '@/app/api/ops/orders/_station-events';
-import { requirePublicOrderingContext, resolveFallbackOwnerActor } from '@/lib/public-ordering';
+import { requirePublicOrderingContext } from '@/lib/public-ordering';
 import { z } from 'zod';
 
 const publicOrderSchema = z.object({
@@ -30,7 +30,21 @@ function buildSessionLabel(customerName: string, tableLabel?: string) {
   return compactTable ? `QR-${compactTable}-${compactName}` : `QR-${compactName}`;
 }
 
+type StageMark = {
+  label: string;
+  elapsedMs: number;
+};
+
+function captureStage(startedAt: number, label: string, marks: StageMark[]) {
+  marks.push({
+    label,
+    elapsedMs: Math.round(performance.now() - startedAt),
+  });
+}
+
 export async function POST(request: Request, context: { params: Promise<{ slug: string }> }) {
+  const requestStartedAt = performance.now();
+  const stageMarks: StageMark[] = [];
   const { slug } = await context.params;
   const body = await request.json().catch(() => null);
   const parsed = publicOrderSchema.safeParse(body);
@@ -40,13 +54,16 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
   }
 
   try {
-    const { cafe, shift } = await requirePublicOrderingContext(slug);
-    const owner = await resolveFallbackOwnerActor(cafe.cafeId, cafe.databaseKey);
+    const orderingContextStartedAt = performance.now();
+    const { cafe, shift, owner } = await requirePublicOrderingContext(slug);
+    captureStage(orderingContextStartedAt, 'ordering_context', stageMarks);
+
     const items = parsed.data.items.map((item) => ({
       menu_product_id: item.productId,
       qty: item.quantity,
     }));
 
+    const stationLookupStartedAt = performance.now();
     const { productStationCodes } = await requireOrderSelectionStationCodes(
       {
         cafeId: cafe.cafeId,
@@ -62,6 +79,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       },
       items.map((item) => item.menu_product_id),
     );
+    captureStage(stationLookupStartedAt, 'station_lookup', stageMarks);
 
     const sessionLabel = buildSessionLabel(parsed.data.customerName, parsed.data.tableLabel);
     const noteSegments = [
@@ -72,6 +90,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       `القناة: public_qr`,
     ].filter(Boolean);
 
+    const openSessionStartedAt = performance.now();
     const openRpc = await callOpsRpc<OpenSessionRpcResult>('ops_open_or_resume_service_session_with_outbox', {
       p_cafe_id: cafe.cafeId,
       p_shift_id: shift.id,
@@ -79,6 +98,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       p_staff_member_id: null,
       p_owner_user_id: owner.ownerId,
     }, cafe.databaseKey);
+    captureStage(openSessionStartedAt, 'open_session_rpc', stageMarks);
 
     const createdSessionId = String(openRpc.service_session_id ?? '').trim();
     const createdSessionLabel = String(openRpc.session_label ?? sessionLabel).trim();
@@ -86,6 +106,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       throw new Error('INVALID_RPC_RESPONSE:ops_open_or_resume_service_session');
     }
 
+    const createOrderStartedAt = performance.now();
     const createRpc = await callOpsRpc<CreateOrderRpcResult>('ops_create_order_with_items_with_outbox', {
       p_cafe_id: cafe.cafeId,
       p_shift_id: shift.id,
@@ -96,6 +117,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       p_items: items,
       p_notes: noteSegments.join(' | '),
     }, cafe.databaseKey);
+    captureStage(createOrderStartedAt, 'create_order_rpc', stageMarks);
 
     const orderId = String(createRpc.order_id ?? '').trim();
     if (!orderId) {
@@ -114,6 +136,14 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       },
     );
 
+    console.info('[public-order] success', {
+      slug,
+      cafeId: cafe.cafeId,
+      orderId,
+      totalMs: Math.round(performance.now() - requestStartedAt),
+      stages: stageMarks,
+    });
+
     return NextResponse.json({
       ok: true,
       orderId,
@@ -127,6 +157,12 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'PUBLIC_ORDER_CREATE_FAILED';
+    console.error('[public-order] failed', {
+      slug,
+      totalMs: Math.round(performance.now() - requestStartedAt),
+      stages: stageMarks,
+      error: message,
+    });
     const status = message === 'CAFE_NOT_FOUND' ? 404 : message === 'NO_OPEN_SHIFT' ? 409 : 400;
     return NextResponse.json({ ok: false, error: { code: message, message } }, { status });
   }
