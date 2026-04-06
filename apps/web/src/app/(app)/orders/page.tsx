@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { OpsSessionSummary, SessionOrderItem, WaiterCatalogWorkspace, WaiterLiveWorkspace } from '@/lib/ops/types';
+import type { OpsProduct, OpsSection, OpsSessionSummary, SessionOrderItem, WaiterCatalogWorkspace, WaiterLiveWorkspace } from '@/lib/ops/types';
 import { appendOrTouchSession, applyDeliverToWaiterWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
@@ -40,6 +40,71 @@ function formatClockLabel(value: string | null | undefined) {
     hour: 'numeric',
     minute: '2-digit',
   }).format(date);
+}
+
+function safeIsoLike(value: unknown, fallback = '') {
+  return typeof value === 'string' ? value : fallback;
+}
+
+function normalizeSessionSummary(session: OpsSessionSummary): OpsSessionSummary {
+  return {
+    ...session,
+    id: typeof session.id === 'string' ? session.id : String(session.id ?? ''),
+    label: typeof session.label === 'string' && session.label.trim() ? session.label : 'جلسة',
+    status: typeof session.status === 'string' ? session.status : '',
+    openedAt: safeIsoLike(session.openedAt, ''),
+    billableCount: Number.isFinite(Number(session.billableCount)) ? Math.max(Number(session.billableCount), 0) : 0,
+    readyCount: Number.isFinite(Number(session.readyCount)) ? Math.max(Number(session.readyCount), 0) : 0,
+  };
+}
+
+function normalizeSessionOrderItem(item: SessionOrderItem): SessionOrderItem {
+  return {
+    ...item,
+    orderItemId: typeof item.orderItemId === 'string' ? item.orderItemId : String(item.orderItemId ?? ''),
+    serviceSessionId: typeof item.serviceSessionId === 'string' ? item.serviceSessionId : String(item.serviceSessionId ?? ''),
+    sessionLabel: typeof item.sessionLabel === 'string' && item.sessionLabel.trim() ? item.sessionLabel : 'جلسة',
+    productName: typeof item.productName === 'string' ? item.productName : '',
+    stationCode: item.stationCode,
+    unitPrice: Number.isFinite(Number(item.unitPrice)) ? Number(item.unitPrice) : 0,
+    qtyTotal: Number.isFinite(Number(item.qtyTotal)) ? Number(item.qtyTotal) : 0,
+    qtyReady: Number.isFinite(Number(item.qtyReady)) ? Number(item.qtyReady) : 0,
+    qtyDelivered: Number.isFinite(Number(item.qtyDelivered)) ? Number(item.qtyDelivered) : 0,
+    qtyReplacementDelivered: Number.isFinite(Number(item.qtyReplacementDelivered)) ? Number(item.qtyReplacementDelivered) : 0,
+    qtyPaid: Number.isFinite(Number(item.qtyPaid)) ? Number(item.qtyPaid) : 0,
+    qtyDeferred: Number.isFinite(Number(item.qtyDeferred)) ? Number(item.qtyDeferred) : 0,
+    qtyWaived: Number.isFinite(Number(item.qtyWaived)) ? Number(item.qtyWaived) : 0,
+    qtyCancelled: Number.isFinite(Number(item.qtyCancelled)) ? Number(item.qtyCancelled) : 0,
+    qtyRemade: Number.isFinite(Number(item.qtyRemade)) ? Number(item.qtyRemade) : 0,
+    qtyReadyForDelivery: Number.isFinite(Number(item.qtyReadyForDelivery)) ? Number(item.qtyReadyForDelivery) : 0,
+    qtyReadyForReplacementDelivery: Number.isFinite(Number(item.qtyReadyForReplacementDelivery)) ? Number(item.qtyReadyForReplacementDelivery) : 0,
+    availableRemakeQty: Number.isFinite(Number(item.availableRemakeQty)) ? Number(item.availableRemakeQty) : 0,
+    createdAt: typeof item.createdAt === 'string' ? item.createdAt : undefined,
+  };
+}
+
+function normalizeSection(section: OpsSection): OpsSection {
+  return {
+    ...section,
+    id: typeof section.id === 'string' ? section.id : String(section.id ?? ''),
+    title: typeof section.title === 'string' && section.title.trim() ? section.title : 'قسم',
+    sortOrder: Number.isFinite(Number(section.sortOrder)) ? Number(section.sortOrder) : 0,
+  };
+}
+
+function normalizeProduct(product: OpsProduct): OpsProduct {
+  return {
+    ...product,
+    id: typeof product.id === 'string' ? product.id : String(product.id ?? ''),
+    sectionId: typeof product.sectionId === 'string' ? product.sectionId : String(product.sectionId ?? ''),
+    name: typeof product.name === 'string' && product.name.trim() ? product.name : 'صنف',
+    unitPrice: Number.isFinite(Number(product.unitPrice)) ? Number(product.unitPrice) : 0,
+    sortOrder: Number.isFinite(Number(product.sortOrder)) ? Number(product.sortOrder) : 0,
+  };
+}
+
+function safeLocaleCompare(a: unknown, b: unknown) {
+  return safeIsoLike(a).localeCompare(safeIsoLike(b));
 }
 
 function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderItem[]): SessionCardView {
@@ -93,17 +158,17 @@ export default function OrdersPage() {
 
   const [commandError, setCommandError] = useState<string | null>(null);
 
-  const sessions = liveData?.sessions ?? [];
-  const sections = catalogData?.sections ?? [];
+  const sessions = useMemo(() => (Array.isArray(liveData?.sessions) ? liveData.sessions.map(normalizeSessionSummary) : []), [liveData?.sessions]);
+  const sessionItems = useMemo(() => (Array.isArray(liveData?.sessionItems) ? liveData.sessionItems.map(normalizeSessionOrderItem) : []), [liveData?.sessionItems]);
+  const sections = useMemo(() => (Array.isArray(catalogData?.sections) ? catalogData.sections.map(normalizeSection) : []), [catalogData?.sections]);
+  const products = useMemo(() => (Array.isArray(catalogData?.products) ? catalogData.products.map(normalizeProduct) : []), [catalogData?.products]);
   const effectiveSessionId = !creatingNew ? (sessionId || sessions[0]?.id || '') : '';
   const effectiveSelectedSectionId = selectedSectionId || sections[0]?.id || '';
-  const filteredProducts = (catalogData?.products ?? []).filter(
-    (product) => !effectiveSelectedSectionId || product.sectionId === effectiveSelectedSectionId,
-  );
+  const filteredProducts = products.filter((product) => !effectiveSelectedSectionId || product.sectionId === effectiveSelectedSectionId);
   const draftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
   const currentSessionItems = useMemo(
-    () => sessionItemsForSession(liveData?.sessionItems ?? [], effectiveSessionId),
-    [liveData?.sessionItems, effectiveSessionId],
+    () => sessionItemsForSession(sessionItems, effectiveSessionId),
+    [sessionItems, effectiveSessionId],
   );
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
   const canManageComplaintActions = can.owner || can.billing;
@@ -111,7 +176,7 @@ export default function OrdersPage() {
 
   const sessionCards = useMemo(() => {
     const itemsBySession = new Map<string, SessionOrderItem[]>();
-    for (const item of liveData?.sessionItems ?? []) {
+    for (const item of sessionItems) {
       const current = itemsBySession.get(item.serviceSessionId);
       if (current) current.push(item);
       else itemsBySession.set(item.serviceSessionId, [item]);
@@ -122,9 +187,9 @@ export default function OrdersPage() {
       .sort((a, b) => {
         if (!creatingNew && a.id === effectiveSessionId) return -1;
         if (!creatingNew && b.id === effectiveSessionId) return 1;
-        return b.lastActivityAt.localeCompare(a.lastActivityAt);
+        return safeLocaleCompare(b.lastActivityAt, a.lastActivityAt);
       });
-  }, [creatingNew, effectiveSessionId, liveData?.sessionItems, sessions]);
+  }, [creatingNew, effectiveSessionId, sessionItems, sessions]);
 
   const selectedSession = useMemo(() => {
     if (creatingNew) {
@@ -481,7 +546,7 @@ export default function OrdersPage() {
               onChangeQty={(orderItemId, nextQty, maxQty) => {
                 setReadySelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
               }}
-              onDeliver={(orderItemId, quantity) => deliverCommand.run(orderItemId, quantity)}
+              onDeliver={(orderItemId, quantity) => void deliverCommand.run(orderItemId, quantity).catch(() => undefined)}
               busy={deliverCommand.busy}
               emptyLabel="لا يوجد جاهز للتسليم"
               compact
@@ -498,7 +563,7 @@ export default function OrdersPage() {
               onChangeQty={(orderItemId, nextQty, maxQty) => {
                 setRemakeSelection((state) => ({ ...state, [orderItemId]: clampPositive(nextQty, maxQty) }));
               }}
-              onRemake={(item, quantity, notes) => remakeCommand.run(item, quantity, notes)}
+              onRemake={(item, quantity, notes) => void remakeCommand.run(item, quantity, notes).catch(() => undefined)}
               busy={remakeCommand.busy}
               emptyLabel={effectiveSessionId ? 'لا توجد أصناف في الجلسة الحالية.' : 'اختر جلسة أولًا.'}
               compact
