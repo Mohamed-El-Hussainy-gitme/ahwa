@@ -38,12 +38,15 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
+    const startedAt = Date.now();
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
-    const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
-    const { productStationCodes } = await requireOrderSelectionStationCodes(
-      ctx,
-      items.map((item) => item.menu_product_id),
-    );
+    const [shift, { productStationCodes }] = await Promise.all([
+      requireOpenOpsShift(ctx.cafeId, ctx.databaseKey),
+      requireOrderSelectionStationCodes(
+        ctx,
+        items.map((item) => item.menu_product_id),
+      ),
+    ]);
 
     const openRpc = await callOpsRpc<OpenSessionRpcResult>('ops_open_or_resume_service_session_with_outbox', {
       p_cafe_id: ctx.cafeId,
@@ -79,6 +82,13 @@ export async function POST(req: Request) {
       })),
       productStationCodes,
     });
+    console.info('[ops.orders.open-and-create]', {
+      cafeId: ctx.cafeId,
+      sessionId,
+      itemsCount: items.length,
+      durationMs: Date.now() - startedAt,
+    });
+
     return ok({ ok: true, orderId, sessionId, label: sessionLabel });
   } catch (e) {
     return jsonError(e, 400);

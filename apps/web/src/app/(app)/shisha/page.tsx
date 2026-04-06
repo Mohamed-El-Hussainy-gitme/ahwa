@@ -31,6 +31,16 @@ import {
   opsSurface,
 } from '@/ui/ops/premiumStyles';
 
+function buildDisplaySessionLabel(label: string | null | undefined, sessionId: string | null | undefined) {
+  const normalizedLabel = typeof label === 'string' ? label.trim() : '';
+  if (normalizedLabel && normalizedLabel !== 'جلسة') {
+    return normalizedLabel;
+  }
+  const normalizedId = typeof sessionId === 'string' ? sessionId.replace(/[^0-9a-zA-Z]/g, '').slice(-4) : '';
+  return normalizedId ? `جلسة ${normalizedId}` : 'جلسة';
+}
+
+
 export default function ShishaPage() {
   const { can, shift, effectiveRole } = useAuthz();
   const [localError, setLocalError] = useState<string | null>(null);
@@ -45,6 +55,7 @@ export default function ShishaPage() {
   const [selectedSectionId, setSelectedSectionId] = useState('');
   const [draft, setDraft] = useState<Record<string, number>>({});
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
+  const [submitLatencyMs, setSubmitLatencyMs] = useState<number | null>(null);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
 
   const stationLoader = useCallback(() => opsClient.stationWorkspace('shisha'), []);
@@ -80,7 +91,10 @@ export default function ShishaPage() {
   const previousQueueQtyRef = useRef(0);
 
   const queue = stationData?.queue ?? [];
-  const sessions = liveData?.sessions ?? [];
+  const sessions = useMemo(() => (liveData?.sessions ?? []).map((session) => ({
+    ...session,
+    label: buildDisplaySessionLabel(session.label, session.id),
+  })), [liveData?.sessions]);
   const sections = (catalogData?.sections ?? []).filter((section) => section.stationCode === 'shisha');
   const products = (catalogData?.products ?? []).filter((product) => product.stationCode === 'shisha');
   const effectiveSessionId = !creatingNew ? sessionId || sessions[0]?.id || '' : '';
@@ -160,6 +174,7 @@ export default function ShishaPage() {
   const submitCommand = useOpsCommand(
     async () => {
       if (!liveData || !draftLines.length) return;
+      const submitStartedAt = performance.now();
 
       if (creatingNew || !effectiveSessionId) {
         const created = await opsClient.openAndCreateOrder({
@@ -178,6 +193,7 @@ export default function ShishaPage() {
 
       setDraft({});
       setLabel('');
+      setSubmitLatencyMs(Math.round(performance.now() - submitStartedAt));
     },
     { onError: setLocalError },
   );
@@ -330,8 +346,19 @@ export default function ShishaPage() {
                         : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
                     ].join(' ')}
                   >
-                    <div className="truncate text-sm font-bold">{session.label}</div>
-                    <div className={['mt-1 text-xs', active ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-xs font-semibold opacity-80">جلسة</div>
+                      {active ? <span className="rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[10px] font-bold text-white">الحالية</span> : null}
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <span className={[
+                        'inline-flex max-w-full items-center rounded-full border px-3 py-1 text-xs font-bold',
+                        active ? 'border-white/20 bg-white/10 text-white' : 'border-[#e2d4c3] bg-[#f8f1e7] text-[#6b4b1f]',
+                      ].join(' ')}>
+                        <span className="truncate">{session.label}</span>
+                      </span>
+                    </div>
+                    <div className={['mt-2 text-xs', active ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
                       جاهز {session.readyCount} • للحساب {session.billableCount}
                     </div>
                   </button>

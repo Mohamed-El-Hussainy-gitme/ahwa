@@ -50,7 +50,7 @@ function normalizeSessionSummary(session: OpsSessionSummary): OpsSessionSummary 
   return {
     ...session,
     id: typeof session.id === 'string' ? session.id : String(session.id ?? ''),
-    label: typeof session.label === 'string' && session.label.trim() ? session.label : 'جلسة',
+    label: buildDisplaySessionLabel(session.label, typeof session.id === 'string' ? session.id : String(session.id ?? '')), 
     status: typeof session.status === 'string' ? session.status : '',
     openedAt: safeIsoLike(session.openedAt, ''),
     billableCount: Number.isFinite(Number(session.billableCount)) ? Math.max(Number(session.billableCount), 0) : 0,
@@ -107,6 +107,15 @@ function safeLocaleCompare(a: unknown, b: unknown) {
   return safeIsoLike(a).localeCompare(safeIsoLike(b));
 }
 
+function buildDisplaySessionLabel(label: string | null | undefined, sessionId: string | null | undefined) {
+  const normalizedLabel = typeof label === 'string' ? label.trim() : '';
+  if (normalizedLabel && normalizedLabel !== 'جلسة') {
+    return normalizedLabel;
+  }
+  const normalizedId = typeof sessionId === 'string' ? sessionId.replace(/[^0-9a-zA-Z]/g, '').slice(-4) : '';
+  return normalizedId ? `جلسة ${normalizedId}` : 'جلسة';
+}
+
 function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderItem[]): SessionCardView {
   let totalItemQty = 0;
   let latestAt = session.openedAt;
@@ -157,6 +166,7 @@ export default function OrdersPage() {
   });
 
   const [commandError, setCommandError] = useState<string | null>(null);
+  const [submitLatencyMs, setSubmitLatencyMs] = useState<number | null>(null);
 
   const sessions = useMemo(() => (Array.isArray(liveData?.sessions) ? liveData.sessions.map(normalizeSessionSummary) : []), [liveData?.sessions]);
   const sessionItems = useMemo(() => (Array.isArray(liveData?.sessionItems) ? liveData.sessionItems.map(normalizeSessionOrderItem) : []), [liveData?.sessionItems]);
@@ -216,6 +226,7 @@ export default function OrdersPage() {
   const submitCommand = useOpsCommand(
     async () => {
       if (!liveData) return;
+      const submitStartedAt = performance.now();
       const nextDraftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
       if (!nextDraftLines.length) return;
 
@@ -232,12 +243,13 @@ export default function OrdersPage() {
           serviceSessionId: effectiveSessionId,
           items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
         });
-        setLiveData((current) => appendOrTouchSession(current, effectiveSessionId, selectedSession?.label ?? `جلسة ${effectiveSessionId.slice(0, 6)}`));
+        setLiveData((current) => appendOrTouchSession(current, effectiveSessionId, selectedSession?.label ?? buildDisplaySessionLabel('', effectiveSessionId)));
       }
 
       setDraft({});
       setLabel('');
       setComposerLabel('');
+      setSubmitLatencyMs(Math.round(performance.now() - submitStartedAt));
     },
     { onError: setCommandError },
   );
@@ -385,6 +397,12 @@ export default function OrdersPage() {
         اختر الجلسة بعلامة واضحة قبل إضافة الأصناف. الجلسة الحالية تظهر دائمًا أعلى القائمة.
       </div>
 
+      {submitLatencyMs !== null ? (
+        <div className="mb-3 rounded-[22px] border border-[#d6dee5] bg-[#f4f7f9] px-3 py-2 text-right text-xs font-semibold text-[#3c617c]">
+          آخر إرسال استغرق حوالي {submitLatencyMs} ms
+        </div>
+      ) : null}
+
       {!creatingNew && selectedSession ? (
         <section className={[opsSurface, 'mb-3 p-3'].join(' ')}>
           <div className="flex items-center justify-between gap-3">
@@ -438,8 +456,19 @@ export default function OrdersPage() {
                         : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
                     ].join(' ')}
                   >
-                    <div className="truncate text-sm font-bold">{session.label}</div>
-                    <div className={['mt-1 text-xs', active ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="text-xs font-semibold opacity-80">جلسة</div>
+                      {active ? <span className="rounded-full border border-white/20 bg-white/10 px-2 py-1 text-[10px] font-bold text-white">الحالية</span> : null}
+                    </div>
+                    <div className="mt-2 flex justify-end">
+                      <span className={[
+                        'inline-flex max-w-full items-center rounded-full border px-3 py-1 text-xs font-bold',
+                        active ? 'border-white/20 bg-white/10 text-white' : 'border-[#e2d4c3] bg-[#f8f1e7] text-[#6b4b1f]',
+                      ].join(' ')}>
+                        <span className="truncate">{session.label}</span>
+                      </span>
+                    </div>
+                    <div className={['mt-2 text-xs', active ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
                       {session.totalItemQty} صنف • جاهز {session.readyCount}
                     </div>
                   </button>
