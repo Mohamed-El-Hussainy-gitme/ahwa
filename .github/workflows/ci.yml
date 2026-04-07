@@ -6,6 +6,9 @@ on:
       - main
       - master
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "20 3 * * 1"
 
 jobs:
   build-and-verify:
@@ -27,6 +30,12 @@ jobs:
 
       - name: Verify release readiness
         run: npm run verify:release
+
+      - name: Verify operations governance
+        run: npm run verify:operations
+
+      - name: Verify load and capacity tooling
+        run: npm run verify:phase30
 
       - name: Build shared
         run: npm run build:shared

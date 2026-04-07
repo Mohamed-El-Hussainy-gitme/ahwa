@@ -1,4 +1,4 @@
-import type { BillingWorkspace, OpsRealtimeEvent, ReadyItem, SessionOrderItem, StationQueueItem, StationWorkspace, WaiterWorkspace } from './types';
+import type { BillingWorkspace, ReadyItem, SessionOrderItem, StationQueueItem, StationWorkspace, WaiterLiveWorkspace, WaiterWorkspace } from './types';
 
 function clamp(value: number) {
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
@@ -17,15 +17,17 @@ function buildReadyItemFromSessionItem(item: SessionOrderItem): ReadyItem {
   };
 }
 
-export function appendOrTouchSession(workspace: WaiterWorkspace | null, sessionId: string, label: string): WaiterWorkspace | null {
+export function appendOrTouchSession<T extends Pick<WaiterLiveWorkspace, 'sessions'>>(workspace: T | null, sessionId: string, label: string): T | null {
   if (!workspace) return workspace;
-  const exists = workspace.sessions.some((session) => session.id === sessionId);
-  if (exists) {
-    return workspace;
-  }
+  const touchedAt = new Date().toISOString();
+  const existing = workspace.sessions.find((session) => session.id === sessionId) ?? null;
+  const rest = workspace.sessions.filter((session) => session.id !== sessionId);
+  const nextSession = existing
+    ? { ...existing, label: label || existing.label, openedAt: touchedAt }
+    : { id: sessionId, label, status: 'open', openedAt: touchedAt, billableCount: 0, readyCount: 0 };
   return {
     ...workspace,
-    sessions: [{ id: sessionId, label, status: 'open', openedAt: new Date().toISOString(), billableCount: 0, readyCount: 0 }, ...workspace.sessions],
+    sessions: [nextSession, ...rest],
   };
 }
 
@@ -55,7 +57,7 @@ export function applyReadyToStationWorkspace(workspace: StationWorkspace | null,
   };
 }
 
-export function applyReadyToWaiterWorkspace(workspace: WaiterWorkspace | null, item: StationQueueItem, quantity: number): WaiterWorkspace | null {
+export function applyReadyToWaiterWorkspace<T extends Pick<WaiterLiveWorkspace, 'readyItems' | 'sessionItems' | 'sessions'>>(workspace: T | null, item: StationQueueItem, quantity: number): T | null {
   if (!workspace) return workspace;
   const qty = clamp(quantity);
   if (!qty) return workspace;
@@ -108,7 +110,7 @@ export function applyReadyToWaiterWorkspace(workspace: WaiterWorkspace | null, i
   };
 }
 
-export function applyDeliverToWaiterWorkspace(workspace: WaiterWorkspace | null, orderItemId: string, quantity: number): WaiterWorkspace | null {
+export function applyDeliverToWaiterWorkspace<T extends Pick<WaiterLiveWorkspace, 'readyItems' | 'sessionItems' | 'sessions'>>(workspace: T | null, orderItemId: string, quantity: number): T | null {
   if (!workspace) return workspace;
   const qty = clamp(quantity);
   if (!qty) return workspace;
@@ -181,53 +183,4 @@ export function applyBillingToWorkspace(
       })
       .filter((session) => session.items.length > 0),
   };
-}
-
-export function applyRealtimeEventToStationWorkspace(workspace: StationWorkspace | null, event: OpsRealtimeEvent): StationWorkspace | null {
-  if (!workspace) return workspace;
-  if (event.type !== 'station.ready') return workspace;
-  const stationCode = event.data?.stationCode;
-  if (stationCode !== workspace.stationCode) return workspace;
-  const orderItemId = String(event.entityId ?? '').trim();
-  const quantity = clamp(Number(event.data?.quantity ?? 0));
-  if (!orderItemId || !quantity) return workspace;
-  const existing = workspace.queue.find((entry) => entry.orderItemId === orderItemId);
-  if (!existing) return workspace;
-  return applyReadyToStationWorkspace(workspace, existing, quantity);
-}
-
-export function applyRealtimeEventToWaiterWorkspace(workspace: WaiterWorkspace | null, event: OpsRealtimeEvent): WaiterWorkspace | null {
-  if (!workspace) return workspace;
-
-  if (event.type === 'station.ready') {
-    const orderItemId = String(event.entityId ?? '').trim();
-    const quantity = clamp(Number(event.data?.quantity ?? 0));
-    if (!orderItemId || !quantity) return workspace;
-    const item = workspace.sessionItems.find((entry) => entry.orderItemId === orderItemId);
-    if (!item) return workspace;
-    const syntheticQueueItem: StationQueueItem = {
-      orderItemId: item.orderItemId,
-      serviceSessionId: item.serviceSessionId,
-      sessionLabel: item.sessionLabel,
-      productName: item.productName,
-      stationCode: item.stationCode,
-      qtyWaitingOriginal: Math.max(item.qtyTotal - item.qtyReady - item.qtyDelivered - item.qtyReplacementDelivered - item.qtyCancelled - item.qtyWaived, 0),
-      qtyWaitingReplacement: Math.max(item.qtyRemade - item.qtyReplacementDelivered - item.qtyReadyForDelivery, 0),
-      qtyWaiting: Math.max(item.qtyTotal - item.qtyReady - item.qtyDelivered - item.qtyReplacementDelivered - item.qtyCancelled - item.qtyWaived, 0),
-      qtyReady: item.qtyReady,
-      qtyDelivered: item.qtyDelivered + item.qtyReplacementDelivered,
-      qtyReplacementDelivered: item.qtyReplacementDelivered,
-      createdAt: new Date().toISOString(),
-    };
-    return applyReadyToWaiterWorkspace(workspace, syntheticQueueItem, quantity);
-  }
-
-  if (event.type === 'delivery.delivered') {
-    const orderItemId = String(event.entityId ?? '').trim();
-    const quantity = clamp(Number(event.data?.quantity ?? event.data?.deliveredQty ?? 0));
-    if (!orderItemId || !quantity) return workspace;
-    return applyDeliverToWaiterWorkspace(workspace, orderItemId, quantity);
-  }
-
-  return workspace;
 }

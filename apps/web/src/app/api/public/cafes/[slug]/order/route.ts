@@ -1,9 +1,6 @@
 import { NextResponse } from 'next/server';
 import { callOpsRpc } from '@/app/api/ops/_rpc';
-import { enqueueOpsMutation, kickOpsOutboxDispatch, publishOpsMutation } from '@/app/api/ops/_helpers';
-import { adminOps } from '@/app/api/ops/_server';
-import { normalizeNullableStationCode } from '@/lib/ops/stations';
-import type { StationCode } from '@/lib/ops/types';
+import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '@/app/api/ops/orders/_station-events';
 import { requirePublicOrderingContext, resolveFallbackOwnerActor } from '@/lib/public-ordering';
 import { z } from 'zod';
 
@@ -17,12 +14,6 @@ const publicOrderSchema = z.object({
   })).min(1).max(30),
 });
 
-type MenuProductRow = {
-  id?: string | null;
-  product_name?: string | null;
-  station_code?: StationCode | null;
-  is_active?: boolean | null;
-};
 
 type OpenSessionRpcResult = {
   service_session_id?: string;
@@ -56,28 +47,21 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       qty: item.quantity,
     }));
 
-    const uniqueProductIds = Array.from(new Set(items.map((item) => item.menu_product_id)));
-    const { data: productRows, error: productError } = await adminOps(cafe.databaseKey)
-      .from('menu_products')
-      .select('id, product_name, station_code, is_active')
-      .eq('cafe_id', cafe.cafeId)
-      .in('id', uniqueProductIds);
-
-    if (productError) throw productError;
-
-    const products = (productRows ?? []) as MenuProductRow[];
-    if (products.length !== uniqueProductIds.length) {
-      throw new Error('INVALID_INPUT');
-    }
-
-    const productStationCodes = new Map<string, StationCode>();
-    for (const product of products) {
-      const stationCode = normalizeNullableStationCode(product.station_code);
-      if (!product.id || !stationCode || product.is_active !== true) {
-        throw new Error('INVALID_INPUT');
-      }
-      productStationCodes.set(String(product.id), stationCode);
-    }
+    const { productStationCodes } = await requireOrderSelectionStationCodes(
+      {
+        cafeId: cafe.cafeId,
+        tenantSlug: cafe.cafeSlug,
+        databaseKey: cafe.databaseKey,
+        runtimeUserId: owner.ownerId,
+        fullName: owner.fullName,
+        accountKind: 'owner',
+        shiftId: String(shift.id),
+        shiftRole: null,
+        actorOwnerId: owner.ownerId,
+        actorStaffId: null,
+      },
+      items.map((item) => item.menu_product_id),
+    );
 
     const sessionLabel = buildSessionLabel(parsed.data.customerName, parsed.data.tableLabel);
     const noteSegments = [
@@ -118,46 +102,17 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
     }
 
-    const stationQuantities = new Map<StationCode, number>();
-    for (const item of items) {
-      const stationCode = productStationCodes.get(item.menu_product_id);
-      if (!stationCode) continue;
-      stationQuantities.set(stationCode, (stationQuantities.get(stationCode) ?? 0) + item.qty);
-    }
-
-    const publicCtx = {
-      cafeId: cafe.cafeId,
-      databaseKey: cafe.databaseKey,
-      shiftId: String(shift.id),
-    };
-
-    for (const [stationCode, quantity] of stationQuantities.entries()) {
-      const eventData = {
+    dispatchStationOrderSubmittedInBackground(
+      { cafeId: cafe.cafeId, databaseKey: cafe.databaseKey, shiftId: String(shift.id) },
+      {
+        orderId,
         serviceSessionId: createdSessionId,
         sessionLabel: createdSessionLabel,
-        stationCode,
-        quantity,
-        itemsCount: quantity,
+        items: parsed.data.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+        productStationCodes,
         source: 'public_qr',
-      };
-      const eventId = await enqueueOpsMutation(publicCtx, {
-        type: 'station.order_submitted',
-        entityId: orderId,
-        shiftId: String(shift.id),
-        data: eventData,
-        scopes: [stationCode, 'dashboard', 'nav-summary'],
-      });
-      await publishOpsMutation({ cafeId: cafe.cafeId, shiftId: String(shift.id) }, {
-        id: eventId,
-        type: 'station.order_submitted',
-        entityId: orderId,
-        shiftId: String(shift.id),
-        data: eventData,
-        scopes: [stationCode, 'dashboard', 'nav-summary'],
-      });
-    }
-
-    kickOpsOutboxDispatch({ cafeId: cafe.cafeId, databaseKey: cafe.databaseKey });
+      },
+    );
 
     return NextResponse.json({
       ok: true,

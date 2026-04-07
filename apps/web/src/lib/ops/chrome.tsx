@@ -3,9 +3,9 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthz } from '@/lib/authz';
 import { useOpsRealtimeNotifications } from '@/lib/ops/notifications';
-import { subscribeOpsRealtime, useOpsRealtimeStatus } from '@/lib/ops/realtime';
+import { getOpsRealtimeSnapshot, isOpsRealtimeHealthy, subscribeOpsRealtime, useOpsRealtimeStatus } from '@/lib/ops/realtime';
 import { subscribeOpsInvalidation } from '@/lib/ops/invalidation';
-import { SUMMARY_POLL_INTERVAL_MS, shouldScheduleSummaryReload } from '@/lib/ops/reload-rules';
+import { apiPost } from '@/lib/http/client';
 import type { OpsNavSummary } from '@/lib/ops/types';
 
 export type OpsChromeState = {
@@ -17,9 +17,21 @@ export type OpsChromeState = {
 };
 
 const OpsChromeContext = createContext<OpsChromeState | null>(null);
-const SUMMARY_STALE_TIME_MS = 15_000;
-const SUMMARY_DEBOUNCE_MS = 150;
-const SUMMARY_FAST_FOLLOWUP_MS = 900;
+
+const opsSummaryCache = new Map<string, { summary: OpsNavSummary; loadedAt: number }>();
+const SUMMARY_STALE_TIME_MS = 30_000;
+const SUMMARY_DEBOUNCE_MS = 180;
+const SUMMARY_POLL_INTERVAL_MS = 10_000;
+const PATCHABLE_SUMMARY_EVENTS = new Set([
+  'station.order_submitted',
+  'station.ready',
+  'delivery.delivered',
+  'billing.settled',
+  'billing.deferred',
+  'session.opened',
+  'session.resumed',
+  'session.closed',
+]);
 
 function toPositiveInteger(value: unknown) {
   const num = Number(value ?? 0);
@@ -99,17 +111,9 @@ function patchSummaryFromRealtimeEvent(current: OpsNavSummary | null, event: { t
 }
 
 async function loadSummary(): Promise<OpsNavSummary> {
-  const res = await fetch('/api/ops/workspaces/nav-summary', {
-    method: 'POST',
-    cache: 'no-store',
-    headers: { 'content-type': 'application/json' },
+  return apiPost<OpsNavSummary>('/api/ops/workspaces/nav-summary', {}, {
+    readCache: { ttlMs: 5_000, key: 'ops:nav-summary' },
   });
-
-  const json = (await res.json().catch(() => null)) as OpsNavSummary | { error?: string } | null;
-  if (!res.ok) {
-    throw new Error((json as { error?: string } | null)?.error ?? 'REQUEST_FAILED');
-  }
-  return json as OpsNavSummary;
 }
 
 export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
@@ -119,7 +123,6 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [lastLoadedAt, setLastLoadedAt] = useState<number | null>(null);
   const reloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const followupTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const seenRealtimeEventIdsRef = useRef<string[]>([]);
   const seenRealtimeEventIdsSetRef = useRef<Set<string>>(new Set());
   const inFlightRef = useRef<Promise<void> | null>(null);
@@ -138,75 +141,94 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(reloadTimerRef.current);
       reloadTimerRef.current = null;
     }
-    if (followupTimerRef.current) {
-      clearTimeout(followupTimerRef.current);
-      followupTimerRef.current = null;
-    }
   }, []);
 
-  const runReload = useCallback(async (mode: 'manual' | 'background') => {
-    if (!enabled) {
-      setSummary(null);
-      setLastLoadedAt(null);
-      setLoading(false);
-      return;
-    }
-
-    if (inFlightRef.current) {
-      queuedRef.current = true;
-      return inFlightRef.current;
-    }
-
-    if (mode === 'manual') {
-      setLoading(true);
-    }
-
-    const request = (async () => {
-      try {
-        const next = await loadSummary();
-        setSummary(next);
-        setLastLoadedAt(Date.now());
-      } catch {
-        setSummary((current) => current);
-      } finally {
-        inFlightRef.current = null;
-        if (mode === 'manual') {
-          setLoading(false);
-        }
-        if (queuedRef.current) {
-          queuedRef.current = false;
-          void runReload('background');
-        }
+  const runReload = useCallback(
+    async (mode: 'manual' | 'background') => {
+      if (!enabled) {
+        setSummary(null);
+        setLastLoadedAt(null);
+        setLoading(false);
+        return;
       }
-    })();
 
-    inFlightRef.current = request;
-    return request;
-  }, [enabled]);
+      if (inFlightRef.current) {
+        queuedRef.current = true;
+        return inFlightRef.current;
+      }
+
+      if (mode === 'manual') {
+        setLoading(true);
+      }
+
+      const request = (async () => {
+        try {
+          const next = await loadSummary();
+          const loadedAt = Date.now();
+          setSummary(next);
+          setLastLoadedAt(loadedAt);
+          if (user?.id) {
+            opsSummaryCache.set(user.id, { summary: next, loadedAt });
+          }
+        } catch {
+          setSummary((current) => current);
+        } finally {
+          inFlightRef.current = null;
+          if (mode === 'manual') {
+            setLoading(false);
+          }
+          if (queuedRef.current) {
+            queuedRef.current = false;
+            void runReload('background');
+          }
+        }
+      })();
+
+      inFlightRef.current = request;
+      return request;
+    },
+    [enabled, user?.id],
+  );
 
   const reload = useCallback(async () => {
     await runReload('manual');
   }, [runReload]);
 
-  const scheduleReload = useCallback((immediate = false) => {
+  const scheduleReload = useCallback(() => {
     clearReloadTimer();
-    if (immediate) {
-      void runReload('background');
-      followupTimerRef.current = setTimeout(() => {
-        followupTimerRef.current = null;
-        void runReload('background');
-      }, SUMMARY_FAST_FOLLOWUP_MS);
-      return;
-    }
     reloadTimerRef.current = setTimeout(() => {
       reloadTimerRef.current = null;
       void runReload('background');
     }, SUMMARY_DEBOUNCE_MS);
   }, [clearReloadTimer, runReload]);
 
+  const shouldRevalidate = useCallback(() => {
+    if (lastLoadedAtRef.current === null) {
+      return true;
+    }
+    return Date.now() - lastLoadedAtRef.current >= SUMMARY_STALE_TIME_MS;
+  }, []);
+
+  const shouldUsePollingFallback = useCallback(() => !isOpsRealtimeHealthy(getOpsRealtimeSnapshot()), []);
+
   useEffect(() => {
+    if (!enabled || !user?.id) {
+      setSummary(null);
+      setLastLoadedAt(null);
+      setLoading(false);
+      return;
+    }
+
+    const cached = opsSummaryCache.get(user.id);
+    if (cached && Date.now() - cached.loadedAt < SUMMARY_STALE_TIME_MS) {
+      setSummary(cached.summary);
+      setLastLoadedAt(cached.loadedAt);
+      setLoading(false);
+      return;
+    }
+
     void runReload('manual');
-  }, [runReload, shift?.id]);
+  }, [enabled, runReload, shift?.id, user?.id]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -215,13 +237,16 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
       if (document.visibilityState !== 'visible') {
         return;
       }
+      if (!shouldUsePollingFallback()) {
+        return;
+      }
       void runReload('background');
     }, SUMMARY_POLL_INTERVAL_MS);
 
     return () => {
       window.clearInterval(interval);
     };
-  }, [enabled, runReload]);
+  }, [enabled, runReload, shouldUsePollingFallback]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -241,13 +266,6 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
       return true;
     };
 
-    const shouldRevalidate = () => {
-      if (lastLoadedAtRef.current === null) {
-        return true;
-      }
-      return Date.now() - lastLoadedAtRef.current >= SUMMARY_STALE_TIME_MS;
-    };
-
     const unsubscribeRealtime = subscribeOpsRealtime((event) => {
       if (!rememberRealtimeEventId(event.id)) {
         return;
@@ -256,7 +274,7 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
       setSummary((current) => patchSummaryFromRealtimeEvent(current, event));
       void notifyRealtime(event);
 
-      if (shouldScheduleSummaryReload(event, shouldRevalidate())) {
+      if (!PATCHABLE_SUMMARY_EVENTS.has(event.type) || shouldRevalidate()) {
         scheduleReload();
       }
     });
@@ -266,12 +284,12 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
     });
 
     const onFocus = () => {
-      if (shouldRevalidate()) {
+      if (shouldRevalidate() && shouldUsePollingFallback()) {
         scheduleReload();
       }
     };
     const onVisible = () => {
-      if (document.visibilityState === 'visible' && shouldRevalidate()) {
+      if (document.visibilityState === 'visible' && shouldRevalidate() && shouldUsePollingFallback()) {
         scheduleReload();
       }
     };
@@ -286,12 +304,9 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [clearReloadTimer, enabled, notifyRealtime, scheduleReload]);
+  }, [clearReloadTimer, enabled, notifyRealtime, scheduleReload, shouldRevalidate, shouldUsePollingFallback]);
 
-  const value = useMemo<OpsChromeState>(
-    () => ({ summary, loading, lastLoadedAt, reload, sync }),
-    [summary, loading, lastLoadedAt, reload, sync],
-  );
+  const value = useMemo<OpsChromeState>(() => ({ summary, loading, lastLoadedAt, reload, sync }), [summary, loading, lastLoadedAt, reload, sync]);
 
   return <OpsChromeContext.Provider value={value}>{children}</OpsChromeContext.Provider>;
 }

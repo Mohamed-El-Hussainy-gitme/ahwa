@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
+      "path": "/api/internal/ops/outbox/dispatch?limit=50",
+      "schedule": "*/2 * * * *"
+    },
+    {
       "path": "/api/internal/maintenance/reporting?action=backfill&windowDays=35",
       "schedule": "15 1 * * *"
     },

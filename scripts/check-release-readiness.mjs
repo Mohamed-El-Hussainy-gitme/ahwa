@@ -59,9 +59,18 @@ for (const file of exampleFiles) {
   }
 }
 
+const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+if (packageJson.engines?.node !== '20.x') {
+  fail('package.json must pin engines.node to 20.x');
+}
+if (packageJson.packageManager !== 'npm@10.9.2') {
+  fail('package.json must pin packageManager to npm@10.9.2');
+}
+
 const rootEnvExample = readFileSync('.env.example', 'utf8');
 const webEnvExample = readFileSync('apps/web/.env.example', 'utf8');
 const requiredKeys = [
+  'NEXT_PUBLIC_APP_URL',
   'CONTROL_PLANE_SUPABASE_URL',
   'CONTROL_PLANE_SUPABASE_PUBLISHABLE_KEY',
   'CONTROL_PLANE_SUPABASE_SECRET_KEY',
@@ -69,6 +78,7 @@ const requiredKeys = [
   'AHWA_INSTALL_TOKEN',
   'CRON_SECRET',
   'ARCHIVE_APPROVAL_SECRET',
+  'AHWA_OPS_OUTBOX_DISPATCH_POLICY',
 ];
 
 for (const key of requiredKeys) {
@@ -92,6 +102,19 @@ for (const forbidden of ['AHWA_DEFAULT_OPERATIONAL_DATABASE_KEY=', 'AHWA_OPERATI
 assertOperationalDatabaseGroups(rootEnvExample, 'root .env.example');
 assertOperationalDatabaseGroups(webEnvExample, 'apps/web/.env.example');
 
+for (const [label, contents] of [['root .env.example', rootEnvExample], ['apps/web/.env.example', webEnvExample]]) {
+  const match = contents.match(/^AHWA_OPS_EVENT_BUS_REDIS_URL=(.+)$/m);
+  if (!match) fail(`${label} is missing AHWA_OPS_EVENT_BUS_REDIS_URL`);
+  const value = match[1].trim();
+  if (!value.startsWith('rediss://')) fail(`${label} must use rediss:// for AHWA_OPS_EVENT_BUS_REDIS_URL example`);
+  if (value.includes('"') || /^[A-Z0-9_]+=/.test(value)) fail(`${label} contains an invalid AHWA_OPS_EVENT_BUS_REDIS_URL example`);
+}
+
+const vercelJson = readFileSync('apps/web/vercel.json', 'utf8');
+if (!vercelJson.includes('/api/internal/ops/outbox/dispatch?limit=50')) {
+  fail('apps/web/vercel.json must schedule /api/internal/ops/outbox/dispatch');
+}
+
 console.log('release-readiness: ok');
 
 execSync('node ./scripts/check-ops-authz-coverage.mjs', { stdio: 'inherit' });
@@ -103,3 +126,5 @@ execSync('node ./scripts/verify-archive-hardening-release.mjs', { stdio: 'inheri
 execSync('node ./scripts/verify-control-plane-manual-db-selection.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-phase9-explicit-db-propagation.mjs', { stdio: 'inherit' });
 execSync('node ./scripts/verify-platform-response-hardening.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-operations-hardening.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-phase30-load-lab.mjs', { stdio: 'inherit' });

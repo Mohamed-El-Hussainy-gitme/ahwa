@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import { assertCriticalEnv } from "@/lib/platform/env-contract";
 
 export const metadata: Metadata = {
   metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ahwa.app"),
@@ -28,6 +29,7 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
+  assertCriticalEnv();
   return (
     <html lang="ar" dir="rtl">
       <body className="antialiased">

@@ -22,7 +22,8 @@ expectIncludes('apps/web/src/app/platform/PlatformDashboardClient.tsx', [
 ]);
 
 expectIncludes('apps/web/src/app/platform/PlatformPortfolioOverview.tsx', [
-  'النظرة العامة',
+  'ملخص سريع',
+  'آخر النشاط على المحفظة',
 ]);
 
 expectIncludes('apps/web/src/app/(app)/menu/page.tsx', [
@@ -31,7 +32,7 @@ expectIncludes('apps/web/src/app/(app)/menu/page.tsx', [
 ]);
 
 expectIncludes('apps/web/src/app/(app)/staff/page.tsx', [
-  'القائمة اليومية تبدأ بالنشطين فقط',
+  'تبدأ القائمة اليومية بالنشطين فقط',
 ]);
 
 expectIncludes('docs/term-mapping.md', [

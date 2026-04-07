@@ -12,6 +12,7 @@ export type ReadyItem = {
   qtyReadyForNormalDelivery: number;
   qtyReadyForReplacementDelivery: number;
   qtyReadyForDelivery: number;
+  createdAt?: string;
 };
 export type SessionOrderItem = {
   orderItemId: string;
@@ -30,9 +31,13 @@ export type SessionOrderItem = {
   qtyCancelled: number;
   qtyRemade: number;
   qtyReadyForDelivery: number;
+  qtyReadyForReplacementDelivery?: number;
   availableRemakeQty: number;
+  createdAt?: string;
 };
-export type WaiterWorkspace = { shift: OpsShift | null; sessions: OpsSessionSummary[]; sections: OpsSection[]; products: OpsProduct[]; readyItems: ReadyItem[]; sessionItems: SessionOrderItem[] };
+export type WaiterCatalogWorkspace = { sections: OpsSection[]; products: OpsProduct[] };
+export type WaiterLiveWorkspace = { shift: OpsShift | null; sessions: OpsSessionSummary[]; readyItems: ReadyItem[]; sessionItems: SessionOrderItem[] };
+export type WaiterWorkspace = WaiterLiveWorkspace & WaiterCatalogWorkspace;
 export type StationQueueItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; stationCode: StationCode; qtyWaitingOriginal: number; qtyWaitingReplacement: number; qtyWaiting: number; qtyReady: number; qtyDelivered: number; qtyReplacementDelivered: number; createdAt: string };
 export type StationWorkspace = { shift: OpsShift | null; stationCode: StationCode; queue: StationQueueItem[] };
 export type BillableItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; unitPrice: number; qtyBillable: number; qtyDelivered: number; qtyPaid: number; qtyDeferred: number; qtyWaived: number };

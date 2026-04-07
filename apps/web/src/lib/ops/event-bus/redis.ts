@@ -1,6 +1,7 @@
 import 'server-only';
 import Redis from 'ioredis';
 import type { OpsRealtimeEvent } from '@/lib/ops/types';
+import { validateCriticalEnv } from '@/lib/platform/env-contract';
 import { getOpsEventStreamName, normalizeOpsRealtimeEvent } from './schema';
 import type { OpsEventBus, OpsEventBusListener, OpsEventBusSubscribeOptions } from './types';
 
@@ -10,6 +11,11 @@ function env(name: string, fallback = '') {
 }
 
 function getRedisUrl() {
+  const result = validateCriticalEnv();
+  const redisIssue = result.issues.find((issue) => issue.key === 'AHWA_OPS_EVENT_BUS_REDIS_URL');
+  if (redisIssue) {
+    throw new Error(`AHWA_OPS_EVENT_BUS_REDIS_URL ${redisIssue.message}`);
+  }
   return env('AHWA_OPS_EVENT_BUS_REDIS_URL');
 }
 
@@ -39,6 +45,12 @@ function getPublisher() {
       lazyConnect: true,
       maxRetriesPerRequest: 3,
       enableReadyCheck: true,
+      retryStrategy(times) {
+        return Math.min(times * 250, 2000);
+      },
+    });
+    scope[REDIS_PUBLISHER_KEY]?.on('error', () => {
+      // avoid unhandled ioredis error storms in serverless logs
     });
   }
   return scope[REDIS_PUBLISHER_KEY] as Redis;
@@ -91,6 +103,12 @@ export function createRedisOpsEventBus(): OpsEventBus {
         lazyConnect: true,
         maxRetriesPerRequest: null,
         enableReadyCheck: true,
+        retryStrategy(times) {
+          return Math.min(times * 250, 2000);
+        },
+      });
+      redis.on('error', () => {
+        // consume error events and route them through onError instead of noisy unhandled events
       });
       await ensureConnected(redis);
 

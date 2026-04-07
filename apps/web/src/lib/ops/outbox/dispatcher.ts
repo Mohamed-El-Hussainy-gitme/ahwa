@@ -1,6 +1,7 @@
 import 'server-only';
 import crypto from 'node:crypto';
 import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
+import { getOutboxDispatchPolicy } from '@/lib/platform/env-contract';
 import type { OpsRealtimeEvent } from '@/lib/ops/types';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
@@ -258,8 +259,8 @@ export async function dispatchOpsOutboxAcrossConfiguredDatabases(limit?: number)
 }
 
 export function scheduleOpsOutboxDispatch(input: DispatchOpsOutboxBatchInput) {
-  const enabled = String(process.env.AHWA_OPS_OUTBOX_INLINE_DISPATCH_ENABLED ?? 'false').trim().toLowerCase();
-  if (enabled === '0' || enabled === 'false' || enabled === 'off') {
+  const policy = getOutboxDispatchPolicy();
+  if (policy === 'background') {
     return;
   }
 
