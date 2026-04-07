@@ -88,3 +88,5 @@ The platform surface should not expose detailed per-cafe operating sales, compla
 - `AHWA_OPS_OUTBOX_DISPATCH_POLICY` controls outbox dispatch mode: `background`, `inline`, or `hybrid`.
 - Vercel cron dispatches `/api/internal/ops/outbox/dispatch` every 2 minutes for background convergence.
 - `/api/internal/health/ops` is the internal health endpoint for event bus and outbox readiness (authorized with `CRON_SECRET`).
+
+- QStash can be enabled for background dispatch and maintenance fan-out without changing the critical request path.

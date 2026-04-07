@@ -111,8 +111,11 @@ for (const [label, contents] of [['root .env.example', rootEnvExample], ['apps/w
 }
 
 const vercelJson = readFileSync('apps/web/vercel.json', 'utf8');
-if (!vercelJson.includes('/api/internal/ops/outbox/dispatch?limit=50')) {
-  fail('apps/web/vercel.json must schedule /api/internal/ops/outbox/dispatch');
+if (!vercelJson.includes('/api/internal/qstash/ops/outbox-dispatch?limit=50')) {
+  fail('apps/web/vercel.json must schedule /api/internal/qstash/ops/outbox-dispatch');
+}
+if (!vercelJson.includes('/api/internal/qstash/maintenance/reporting?action=backfill&windowDays=35')) {
+  fail('apps/web/vercel.json must schedule qstash-backed reporting maintenance');
 }
 
 console.log('release-readiness: ok');

@@ -30,6 +30,7 @@ const checks = [
   [releaseDoc.includes('verify:release') && releaseDoc.includes('verify:phase30'), 'production release gate must mention verify:release and verify:phase30'],
   [envMatrix.includes('Required in production') && envMatrix.includes('Optional / future') && envMatrix.includes('Load / soak / failure lab only'), 'environment matrix must classify production, optional, and lab envs'],
   [runbook.includes('/api/internal/health/ops') && runbook.includes('ops/events') && runbook.includes('outbox'), 'platform operations runbook must cover ops health, ops/events, and outbox'],
+  [runbook.toLowerCase().includes('qstash'), 'platform operations runbook must cover qstash background jobs'],
   [readme.includes('docs/deployment/production-release-gate.md') && readme.includes('docs/execution/platform-operations-runbook.md'), 'README must reference the new operations docs'],
 ];
 

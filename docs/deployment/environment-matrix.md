@@ -54,3 +54,7 @@ These are valid for operational testing and capacity work, not for day-to-day ru
 - `AHWA_SERVER_OBSERVABILITY_SLOW_MS`
 
 Use `standard` mode in production unless active troubleshooting requires `verbose`.
+
+## QStash
+- `QSTASH_TOKEN`: required to enqueue background jobs through QStash.
+- `QSTASH_CURRENT_SIGNING_KEY` / `QSTASH_NEXT_SIGNING_KEY`: optional for future receiver verification; not required for the current internal forwarder pattern.

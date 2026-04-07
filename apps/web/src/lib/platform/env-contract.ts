@@ -32,6 +32,25 @@ function looksLikeNestedAssignment(value: string) {
   return /^[A-Z0-9_]+=.+$/i.test(value);
 }
 
+
+function validateQStash(issues: EnvValidationIssue[]) {
+  const token = readEnv('QSTASH_TOKEN');
+  const current = readEnv('QSTASH_CURRENT_SIGNING_KEY');
+  const next = readEnv('QSTASH_NEXT_SIGNING_KEY');
+  if (!token && !current && !next) {
+    return;
+  }
+
+  if (!token) {
+    issues.push({ key: 'QSTASH_TOKEN', message: 'is required when any QStash env is configured' });
+  }
+
+  const appUrl = readEnv('NEXT_PUBLIC_APP_URL');
+  if (!appUrl) {
+    issues.push({ key: 'NEXT_PUBLIC_APP_URL', message: 'is required when QStash is configured' });
+  }
+}
+
 function validateRedisUrl(raw: string, issues: EnvValidationIssue[]) {
   if (!raw) {
     return;
@@ -112,6 +131,8 @@ export function validateCriticalEnv(force = false): EnvValidationResult {
       validateRedisUrl(redisUrl, issues);
     }
   }
+
+  validateQStash(issues);
 
   const result = { ok: issues.length === 0, issues } satisfies EnvValidationResult;
   scope[ENV_VALIDATION_KEY] = result;

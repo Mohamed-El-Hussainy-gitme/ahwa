@@ -54,3 +54,8 @@ This runbook covers the live operational platform after deployment.
 - Run the production release gate locally
 - Do not bypass `verify:release` or `verify:operations`
 - Roll back first if the live deployment is already unhealthy
+
+## QStash background jobs
+- Outbox dispatch cron now targets `/api/internal/qstash/ops/outbox-dispatch`.
+- Reporting maintenance crons now target `/api/internal/qstash/maintenance/reporting`.
+- If QStash env is missing, both routes fall back to direct execution to keep operations alive.

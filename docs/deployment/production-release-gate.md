@@ -36,3 +36,5 @@ Do not keep a deployment live if any of the following occurs after release:
 - Vercel build succeeds but runtime health is red
 
 Rollback to the previous stable deployment first, then debug on staging.
+
+- If QStash is enabled, confirm `QSTASH_TOKEN` and `NEXT_PUBLIC_APP_URL` are configured and queueing succeeds for background jobs.

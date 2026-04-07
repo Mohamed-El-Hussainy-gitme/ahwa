@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { validateCriticalEnv, getOutboxDispatchPolicy } from '@/lib/platform/env-contract';
+import { getQStashConfig } from '@/lib/platform/qstash';
 import { listConfiguredOperationalDatabasesFromEnv } from '@/lib/supabase/env';
 
 export const runtime = 'nodejs';
@@ -23,6 +24,7 @@ export async function GET(request: Request) {
     const driver = String(process.env.AHWA_OPS_EVENT_BUS_DRIVER ?? 'auto').trim().toLowerCase() || 'auto';
     const redisUrl = String(process.env.AHWA_OPS_EVENT_BUS_REDIS_URL ?? '').trim();
     const operationalDatabases = listConfiguredOperationalDatabasesFromEnv().map((item) => item.databaseKey);
+    const qstash = getQStashConfig();
 
     return NextResponse.json({
       ok: validation.ok,
@@ -38,6 +40,12 @@ export async function GET(request: Request) {
           batchLimit: Number(process.env.AHWA_OPS_OUTBOX_DISPATCH_BATCH_LIMIT ?? '100'),
           retryAfterSeconds: Number(process.env.AHWA_OPS_OUTBOX_RETRY_AFTER_SECONDS ?? '15'),
           maxAttempts: Number(process.env.AHWA_OPS_OUTBOX_MAX_ATTEMPTS ?? '20'),
+        },
+        qstash: {
+          enabled: qstash.enabled,
+          tokenConfigured: Boolean(qstash.token),
+          signingKeysConfigured: Boolean(qstash.currentSigningKey && qstash.nextSigningKey),
+          baseUrlConfigured: Boolean(qstash.baseUrl),
         },
         operationalDatabases,
       },
