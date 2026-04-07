@@ -57,11 +57,13 @@ export async function POST(req: Request) {
     }, ctx.databaseKey);
 
     const orderId = String(rpc.order_id ?? '').trim();
-    await persistOrderNotePreset({
+    void persistOrderNotePreset({
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
       note: body.notes,
       productStationCodes: stationCodes,
+    }).catch((error) => {
+      console.error('[ops][order-note-presets] failed to persist preset', error);
     });
     const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();
     if (!orderId || !serviceSessionId) {

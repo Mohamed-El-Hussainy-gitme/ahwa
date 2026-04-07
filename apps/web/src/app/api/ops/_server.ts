@@ -288,17 +288,24 @@ export async function buildWaiterWorkspace(
   scope: WaiterWorkspaceScope = {},
 ): Promise<WaiterWorkspace> {
   const admin = adminOps(databaseKey);
-  const normalizedShift = await loadOpenShift(cafeId, databaseKey);
   const includeCatalog = scope.includeCatalog !== false;
   const includeSessionItems = scope.includeSessionItems !== false;
   const includeReadyItems = scope.includeReadyItems !== false;
+  const includeLiveData = includeSessionItems || includeReadyItems;
+
+  const [catalog, normalizedShift, notePresets] = await Promise.all([
+    includeCatalog ? loadActiveMenuCatalog(cafeId, databaseKey) : Promise.resolve(null),
+    includeLiveData ? loadOpenShift(cafeId, databaseKey) : Promise.resolve(null),
+    includeLiveData
+      ? loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null)
+      : Promise.resolve([]),
+  ]);
+
   const sessions = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
-  const notePresets = await loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null);
 
   let sections: OpsSection[] = [];
   let products: OpsProduct[] = [];
-  if (includeCatalog) {
-    const catalog = await loadActiveMenuCatalog(cafeId, databaseKey);
+  if (catalog) {
     sections = catalog.sections.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes));
     const allowedSectionIds = new Set(sections.map((row) => row.id));
     products = catalog.products.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes) && allowedSectionIds.has(row.sectionId));
@@ -308,7 +315,7 @@ export async function buildWaiterWorkspace(
   const openSessionIdsSet = new Set(openSessionIds);
 
   let itemRows: any[] = [];
-  if (normalizedShift && openSessionIds.length > 0 && (includeSessionItems || includeReadyItems)) {
+  if (normalizedShift && openSessionIds.length > 0 && includeLiveData) {
     const { data, error } = await admin
       .from('order_items')
       .select('id, service_session_id, station_code, unit_price, qty_total, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled, notes, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
@@ -409,13 +416,11 @@ export async function buildReadyItemsWorkspace(cafeId: string, databaseKey: stri
 }
 
 export async function buildWaiterCatalogWorkspace(cafeId: string, databaseKey: string, scope: WaiterWorkspaceScope = {}): Promise<WaiterCatalogWorkspace> {
-  const workspace = await buildWaiterWorkspace(cafeId, databaseKey, {
-    ...scope,
-    includeCatalog: true,
-    includeSessionItems: false,
-    includeReadyItems: false,
-  });
-  return { sections: workspace.sections, products: workspace.products };
+  const catalog = await loadActiveMenuCatalog(cafeId, databaseKey);
+  const sections = catalog.sections.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes));
+  const allowedSectionIds = new Set(sections.map((row) => row.id));
+  const products = catalog.products.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes) && allowedSectionIds.has(row.sectionId));
+  return { sections, products };
 }
 
 export async function buildWaiterLiveWorkspace(cafeId: string, databaseKey: string, scope: WaiterWorkspaceScope = {}): Promise<WaiterLiveWorkspace> {

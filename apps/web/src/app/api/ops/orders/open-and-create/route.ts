@@ -71,11 +71,13 @@ export async function POST(req: Request) {
     }, ctx.databaseKey);
 
     const orderId = String(createRpc.order_id ?? '').trim();
-    await persistOrderNotePreset({
+    void persistOrderNotePreset({
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
       note: body.notes,
       productStationCodes: stationCodes,
+    }).catch((error) => {
+      console.error('[ops][order-note-presets] failed to persist preset', error);
     });
     if (!orderId) throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
 
