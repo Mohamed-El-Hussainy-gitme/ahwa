@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
       note: body.notes,
-      productStationCodes,
+      productStationCodes: [...productStationCodes.values()],
     });
     if (!orderId) throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
 

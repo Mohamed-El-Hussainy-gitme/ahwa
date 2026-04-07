@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
       note: body.notes,
-      productStationCodes,
+      productStationCodes: [...productStationCodes.values()],
     });
     const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();
     if (!orderId || !serviceSessionId) {
