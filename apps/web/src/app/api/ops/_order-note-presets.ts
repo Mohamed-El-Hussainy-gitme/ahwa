@@ -7,7 +7,7 @@ function normalizeOrderNotePreset(value: string): string {
 
 function resolvePresetStationCode(productStationCodes: readonly StationCode[]): StationCode | null {
   const uniqueCodes = Array.from(new Set(productStationCodes));
-  return uniqueCodes.length === 1 ? uniqueCodes[0] : null;
+  return uniqueCodes.length === 1 ? (uniqueCodes[0] ?? null) : null;
 }
 
 export async function persistOrderNotePreset(input: {
