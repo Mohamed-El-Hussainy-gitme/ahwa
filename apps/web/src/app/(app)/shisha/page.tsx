@@ -59,8 +59,7 @@ export default function ShishaPage() {
       enabled: Boolean(shift),
       cacheKey: 'workspace:shisha:station',
       staleTimeMs: 10_000,
-      pollIntervalMs: 1500,
-    pollAlways: true,
+      pollIntervalMs: 4000,
       shouldReloadOnEvent: (event) => shouldReloadStationWorkspace(event, 'shisha'),
     },
   );
@@ -69,8 +68,7 @@ export default function ShishaPage() {
     enabled: Boolean(shift),
     cacheKey: 'workspace:shisha:live',
     staleTimeMs: 10_000,
-    pollIntervalMs: 1500,
-    pollAlways: true,
+    pollIntervalMs: 4000,
     shouldReloadOnEvent: shouldReloadWaiterLiveWorkspace,
   });
 

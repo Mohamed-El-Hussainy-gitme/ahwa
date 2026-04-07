@@ -139,11 +139,11 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
   );
 
   const shouldUsePollingFallback = useCallback(() => {
-    if (pollAlways || errorRef.current) {
+    if (errorRef.current) {
       return true;
     }
     return !isOpsRealtimeHealthy(getOpsRealtimeSnapshot());
-  }, [pollAlways]);
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
@@ -177,7 +177,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       if (!pollWhenHidden && document.visibilityState !== 'visible') {
         return;
       }
-      if (!shouldUsePollingFallback()) {
+      if (!pollAlways && !shouldUsePollingFallback()) {
         return;
       }
       void runReload('background');
@@ -186,7 +186,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
     return () => {
       window.clearInterval(interval);
     };
-  }, [enabled, pollIntervalMs, pollWhenHidden, runReload, shouldUsePollingFallback]);
+  }, [enabled, pollAlways, pollIntervalMs, pollWhenHidden, runReload, shouldUsePollingFallback]);
 
   useEffect(() => {
     if (!enabled) {
