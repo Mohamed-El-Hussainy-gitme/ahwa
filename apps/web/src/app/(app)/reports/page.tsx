@@ -13,6 +13,7 @@ import type {
   ReportComplaintEntry,
   ReportItemIssueEntry,
   ReportsWorkspace,
+  ReportsWorkspaceRequest,
   ReportShiftRow,
   ReportTotals,
   StaffPerformanceRow,
@@ -65,6 +66,23 @@ function itemIssueActionLabel(kind: ReportItemIssueEntry['actionKind']) {
 }
 function formatIssueTime(value: string) {
   return new Date(value).toLocaleString('ar-EG', { hour: '2-digit', minute: '2-digit', day: '2-digit', month: '2-digit' });
+}
+
+function cairoToday() {
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Africa/Cairo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(new Date());
+}
+
+function toMonthInputValue(date: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date.slice(0, 7) : cairoToday().slice(0, 7);
+}
+
+function toMonthAnchorDate(value: string) {
+  return /^\d{4}-\d{2}$/.test(value) ? `${value}-01` : cairoToday().slice(0, 7) + '-01';
 }
 
 function sortProducts(items: ProductReportRow[]) {
@@ -366,6 +384,73 @@ function ItemIssueTimeline({ items }: { items: ReportItemIssueEntry[] }) {
   );
 }
 
+function ReportPeriodControls({
+  tab,
+  referenceDate,
+  weekAnchorDate,
+  monthAnchorDate,
+  onWeekChange,
+  onMonthChange,
+  onResetWeek,
+  onResetMonth,
+}: {
+  tab: ReportTab;
+  referenceDate: string;
+  weekAnchorDate: string;
+  monthAnchorDate: string;
+  onWeekChange: (value: string) => void;
+  onMonthChange: (value: string) => void;
+  onResetWeek: () => void;
+  onResetMonth: () => void;
+}) {
+  if (tab !== 'week' && tab !== 'month') return null;
+
+  return (
+    <div className="ahwa-card mt-3 p-3">
+      <div className="font-semibold">التنقل داخل التقارير</div>
+      <div className="mt-1 text-xs text-[#8a7763]">
+        اختر أسبوعًا أو شهرًا سابقًا داخل حدود آخر 24 شهرًا. المرجع الحالي: {referenceDate}
+      </div>
+
+      {tab === 'week' ? (
+        <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end">
+          <label className="flex-1 text-sm">
+            <div className="mb-1 text-xs text-[#8a7763]">اختر أي يوم من الأسبوع المطلوب</div>
+            <input
+              type="date"
+              value={weekAnchorDate}
+              max={referenceDate}
+              onChange={(event) => onWeekChange(event.target.value)}
+              className="w-full rounded-2xl border bg-white px-3 py-2"
+            />
+          </label>
+          <button onClick={onResetWeek} className="rounded-2xl border bg-[#fffdf9] px-3 py-2 text-sm font-semibold">
+            الأسبوع الحالي
+          </button>
+        </div>
+      ) : null}
+
+      {tab === 'month' ? (
+        <div className="mt-3 flex flex-col gap-2 md:flex-row md:items-end">
+          <label className="flex-1 text-sm">
+            <div className="mb-1 text-xs text-[#8a7763]">اختر الشهر المطلوب</div>
+            <input
+              type="month"
+              value={toMonthInputValue(monthAnchorDate)}
+              max={referenceDate.slice(0, 7)}
+              onChange={(event) => onMonthChange(toMonthAnchorDate(event.target.value))}
+              className="w-full rounded-2xl border bg-white px-3 py-2"
+            />
+          </label>
+          <button onClick={onResetMonth} className="rounded-2xl border bg-[#fffdf9] px-3 py-2 text-sm font-semibold">
+            الشهر الحالي
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function OverviewPanel({
   currentShift,
   period,
@@ -418,12 +503,21 @@ function OverviewPanel({
 
 export default function ReportsPage() {
   const session = useAuthz();
+  const today = cairoToday();
   const [tab, setTab] = useState<ReportTab>('current');
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
-  const loader = useCallback(() => opsClient.reportsWorkspace(), []);
+  const [weekAnchorDate, setWeekAnchorDate] = useState<string>(today);
+  const [monthAnchorDate, setMonthAnchorDate] = useState<string>(`${today.slice(0, 7)}-01`);
+
+  const reportsRequest = useMemo<ReportsWorkspaceRequest>(() => ({
+    weekAnchorDate,
+    monthAnchorDate,
+  }), [weekAnchorDate, monthAnchorDate]);
+
+  const loader = useCallback(() => opsClient.reportsWorkspace(reportsRequest), [reportsRequest]);
   const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, {
     enabled: session.user?.baseRole === 'owner',
-    cacheKey: 'workspace:reports',
+    cacheKey: `workspace:reports:${reportsRequest.weekAnchorDate}:${reportsRequest.monthAnchorDate}`,
     staleTimeMs: 60_000,
   });
   const selectedPeriod = useMemo(
@@ -446,6 +540,13 @@ export default function ReportsPage() {
   const currentTopStaff = currentStaff.length ? (sortStaff(currentStaff)[0] ?? null) : null;
   const periodTopProduct = selectedPeriod?.products.length ? (sortProducts(selectedPeriod.products)[0] ?? null) : null;
   const periodTopStaff = selectedPeriod?.staff.length ? (sortStaff(selectedPeriod.staff)[0] ?? null) : null;
+  const reportPrintHref = useMemo(() => {
+    if (tab === 'deferred') return '/customers/print';
+    const params = new URLSearchParams({ tab });
+    if (tab === 'week') params.set('weekAnchorDate', weekAnchorDate);
+    if (tab === 'month') params.set('monthAnchorDate', monthAnchorDate);
+    return `/reports/print?${params.toString()}`;
+  }, [monthAnchorDate, tab, weekAnchorDate]);
 
   return (
     <MobileShell title="التقارير" backHref="/dashboard">
@@ -461,7 +562,7 @@ export default function ReportsPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              href={tab === 'deferred' ? '/customers/print' : `/reports/print?tab=${tab}`}
+              href={reportPrintHref}
              
               className="rounded-xl border bg-[#fffdf9] px-3 py-2 text-xs font-semibold text-[#5e4d3f]"
             >
@@ -497,6 +598,17 @@ export default function ReportsPage() {
           ))}
         </div>
       </div>
+
+      <ReportPeriodControls
+        tab={tab}
+        referenceDate={data?.referenceDate ?? today}
+        weekAnchorDate={weekAnchorDate}
+        monthAnchorDate={monthAnchorDate}
+        onWeekChange={setWeekAnchorDate}
+        onMonthChange={setMonthAnchorDate}
+        onResetWeek={() => setWeekAnchorDate(data?.referenceDate ?? today)}
+        onResetMonth={() => setMonthAnchorDate(`${(data?.referenceDate ?? today).slice(0, 7)}-01`)}
+      />
 
       {tab === 'current' ? (
         <section className="mt-3 space-y-3">

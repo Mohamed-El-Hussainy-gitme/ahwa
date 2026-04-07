@@ -158,6 +158,11 @@ export type DeferredCustomerLedgerWorkspace = {
 
 export type ReportPeriodKey = 'day' | 'week' | 'month' | 'year';
 
+export type ReportsWorkspaceRequest = {
+  weekAnchorDate?: string;
+  monthAnchorDate?: string;
+};
+
 export type ReportTotals = {
   shiftCount: number;
   submittedQty: number;

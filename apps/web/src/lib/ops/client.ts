@@ -11,6 +11,7 @@ import type {
   BillingTotals,
   OwnerOnboardingGuide,
   ReportsWorkspace,
+  ReportsWorkspaceRequest,
   StationCode,
   StationWorkspace,
   WaiterWorkspace,
@@ -70,7 +71,7 @@ export const opsClient = {
   complaintsWorkspace: () => post<ComplaintsWorkspace>('/api/ops/workspaces/complaints', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.complaints, key: 'ops:complaints' } }),
   menuWorkspace: () => post<MenuWorkspace>('/api/ops/workspaces/menu', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.menu, key: 'ops:menu' } }),
   billingReceipt: (input: { paymentId?: string | null; sessionId?: string | null; allocations?: BillingAllocationInput[]; debtorName?: string | null }) => get<BillingReceipt>(buildBillingReceiptApiUrl(input), { readCache: { ttlMs: READ_CACHE_TTL_MS.receipt } }),
-  reportsWorkspace: () => post<ReportsWorkspace>('/api/ops/workspaces/reports', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.reports, key: 'ops:reports' } }),
+  reportsWorkspace: (input: ReportsWorkspaceRequest = {}) => post<ReportsWorkspace>('/api/ops/workspaces/reports', input, { readCache: { ttlMs: READ_CACHE_TTL_MS.reports, key: `ops:reports:${input.weekAnchorDate ?? '-'}:${input.monthAnchorDate ?? '-'}` } }),
   deferredCustomersWorkspace: () => post<{ items: DeferredCustomerSummary[] }>('/api/ops/workspaces/deferred-customers', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.deferredCustomers, key: 'ops:deferred-customers' } }),
   deferredCustomerLedger: (debtorName: string) => post<DeferredCustomerLedgerWorkspace>('/api/ops/workspaces/deferred-customer-ledger', { debtorName }, { readCache: { ttlMs: READ_CACHE_TTL_MS.deferredLedger, key: `ops:deferred-ledger:${debtorName.trim()}` } }),
 

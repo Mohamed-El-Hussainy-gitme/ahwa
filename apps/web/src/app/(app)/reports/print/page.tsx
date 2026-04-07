@@ -5,7 +5,7 @@ import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { DeferredCustomerSummary, ProductReportRow, ReportsWorkspace, StaffPerformanceRow, ReportTotals, ReportComplaintEntry, ReportItemIssueEntry } from '@/lib/ops/types';
+import type { DeferredCustomerSummary, ProductReportRow, ReportsWorkspace, ReportsWorkspaceRequest, StaffPerformanceRow, ReportTotals, ReportComplaintEntry, ReportItemIssueEntry } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
 import { AccessDenied } from '@/ui/AccessState';
 import { PrintPageFrame } from '@/ui/print/PrintPageFrame';
@@ -176,9 +176,13 @@ export default function ReportsPrintPage() {
   const { user } = useAuthz();
   const searchParams = useSearchParams();
   const tab = searchParams.get('tab') ?? 'current';
-  const loader = useCallback(() => opsClient.reportsWorkspace(), []);
+  const reportsRequest = useMemo<ReportsWorkspaceRequest>(() => ({
+    weekAnchorDate: searchParams.get('weekAnchorDate') ?? undefined,
+    monthAnchorDate: searchParams.get('monthAnchorDate') ?? undefined,
+  }), [searchParams]);
+  const loader = useCallback(() => opsClient.reportsWorkspace(reportsRequest), [reportsRequest]);
   const { data, error } = useOpsWorkspace<ReportsWorkspace>(loader, {
-    cacheKey: 'workspace:reports:print',
+    cacheKey: `workspace:reports:print:${reportsRequest.weekAnchorDate ?? '-'}:${reportsRequest.monthAnchorDate ?? '-'}` ,
     staleTimeMs: 60_000,
     enabled: user?.baseRole === 'owner',
     shouldReloadOnEvent: () => false,
@@ -217,7 +221,7 @@ export default function ReportsPrintPage() {
     <PrintPageFrame
       title={tab === 'deferred' ? 'تصدير دفتر الآجل' : `تقرير ${periodLabel(tab)}`}
       exportFilename={tab === 'deferred' ? 'دفتر-الآجل' : `تقرير-${periodLabel(tab)}`}
-      subtitle={data ? `مرجع البيانات: ${data.referenceDate}` : 'جاري التحميل...'}
+      subtitle={data ? `مرجع البيانات: ${data.referenceDate}${selectedPeriod ? ` • ${selectedPeriod.startDate} ← ${selectedPeriod.endDate}` : ''}` : 'جاري التحميل...'}
     >
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
       {!data && !error ? <div className="rounded-2xl border border-dashed p-4 text-sm text-neutral-500">جاري تجهيز النسخة القابلة للطباعة...</div> : null}

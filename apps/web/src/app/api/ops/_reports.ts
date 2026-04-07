@@ -11,6 +11,7 @@ import type {
   ReportsWorkspace,
   ReportShiftRow,
   ReportTotals,
+  ReportsWorkspaceRequest,
   StaffPerformanceRow,
   StationCode,
 } from '@/lib/ops/types';
@@ -145,6 +146,60 @@ function startOfMonth(date: string): string {
   const value = toDateValue(date);
   value.setUTCDate(1);
   return formatDateValue(value);
+}
+
+function endOfWeek(date: string): string {
+  const value = toDateValue(startOfWeek(date));
+  value.setUTCDate(value.getUTCDate() + 6);
+  return formatDateValue(value);
+}
+
+function endOfMonth(date: string): string {
+  const value = toDateValue(startOfMonth(date));
+  value.setUTCMonth(value.getUTCMonth() + 1, 0);
+  return formatDateValue(value);
+}
+
+function clampDate(date: string, maxDate: string): string {
+  return date > maxDate ? maxDate : date;
+}
+
+function isIsoDate(value: string | null | undefined): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function diffDaysInclusive(startDate: string, endDate: string): number {
+  const start = toDateValue(startDate).getTime();
+  const end = toDateValue(endDate).getTime();
+  return Math.floor((end - start) / 86_400_000) + 1;
+}
+
+function resolveHistoricalRanges(referenceDate: string, input: ReportsWorkspaceRequest = {}) {
+  const weekAnchorDate = isIsoDate(input.weekAnchorDate) ? input.weekAnchorDate : referenceDate;
+  const monthAnchorDate = isIsoDate(input.monthAnchorDate) ? `${input.monthAnchorDate.slice(0, 7)}-01` : referenceDate;
+
+  const weekStartDate = startOfWeek(weekAnchorDate);
+  const weekEndDate = clampDate(endOfWeek(weekAnchorDate), referenceDate);
+  const monthStartDate = startOfMonth(monthAnchorDate);
+  const monthEndDate = clampDate(endOfMonth(monthAnchorDate), referenceDate);
+
+  if (weekStartDate > referenceDate || monthStartDate > referenceDate) {
+    throw new Error('INVALID_REPORT_PERIOD');
+  }
+
+  if (diffDaysInclusive(weekStartDate, weekEndDate) > 7 || diffDaysInclusive(monthStartDate, monthEndDate) > 31) {
+    throw new Error('INVALID_REPORT_PERIOD');
+  }
+
+  const lookbackDays = Math.max(diffDaysInclusive(monthStartDate, referenceDate), diffDaysInclusive(weekStartDate, referenceDate));
+  if (lookbackDays > 731) {
+    throw new Error('REPORT_PERIOD_TOO_OLD');
+  }
+
+  return {
+    week: { key: 'week' as const, label: 'الأسبوع', startDate: weekStartDate, endDate: weekEndDate },
+    month: { key: 'month' as const, label: 'الشهر', startDate: monthStartDate, endDate: monthEndDate },
+  };
 }
 
 function startOfYear(date: string): string {
@@ -1351,14 +1406,15 @@ function buildValidatedSummaryBackedPeriod(input: {
   return summaryBacked;
 }
 
-export async function buildReportsWorkspace(cafeId: string, databaseKey: string): Promise<ReportsWorkspace> {
+export async function buildReportsWorkspace(cafeId: string, databaseKey: string, input: ReportsWorkspaceRequest = {}): Promise<ReportsWorkspace> {
   await ensureRuntimeContract('reporting', databaseKey);
 
   const referenceDate = cairoToday();
+  const historicalRanges = resolveHistoricalRanges(referenceDate, input);
   const ranges = {
     day: { key: 'day' as const, label: 'اليوم', startDate: referenceDate, endDate: referenceDate },
-    week: { key: 'week' as const, label: 'الأسبوع', startDate: startOfWeek(referenceDate), endDate: referenceDate },
-    month: { key: 'month' as const, label: 'الشهر', startDate: startOfMonth(referenceDate), endDate: referenceDate },
+    week: historicalRanges.week,
+    month: historicalRanges.month,
     year: { key: 'year' as const, label: 'السنة', startDate: startOfYear(referenceDate), endDate: referenceDate },
   };
 
@@ -1370,8 +1426,8 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
       .from('shifts')
       .select('id, shift_kind, status, opened_at, closed_at, business_date')
       .eq('cafe_id', cafeId)
-      .gte('business_date', ranges.year.startDate)
-      .lte('business_date', ranges.year.endDate)
+      .gte('business_date', [ranges.year.startDate, ranges.month.startDate, ranges.week.startDate].sort()[0])
+      .lte('business_date', referenceDate)
       .order('business_date', { ascending: false })
       .order('opened_at', { ascending: false }),
   ]);
