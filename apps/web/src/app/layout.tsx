@@ -2,22 +2,10 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
 
-const resolvedAppUrl =
-  process.env.NEXT_PUBLIC_APP_URL ??
-  (process.env.VERCEL_PROJECT_PRODUCTION_URL ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}` : undefined) ??
-  (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : undefined) ??
-  "https://ahwa.vercel.app";
-
-const appUrl = new URL(resolvedAppUrl);
-const ogImage = new URL("/og/ahwa-og.png", appUrl).toString();
-
 export const metadata: Metadata = {
-  metadataBase: appUrl,
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://app.ahwa.app"),
   applicationName: "AHWA",
-  title: {
-    default: "Ahwa",
-    template: "%s | Ahwa",
-  },
+  title: "Ahwa",
   description: "منصة تشغيل يومية للقهاوي الراقية: الصالة، الباريستا، الشيشة، والتحصيل.",
   manifest: "/manifest.webmanifest",
   icons: {
@@ -31,24 +19,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Ahwa",
     description: "منصة تشغيل يومية للقهاوي الراقية: الصالة، الباريستا، الشيشة، والتحصيل.",
-    url: appUrl,
-    siteName: "Ahwa",
-    type: "website",
-    locale: "ar_AR",
-    images: [
-      {
-        url: ogImage,
-        width: 1200,
-        height: 630,
-        alt: "Ahwa",
-      },
-    ],
-  },
-  twitter: {
-    card: "summary_large_image",
-    title: "Ahwa",
-    description: "منصة تشغيل يومية للقهاوي الراقية: الصالة، الباريستا، الشيشة، والتحصيل.",
-    images: [ogImage],
+    images: ["/brand/ahwa-logo.png"],
   },
 };
 

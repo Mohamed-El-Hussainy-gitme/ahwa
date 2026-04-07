@@ -1,13 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import type { PublicMenuPayload } from '@/lib/public-ordering';
 
 type StationCode = 'barista' | 'shisha';
 type Section = { id: string; title: string; stationCode: StationCode; sortOrder: number };
 type Product = { id: string; sectionId: string; name: string; stationCode: StationCode; unitPrice: number; sortOrder: number };
 type BillingSettings = { taxEnabled: boolean; taxRate: number; serviceEnabled: boolean; serviceRate: number };
-type MenuPayload = PublicMenuPayload & {
+type MenuPayload = {
   cafe: { cafeId: string; cafeSlug: string; cafeName: string; databaseKey: string };
   menu: { sections: Section[]; products: Product[]; billingSettings: BillingSettings };
 };
@@ -18,9 +17,9 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value);
 }
 
-export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; initialMenu?: MenuPayload | null }) {
-  const [menu, setMenu] = useState<MenuPayload | null>(initialMenu ?? null);
-  const [loading, setLoading] = useState(!initialMenu);
+export function PublicCafeOrderingClient({ slug }: { slug: string }) {
+  const [menu, setMenu] = useState<MenuPayload | null>(null);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [cart, setCart] = useState<Record<string, number>>({});
   const [customerName, setCustomerName] = useState('');
@@ -30,17 +29,11 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    if (initialMenu) {
-      setMenu(initialMenu);
-      setLoading(false);
-      return;
-    }
-
     let cancelled = false;
     setLoading(true);
     setError(null);
 
-    fetch(`/api/public/cafes/${encodeURIComponent(slug)}/menu`)
+    fetch(`/api/public/cafes/${encodeURIComponent(slug)}/menu`, { cache: 'no-store' })
       .then(async (response) => {
         const payload = await response.json().catch(() => null);
         if (!response.ok || !payload?.ok) {
@@ -64,7 +57,7 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
     return () => {
       cancelled = true;
     };
-  }, [initialMenu, slug]);
+  }, [slug]);
 
   const sectionsWithProducts = useMemo(() => {
     if (!menu) return [] as Array<Section & { products: Product[] }>;

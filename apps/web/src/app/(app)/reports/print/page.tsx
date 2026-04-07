@@ -178,8 +178,6 @@ export default function ReportsPrintPage() {
   const tab = searchParams.get('tab') ?? 'current';
   const loader = useCallback(() => opsClient.reportsWorkspace(), []);
   const { data, error } = useOpsWorkspace<ReportsWorkspace>(loader, {
-    cacheKey: 'workspace:reports:print',
-    staleTimeMs: 60_000,
     enabled: user?.baseRole === 'owner',
     shouldReloadOnEvent: () => false,
   });
