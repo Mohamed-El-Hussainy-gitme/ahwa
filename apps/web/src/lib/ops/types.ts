@@ -38,7 +38,7 @@ export type SessionOrderItem = {
   notes?: string | null;
 };
 export type WaiterCatalogWorkspace = { sections: OpsSection[]; products: OpsProduct[] };
-export type WaiterLiveWorkspace = { shift: OpsShift | null; sessions: OpsSessionSummary[]; readyItems: ReadyItem[]; sessionItems: SessionOrderItem[] };
+export type WaiterLiveWorkspace = { shift: OpsShift | null; sessions: OpsSessionSummary[]; readyItems: ReadyItem[]; sessionItems: SessionOrderItem[]; notePresets: string[] };
 export type WaiterWorkspace = WaiterLiveWorkspace & WaiterCatalogWorkspace;
 export type StationQueueItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; stationCode: StationCode; qtyWaitingOriginal: number; qtyWaitingReplacement: number; qtyWaiting: number; qtyReady: number; qtyDelivered: number; qtyReplacementDelivered: number; createdAt: string; notes?: string | null };
 export type StationWorkspace = { shift: OpsShift | null; stationCode: StationCode; queue: StationQueueItem[] };

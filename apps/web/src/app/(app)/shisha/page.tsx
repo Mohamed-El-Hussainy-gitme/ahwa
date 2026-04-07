@@ -80,6 +80,8 @@ export default function ShishaPage() {
   });
 
   const previousQueueQtyRef = useRef(0);
+
+  const notePresets = liveData?.notePresets ?? [];
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const queue = stationData?.queue ?? [];
@@ -256,6 +258,10 @@ export default function ShishaPage() {
   function confirmNoteComposer() {
     setOrderNotes(noteDraft.trim());
     setNoteOpen(false);
+  }
+
+  function applyNotePreset(preset: string) {
+    setNoteDraft(preset);
   }
 
   const effectiveError = localError ?? stationError ?? liveError ?? catalogError;
@@ -533,6 +539,26 @@ export default function ShishaPage() {
               placeholder="مثال: معسل تفاحتين خفيف • بعد القهوة • تجهيز سريع"
               className="mt-4 min-h-28 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
             />
+            {notePresets.length ? (
+              <div className="mt-3">
+                <div className="mb-2 text-right text-xs font-semibold text-[#7d6a59]">اختيار سريع</div>
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {notePresets.map((preset) => (
+                    <button
+                      key={preset}
+                      type="button"
+                      onClick={() => applyNotePreset(preset)}
+                      className={[
+                        'rounded-[18px] border px-3 py-2 text-sm whitespace-nowrap transition',
+                        noteDraft.trim() === preset ? 'border-[#9b6b2e] bg-[#9b6b2e] text-white' : 'border-[#dac9b6] bg-[#fffaf3] text-[#5e4d3f]',
+                      ].join(' ')}
+                    >
+                      {preset}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن تركها فارغة أو تعديلها قبل كل إرسال.</div>
             <div className="mt-4 flex gap-2">
               <button type="button" onClick={cancelNoteComposer} className={[opsGhostButton, 'flex-1 justify-center'].join(' ')}>

@@ -52,6 +52,7 @@ const MENU_WORKSPACE_CACHE_TTL_MS = 60_000;
 const ACTIVE_MENU_CACHE_TTL_MS = 30_000;
 const BILLING_SETTINGS_CACHE_TTL_MS = 15_000;
 const DEFERRED_SUMMARY_CACHE_TTL_MS = 10_000;
+const ORDER_NOTE_PRESETS_CACHE_TTL_MS = 15_000;
 
 async function readThroughCache<T>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T> {
   const now = Date.now();
@@ -101,18 +102,6 @@ export function normalizeShift(row: any | null): OpsShift | null {
   };
 }
 
-function normalizeSessionSummary(row: any): OpsSessionSummary {
-  const openedAt = String(row?.opened_at ?? row?.openedAt ?? '').trim();
-  return {
-    id: String(row?.id ?? '').trim(),
-    label: String(row?.session_label ?? row?.label ?? '').trim(),
-    status: String(row?.status ?? '').trim(),
-    openedAt,
-    billableCount: Number(row?.billable_count ?? row?.billableCount ?? 0),
-    readyCount: Number(row?.ready_count ?? row?.readyCount ?? 0),
-  };
-}
-
 async function loadOpenShift(cafeId: string, databaseKey: string): Promise<OpsShift | null> {
   const { data, error } = await adminOps(databaseKey)
     .from('shifts')
@@ -126,7 +115,7 @@ async function loadOpenShift(cafeId: string, databaseKey: string): Promise<OpsSh
   return normalizeShift(data ?? null);
 }
 
-async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: string): Promise<OpsSessionSummary[]> {
+async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: string): Promise<any[]> {
   const { data, error } = await adminOps(databaseKey)
     .from('service_sessions')
     .select('id, session_label, status, opened_at')
@@ -135,7 +124,53 @@ async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: st
     .eq('status', 'open')
     .order('opened_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((row: any) => normalizeSessionSummary(row));
+  return (data ?? []) as any[];
+}
+
+function normalizeOrderNotePreset(value: unknown): string | null {
+  const normalized = String(value ?? '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return normalized || null;
+}
+
+async function loadOrderNotePresets(
+  cafeId: string,
+  databaseKey: string,
+  allowedStationCodes?: readonly StationCode[] | null,
+): Promise<string[]> {
+  const stationCodes = (allowedStationCodes ?? []).filter(Boolean).sort();
+  const scopedKey = stationCodes.length ? stationCodes.join(',') : 'all';
+
+  return readThroughCache(cacheKey(`order-note-presets:${scopedKey}`, cafeId, databaseKey), ORDER_NOTE_PRESETS_CACHE_TTL_MS, async () => {
+    let query = adminOps(databaseKey)
+      .from('order_note_presets')
+      .select('note_text, station_code, usage_count, last_used_at')
+      .eq('cafe_id', cafeId)
+      .eq('is_active', true)
+      .order('usage_count', { ascending: false })
+      .order('last_used_at', { ascending: false })
+      .limit(8);
+
+    if (stationCodes.length) {
+      query = query.or(`station_code.is.null,station_code.in.(${stationCodes.join(',')})`);
+    }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    const seen = new Set<string>();
+    const presets: string[] = [];
+    for (const row of data ?? []) {
+      const normalized = normalizeOrderNotePreset((row as any)?.note_text);
+      if (!normalized || seen.has(normalized)) {
+        continue;
+      }
+      seen.add(normalized);
+      presets.push(normalized);
+    }
+    return presets;
+  });
 }
 
 export async function listBillableRows(cafeId: string, databaseKey: string, shiftId?: string | null, openSessionIds?: string[]): Promise<BillableItem[]> {
@@ -247,6 +282,7 @@ export async function buildWaiterWorkspace(
   const includeSessionItems = scope.includeSessionItems !== false;
   const includeReadyItems = scope.includeReadyItems !== false;
   const sessions = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
+  const notePresets = await loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null);
 
   let sections: OpsSection[] = [];
   let products: OpsProduct[] = [];
@@ -348,7 +384,7 @@ export async function buildWaiterWorkspace(
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     : [];
 
-  return { shift: normalizedShift, sessions, sections, products, sessionItems, readyItems };
+  return { shift: normalizedShift, sessions, sections, products, sessionItems, readyItems, notePresets };
 }
 
 export async function buildReadyItemsWorkspace(cafeId: string, databaseKey: string, scope: WaiterWorkspaceScope = {}): Promise<ReadyItem[]> {
@@ -378,7 +414,7 @@ export async function buildWaiterLiveWorkspace(cafeId: string, databaseKey: stri
     includeSessionItems: true,
     includeReadyItems: true,
   });
-  return { shift: workspace.shift, sessions: workspace.sessions, sessionItems: workspace.sessionItems, readyItems: workspace.readyItems };
+  return { shift: workspace.shift, sessions: workspace.sessions, sessionItems: workspace.sessionItems, readyItems: workspace.readyItems, notePresets: workspace.notePresets };
 }
 
 export async function buildStationWorkspace(cafeId: string, stationCode: StationCode, databaseKey: string): Promise<StationWorkspace> {
@@ -391,7 +427,7 @@ export async function buildStationWorkspace(cafeId: string, stationCode: Station
     if (openSessionIds.length > 0) {
       const { data, error } = await admin
         .from('order_items')
-        .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
+        .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, notes, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
         .eq('cafe_id', cafeId)
         .eq('shift_id', normalizedShift.id)
         .eq('station_code', stationCode)

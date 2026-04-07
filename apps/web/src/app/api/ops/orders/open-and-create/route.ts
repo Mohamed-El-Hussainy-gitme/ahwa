@@ -7,6 +7,7 @@ import {
   requireSessionOrderAccess,
 } from '@/app/api/ops/_helpers';
 import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '../_station-events';
+import { persistOrderNotePreset } from '../../_order-note-presets';
 
 type OpenAndCreateRequestBody = {
   label?: string;
@@ -70,6 +71,12 @@ export async function POST(req: Request) {
     }, ctx.databaseKey);
 
     const orderId = String(createRpc.order_id ?? '').trim();
+    await persistOrderNotePreset({
+      cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
+      note: body.notes,
+      productStationCodes,
+    });
     if (!orderId) throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
 
     dispatchStationOrderSubmittedInBackground(ctx, {

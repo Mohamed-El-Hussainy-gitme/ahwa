@@ -87,11 +87,8 @@ export async function resolveFallbackOwnerActor(cafeId: string, databaseKey: str
     throw new Error('PUBLIC_ORDER_OWNER_NOT_FOUND');
   }
 
-  const fullName = String(data?.full_name ?? '').trim() || 'QR Customer';
-
   return {
     ownerId,
-    fullName,
-    ownerName: fullName,
+    ownerName: String(data?.full_name ?? '').trim() || 'QR Customer',
   };
 }

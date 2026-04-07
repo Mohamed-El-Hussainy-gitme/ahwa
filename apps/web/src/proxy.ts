@@ -22,14 +22,7 @@ function isPublicPath(path: string) {
     path === '/api/platform/auth/login' ||
     path === '/api/platform/bootstrap' ||
     path.startsWith('/_next/') ||
-    path === '/favicon.ico' ||
-    path === '/manifest.webmanifest' ||
-    path === '/sw.js' ||
-    path === '/apple-icon.png' ||
-    path === '/icon-192x192.png' ||
-    path === '/icon-512x512.png' ||
-    path.startsWith('/brand/') ||
-    path.startsWith('/og/')
+    path === '/favicon.ico'
   );
 }
 
