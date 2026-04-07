@@ -11,6 +11,7 @@ import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { applyBillingToWorkspace } from '@/lib/ops/workspacePatches';
 import { StickyActionBar } from '@/ui/StickyActionBar';
+import { SessionSelectorGrid } from '@/ui/ops/SessionSelectorGrid';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import { buildBillingPreviewUrl, computeBillingTotals } from '@/lib/ops/billing';
 import { saveBillingReceiptPreviewDraft } from '@/lib/ops/receipt-preview';
@@ -262,35 +263,20 @@ export default function BillingPage() {
           {(data?.sessions?.length ?? 0) > 0 ? <div className={opsBadge('success')}>{data?.sessions.length}</div> : null}
         </div>
 
-        {(data?.sessions ?? []).length ? (
-          <div className="grid grid-cols-2 gap-2">
-            {(data?.sessions ?? []).map((session) => (
-              <button
-                key={session.sessionId}
-                onClick={() => {
-                  setSessionId(session.sessionId);
-                  setLastReceiptUrl(null);
-                  setLastTotals(null);
-                }}
-                className={[
-                  'rounded-[20px] border px-3 py-3 text-right transition',
-                  effectiveSessionId === session.sessionId
-                    ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]'
-                    : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
-                ].join(' ')}
-              >
-                <div className="truncate text-sm font-bold">{session.sessionLabel}</div>
-                <div className={['mt-1 text-xs', effectiveSessionId === session.sessionId ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
-                  {session.totalBillableQty} صنف • {session.totalBillableAmount} ج
-                </div>
-              </button>
-            ))}
-          </div>
-        ) : (
-          <div className={[opsDashed, 'p-3 text-sm text-[#6b5a4c]'].join(' ')}>
-            لا توجد جلسات جاهزة للحساب الآن.
-          </div>
-        )}
+        <SessionSelectorGrid
+          items={(data?.sessions ?? []).map((session) => ({
+            id: session.sessionId,
+            label: session.sessionLabel,
+            subtitle: `${session.totalBillableQty} صنف • ${session.totalBillableAmount} ج`,
+          }))}
+          activeId={effectiveSessionId || null}
+          onSelect={(nextSessionId) => {
+            setSessionId(nextSessionId);
+            setLastReceiptUrl(null);
+            setLastTotals(null);
+          }}
+          emptyLabel="لا توجد جلسات جاهزة للحساب الآن."
+        />
       </section>
 
       {current ? (

@@ -101,17 +101,6 @@ export function normalizeShift(row: any | null): OpsShift | null {
   };
 }
 
-function normalizeSessionSummary(row: any): OpsSessionSummary {
-  return {
-    id: String(row.id),
-    label: String(row.session_label ?? row.label ?? ''),
-    status: String(row.status ?? 'open'),
-    openedAt: String(row.opened_at ?? row.openedAt ?? new Date().toISOString()),
-    billableCount: Number(row.billable_count ?? row.billableCount ?? 0),
-    readyCount: Number(row.ready_count ?? row.readyCount ?? 0),
-  };
-}
-
 async function loadOpenShift(cafeId: string, databaseKey: string): Promise<OpsShift | null> {
   const { data, error } = await adminOps(databaseKey)
     .from('shifts')
@@ -125,7 +114,7 @@ async function loadOpenShift(cafeId: string, databaseKey: string): Promise<OpsSh
   return normalizeShift(data ?? null);
 }
 
-async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: string): Promise<OpsSessionSummary[]> {
+async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: string): Promise<any[]> {
   const { data, error } = await adminOps(databaseKey)
     .from('service_sessions')
     .select('id, session_label, status, opened_at')
@@ -134,7 +123,7 @@ async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: st
     .eq('status', 'open')
     .order('opened_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((row: any) => normalizeSessionSummary(row));
+  return (data ?? []) as any[];
 }
 
 export async function listBillableRows(cafeId: string, databaseKey: string, shiftId?: string | null, openSessionIds?: string[]): Promise<BillableItem[]> {
@@ -390,7 +379,7 @@ export async function buildStationWorkspace(cafeId: string, stationCode: Station
     if (openSessionIds.length > 0) {
       const { data, error } = await admin
         .from('order_items')
-        .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
+        .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, notes, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
         .eq('cafe_id', cafeId)
         .eq('shift_id', normalizedShift.id)
         .eq('station_code', stationCode)
