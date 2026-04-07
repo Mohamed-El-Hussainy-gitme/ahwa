@@ -13,7 +13,5 @@
       "path": "/api/internal/maintenance/reporting?action=archive-plan&graceDays=14",
       "schedule": "5 2 * * 1"
     }
-  ],
-  "installCommand": "cd ../.. && npm install",
-  "buildCommand": "cd ../.. && npm run build:web"
+  ]
 }
