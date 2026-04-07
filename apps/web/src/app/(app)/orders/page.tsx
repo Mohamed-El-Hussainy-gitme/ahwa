@@ -126,7 +126,7 @@ export default function OrdersPage() {
       .sort((a, b) => {
         if (!creatingNew && a.id === effectiveSessionId) return -1;
         if (!creatingNew && b.id === effectiveSessionId) return 1;
-        return b.lastActivityAt.localeCompare(a.lastActivityAt);
+        return (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '');
       });
   }, [creatingNew, effectiveSessionId, liveData?.sessionItems, sessions]);
 
