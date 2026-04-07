@@ -281,7 +281,7 @@ export async function buildWaiterWorkspace(
   const includeCatalog = scope.includeCatalog !== false;
   const includeSessionItems = scope.includeSessionItems !== false;
   const includeReadyItems = scope.includeReadyItems !== false;
-  const openSessionRows = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
+  const sessions = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
   const notePresets = await loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null);
 
   let sections: OpsSection[] = [];
@@ -293,7 +293,7 @@ export async function buildWaiterWorkspace(
     products = catalog.products.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes) && allowedSectionIds.has(row.sectionId));
   }
 
-  const openSessionIds = openSessionRows.map((session: any) => String(session.id));
+  const openSessionIds = sessions.map((session: any) => String(session.id));
   const openSessionIdsSet = new Set(openSessionIds);
 
   let itemRows: any[] = [];
@@ -383,30 +383,6 @@ export async function buildWaiterWorkspace(
         .filter((row) => row.qtyReadyForDelivery > 0 || row.qtyReadyForReplacementDelivery > 0)
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     : [];
-
-  const billableMap = new Map<string, number>();
-  for (const item of sessionItems) {
-    const qtyBillable = Math.max(item.qtyDelivered - item.qtyPaid - item.qtyDeferred - item.qtyWaived, 0);
-    billableMap.set(item.serviceSessionId, (billableMap.get(item.serviceSessionId) ?? 0) + qtyBillable);
-  }
-
-  const readyMap = new Map<string, number>();
-  for (const item of readyItems) {
-    readyMap.set(item.serviceSessionId, (readyMap.get(item.serviceSessionId) ?? 0) + item.qtyReadyForDelivery);
-  }
-
-  const sessions: OpsSessionSummary[] = openSessionRows.map((row: any) => {
-    const id = String(row.id ?? '').trim();
-    const rawLabel = String(row.session_label ?? '').trim();
-    return {
-      id,
-      label: rawLabel || `جلسة ${id.slice(0, 6)}`,
-      status: String(row.status ?? 'open'),
-      openedAt: String(row.opened_at ?? new Date().toISOString()),
-      billableCount: billableMap.get(id) ?? 0,
-      readyCount: readyMap.get(id) ?? 0,
-    } satisfies OpsSessionSummary;
-  });
 
   return { shift: normalizedShift, sessions, sections, products, sessionItems, readyItems, notePresets };
 }
