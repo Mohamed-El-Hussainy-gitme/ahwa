@@ -252,7 +252,7 @@ export async function buildWaiterWorkspace(
   if (normalizedShift && openSessionIds.length > 0 && (includeSessionItems || includeReadyItems)) {
     const { data, error } = await admin
       .from('order_items')
-      .select('id, service_session_id, station_code, unit_price, qty_total, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
+      .select('id, service_session_id, station_code, unit_price, qty_total, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled, notes, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
       .eq('cafe_id', cafeId)
       .eq('shift_id', normalizedShift.id)
       .in('service_session_id', openSessionIds)
@@ -300,6 +300,7 @@ export async function buildWaiterWorkspace(
             qtyReadyForReplacementDelivery,
             availableRemakeQty,
             createdAt: String(row.created_at),
+            notes: row.notes ? String(row.notes) : null,
           } satisfies SessionOrderItem;
         })
     : [];
@@ -328,6 +329,7 @@ export async function buildWaiterWorkspace(
             qtyReadyForReplacementDelivery,
             qtyReadyForDelivery,
             createdAt: String(row.created_at),
+            notes: row.notes ? String(row.notes) : null,
           } satisfies ReadyItem;
         })
         .filter((row) => row.qtyReadyForDelivery > 0 || row.qtyReadyForReplacementDelivery > 0)
@@ -411,6 +413,7 @@ export async function buildStationWorkspace(cafeId: string, stationCode: Station
         qtyDelivered: Number(row.qty_delivered ?? 0),
         qtyReplacementDelivered: Number(row.qty_replacement_delivered ?? 0),
         createdAt: String(row.created_at),
+        notes: row.notes ? String(row.notes) : null,
       };
     })
     .filter((row) => row.qtyWaiting > 0);

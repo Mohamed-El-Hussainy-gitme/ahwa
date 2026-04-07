@@ -10,7 +10,8 @@ import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStation
 
 type CreateOrderRequestBody = {
   serviceSessionId?: string;
-  items?: Array<{ productId?: string; quantity?: number }>;
+  notes?: string;
+  items?: Array<{ productId?: string; quantity?: number; notes?: string }>;
 };
 
 type CreateOrderRpcResult = {
@@ -30,6 +31,7 @@ export async function POST(req: Request) {
     const items = body.items.map((item) => ({
       menu_product_id: String(item.productId ?? '').trim(),
       qty: Number(item.quantity ?? 0),
+      notes: String(item.notes ?? '').trim() || null,
     }));
 
     if (items.some((item) => !item.menu_product_id || !Number.isInteger(item.qty) || item.qty <= 0)) {
@@ -49,6 +51,7 @@ export async function POST(req: Request) {
       p_shift_id: shift.id,
       p_service_session_id: String(body.serviceSessionId),
       p_items: items,
+      p_notes: String(body.notes ?? '').trim() || null,
       ...actorRpcParams(ctx, 'p_created_by_staff_id', 'p_created_by_owner_id'),
     }, ctx.databaseKey);
 

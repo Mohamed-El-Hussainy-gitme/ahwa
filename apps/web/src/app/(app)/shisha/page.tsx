@@ -42,6 +42,9 @@ export default function ShishaPage() {
   const [label, setLabel] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [creatingNew, setCreatingNew] = useState(false);
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [orderNotes, setOrderNotes] = useState('');
   const [selectedSectionId, setSelectedSectionId] = useState('');
   const [draft, setDraft] = useState<Record<string, number>>({});
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
@@ -77,6 +80,7 @@ export default function ShishaPage() {
   });
 
   const previousQueueQtyRef = useRef(0);
+  const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const queue = stationData?.queue ?? [];
   const sessions = liveData?.sessions ?? [];
@@ -115,6 +119,15 @@ export default function ShishaPage() {
       setSessionWarning(null);
     }
   }, [creatingNew, effectiveSessionId]);
+
+  useEffect(() => {
+    if (!noteOpen) return;
+    const timer = window.setTimeout(() => {
+      noteTextareaRef.current?.focus();
+      noteTextareaRef.current?.select();
+    }, 40);
+    return () => window.clearTimeout(timer);
+  }, [noteOpen]);
 
   const readyCommand = useOpsCommand(
     async (item: StationQueueItem, quantity: number) => {
@@ -157,7 +170,8 @@ export default function ShishaPage() {
       if (creatingNew || !effectiveSessionId) {
         const created = await opsClient.openAndCreateOrder({
           label: label || undefined,
-          items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          notes: orderNotes || undefined,
+          items: draftLines.map(([productId, quantity]) => ({ productId, quantity, notes: orderNotes || undefined })),
         });
         setSessionId(created.sessionId);
         setCreatingNew(false);
@@ -165,12 +179,16 @@ export default function ShishaPage() {
       } else {
         await opsClient.createOrderWithItems({
           serviceSessionId: effectiveSessionId,
-          items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          notes: orderNotes || undefined,
+          items: draftLines.map(([productId, quantity]) => ({ productId, quantity, notes: orderNotes || undefined })),
         });
       }
 
       setDraft({});
       setLabel('');
+      setOrderNotes('');
+      setNoteDraft('');
+      setNoteOpen(false);
     },
     { onError: setLocalError },
   );
@@ -225,6 +243,21 @@ export default function ShishaPage() {
     setSessionWarning(null);
   }
 
+  function openNoteComposer() {
+    setNoteDraft(orderNotes);
+    setNoteOpen(true);
+  }
+
+  function cancelNoteComposer() {
+    setNoteDraft(orderNotes);
+    setNoteOpen(false);
+  }
+
+  function confirmNoteComposer() {
+    setOrderNotes(noteDraft.trim());
+    setNoteOpen(false);
+  }
+
   const effectiveError = localError ?? stationError ?? liveError ?? catalogError;
 
   return (
@@ -252,15 +285,26 @@ export default function ShishaPage() {
               <div className="mt-1 text-xs text-[#7d6a59]">
                 {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر أصناف الشيشة ثم أرسل الطلب دفعة واحدة'}
               </div>
+              {orderNotes ? <div className="mt-1 line-clamp-1 text-xs font-semibold text-[#9b6b2e]">ملاحظة الطلب: {orderNotes}</div> : null}
             </div>
-            <button
-              type="button"
-              onClick={() => void submitCommand.run()}
-              disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
-              className={[opsPrimaryButton, 'shrink-0'].join(' ')}
-            >
-              {submitCommand.busy ? 'جارٍ الإرسال...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={openNoteComposer}
+                disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
+                className={[opsGhostButton, 'shrink-0'].join(' ')}
+              >
+                ملاحظة
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitCommand.run()}
+                disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
+                className={[opsPrimaryButton, 'shrink-0'].join(' ')}
+              >
+                {submitCommand.busy ? 'جارٍ الإرسال...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
+              </button>
+            </div>
           </div>
         </StickyActionBar>
       }
@@ -401,11 +445,14 @@ export default function ShishaPage() {
                   </div>
                 </div>
 
-                {item.qtyWaitingReplacement > 0 ? (
+                {item.qtyWaitingReplacement > 0 || item.notes ? (
                   <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                    <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span>
+                    {item.qtyWaitingReplacement > 0 ? <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span> : null}
+                    {item.notes ? <span className={opsBadge('info')}>ملاحظة مرفقة</span> : null}
                   </div>
                 ) : null}
+
+                {item.notes ? <div className="mt-2 rounded-[16px] bg-[#fff8ef] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">{item.notes}</div> : null}
 
                 <QuantityStepper
                   label="تجهيز الآن"
@@ -471,6 +518,33 @@ export default function ShishaPage() {
           </section>
         ) : null}
       </div>
+
+      {noteOpen ? (
+        <div className="fixed inset-0 z-[72] flex items-end justify-center bg-[#1e1712]/45 p-3 sm:items-center">
+          <div className="w-full max-w-md rounded-[28px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
+            <div className="text-right">
+              <div className="text-base font-black text-[#1e1712]">ملاحظة الطلب</div>
+              <div className="mt-1 text-sm text-[#7d6a59]">أضف ملاحظة للكابتن أوردر أو لمحطة الشيشة، وسيتم إرسالها مع هذه الدفعة.</div>
+            </div>
+            <textarea
+              ref={noteTextareaRef}
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              placeholder="مثال: معسل تفاحتين خفيف • بعد القهوة • تجهيز سريع"
+              className="mt-4 min-h-28 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
+            />
+            <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن تركها فارغة أو تعديلها قبل كل إرسال.</div>
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={cancelNoteComposer} className={[opsGhostButton, 'flex-1 justify-center'].join(' ')}>
+                إلغاء
+              </button>
+              <button type="button" onClick={confirmNoteComposer} className={[opsPrimaryButton, 'flex-1 justify-center'].join(' ')}>
+                اعتماد الملاحظة
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </MobileShell>
   );
 }

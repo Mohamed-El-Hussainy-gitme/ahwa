@@ -1,8 +1,6 @@
 import 'server-only';
 import crypto from 'node:crypto';
 import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
-import { getOutboxDispatchPolicy } from '@/lib/platform/env-contract';
-import { enqueueInternalRequestWithQStash, isQStashConfigured } from '@/lib/platform/qstash';
 import type { OpsRealtimeEvent } from '@/lib/ops/types';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
@@ -40,11 +38,9 @@ const DEFAULT_BATCH_LIMIT = 100;
 const DEFAULT_RETRY_AFTER_SECONDS = 15;
 const DEFAULT_MAX_ATTEMPTS = 20;
 const OPS_OUTBOX_KICK_KEY = '__ahwa_ops_outbox_kick__';
-const OPS_OUTBOX_QSTASH_DEDUPE_KEY = '__ahwa_ops_outbox_qstash_dedupe__';
 
 type GlobalKickScope = typeof globalThis & {
   [OPS_OUTBOX_KICK_KEY]?: Map<string, Promise<void>>;
-  [OPS_OUTBOX_QSTASH_DEDUPE_KEY]?: Map<string, number>;
 };
 
 function envNumber(name: string, fallback: number) {
@@ -58,45 +54,6 @@ function getKickMap() {
     scope[OPS_OUTBOX_KICK_KEY] = new Map<string, Promise<void>>();
   }
   return scope[OPS_OUTBOX_KICK_KEY] as Map<string, Promise<void>>;
-}
-
-
-function getQStashDedupeMap() {
-  const scope = globalThis as GlobalKickScope;
-  if (!scope[OPS_OUTBOX_QSTASH_DEDUPE_KEY]) {
-    scope[OPS_OUTBOX_QSTASH_DEDUPE_KEY] = new Map<string, number>();
-  }
-  return scope[OPS_OUTBOX_QSTASH_DEDUPE_KEY] as Map<string, number>;
-}
-
-function shouldEnqueueQStashKick(key: string, ttlMs = 5000) {
-  const map = getQStashDedupeMap();
-  const now = Date.now();
-  const until = map.get(key) ?? 0;
-  if (until > now) {
-    return false;
-  }
-  map.set(key, now + ttlMs);
-  return true;
-}
-
-async function enqueueOpsOutboxDispatchWithQStash(input: DispatchOpsOutboxBatchInput) {
-  const query = new URLSearchParams();
-  query.set('databaseKey', input.databaseKey);
-  if (input.cafeId) {
-    query.set('cafeId', String(input.cafeId));
-  }
-  if (typeof input.limit === 'number' && Number.isFinite(input.limit) && input.limit > 0) {
-    query.set('limit', String(Math.trunc(input.limit)));
-  }
-
-  await enqueueInternalRequestWithQStash({
-    path: `/api/internal/ops/outbox/dispatch?${query.toString()}`,
-    method: 'POST',
-    retries: 3,
-    timeoutSeconds: 30,
-    dedupeKey: `ops-outbox:${input.databaseKey}:${input.cafeId ? String(input.cafeId) : '*'}:${typeof input.limit === 'number' ? Math.trunc(input.limit) : 'default'}`,
-  });
 }
 
 function resolveLimit(limit?: number) {
@@ -301,20 +258,12 @@ export async function dispatchOpsOutboxAcrossConfiguredDatabases(limit?: number)
 }
 
 export function scheduleOpsOutboxDispatch(input: DispatchOpsOutboxBatchInput) {
-  const policy = getOutboxDispatchPolicy();
-  const key = `${input.databaseKey.trim()}:${input.cafeId ? String(input.cafeId).trim() : '*'}`;
-
-  const shouldKickInline = policy === 'inline' || policy === 'hybrid';
-  const shouldKickQStash = isQStashConfigured() && (policy === 'background' || policy === 'hybrid');
-
-  if (shouldKickQStash && shouldEnqueueQStashKick(key)) {
-    void enqueueOpsOutboxDispatchWithQStash(input).catch(() => undefined);
-  }
-
-  if (!shouldKickInline) {
+  const enabled = String(process.env.AHWA_OPS_OUTBOX_INLINE_DISPATCH_ENABLED ?? 'false').trim().toLowerCase();
+  if (enabled === '0' || enabled === 'false' || enabled === 'off') {
     return;
   }
 
+  const key = `${input.databaseKey.trim()}:${input.cafeId ? String(input.cafeId).trim() : '*'}`;
   const kicks = getKickMap();
   if (kicks.has(key)) {
     return;

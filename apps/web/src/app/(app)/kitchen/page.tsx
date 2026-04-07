@@ -121,11 +121,14 @@ export default function KitchenPage() {
                 </div>
               </div>
 
-              {item.qtyWaitingReplacement > 0 ? (
+              {item.qtyWaitingReplacement > 0 || item.notes ? (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                  <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span>
+                  {item.qtyWaitingReplacement > 0 ? <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span> : null}
+                  {item.notes ? <span className={opsBadge('info')}>ملاحظة مرفقة</span> : null}
                 </div>
               ) : null}
+
+              {item.notes ? <div className="mt-2 rounded-[16px] bg-[#fff8ef] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">{item.notes}</div> : null}
 
               <QuantityStepper
                 label="تجهيز الآن"

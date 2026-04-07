@@ -68,12 +68,16 @@ export default function OrdersPage() {
   const [creatingNew, setCreatingNew] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerLabel, setComposerLabel] = useState('');
+  const [noteOpen, setNoteOpen] = useState(false);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [orderNotes, setOrderNotes] = useState('');
   const [selectedSectionId, setSelectedSectionId] = useState('');
   const [draft, setDraft] = useState<Record<string, number>>({});
   const [readySelection, setReadySelection] = useState<Record<string, number>>({});
   const [remakeSelection, setRemakeSelection] = useState<Record<string, number>>({});
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
+  const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const liveLoader = useCallback(() => opsClient.waiterLiveWorkspace(), []);
   const catalogLoader = useCallback(() => opsClient.waiterCatalogWorkspace(), []);
@@ -148,6 +152,15 @@ export default function OrdersPage() {
     return () => window.clearTimeout(timer);
   }, [composerOpen]);
 
+  useEffect(() => {
+    if (!noteOpen) return;
+    const timer = window.setTimeout(() => {
+      noteTextareaRef.current?.focus();
+      noteTextareaRef.current?.select();
+    }, 40);
+    return () => window.clearTimeout(timer);
+  }, [noteOpen]);
+
   const submitCommand = useOpsCommand(
     async () => {
       if (!liveData) return;
@@ -157,7 +170,8 @@ export default function OrdersPage() {
       if (creatingNew || !effectiveSessionId) {
         const created = await opsClient.openAndCreateOrder({
           label: label || undefined,
-          items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          notes: orderNotes || undefined,
+          items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity, notes: orderNotes || undefined })),
         });
         setSessionId(created.sessionId);
         setCreatingNew(false);
@@ -165,7 +179,8 @@ export default function OrdersPage() {
       } else {
         await opsClient.createOrderWithItems({
           serviceSessionId: effectiveSessionId,
-          items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity })),
+          notes: orderNotes || undefined,
+          items: nextDraftLines.map(([productId, quantity]) => ({ productId, quantity, notes: orderNotes || undefined })),
         });
         setLiveData((current) => appendOrTouchSession(current, effectiveSessionId, selectedSession?.label ?? `جلسة ${effectiveSessionId.slice(0, 6)}`));
       }
@@ -173,6 +188,9 @@ export default function OrdersPage() {
       setDraft({});
       setLabel('');
       setComposerLabel('');
+      setOrderNotes('');
+      setNoteDraft('');
+      setNoteOpen(false);
     },
     { onError: setCommandError },
   );
@@ -291,15 +309,26 @@ export default function OrdersPage() {
               <div className="mt-1 text-xs text-[#7d6a59]">
                 {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر الأصناف ثم أرسل الطلب دفعة واحدة'}
               </div>
+              {orderNotes ? <div className="mt-1 line-clamp-1 text-xs font-semibold text-[#9b6b2e]">ملاحظة الطلب: {orderNotes}</div> : null}
             </div>
-            <button
-              type="button"
-              onClick={() => void submitCommand.run()}
-              disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
-              className={[opsPrimaryButton, 'shrink-0'].join(' ')}
-            >
-              {submitCommand.busy ? 'جارٍ الإرسال...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
-            </button>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={openNoteComposer}
+                disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
+                className={[opsGhostButton, 'shrink-0'].join(' ')}
+              >
+                ملاحظة
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitCommand.run()}
+                disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
+                className={[opsPrimaryButton, 'shrink-0'].join(' ')}
+              >
+                {submitCommand.busy ? 'جارٍ الإرسال...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
+              </button>
+            </div>
           </div>
         </StickyActionBar>
       }
@@ -528,6 +557,33 @@ export default function OrdersPage() {
               </button>
               <button type="button" onClick={confirmComposer} className={[opsPrimaryButton, 'flex-1 justify-center'].join(' ')}>
                 اعتماد الجلسة
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {noteOpen ? (
+        <div className="fixed inset-0 z-[72] flex items-end justify-center bg-[#1e1712]/45 p-3 sm:items-center">
+          <div className="w-full max-w-md rounded-[28px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
+            <div className="text-right">
+              <div className="text-base font-black text-[#1e1712]">ملاحظة الطلب</div>
+              <div className="mt-1 text-sm text-[#7d6a59]">أضف ملاحظة للكابتن أوردر أو للمحطة، وسيتم إرسالها مع هذه الدفعة.</div>
+            </div>
+            <textarea
+              ref={noteTextareaRef}
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              placeholder="مثال: بدون سكر • بعد الشيشة • تجهيز سريع"
+              className="mt-4 min-h-28 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
+            />
+            <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن تركها فارغة أو تعديلها قبل كل إرسال.</div>
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={cancelNoteComposer} className={[opsGhostButton, 'flex-1 justify-center'].join(' ')}>
+                إلغاء
+              </button>
+              <button type="button" onClick={confirmNoteComposer} className={[opsPrimaryButton, 'flex-1 justify-center'].join(' ')}>
+                اعتماد الملاحظة
               </button>
             </div>
           </div>

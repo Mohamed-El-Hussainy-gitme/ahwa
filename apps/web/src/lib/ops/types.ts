@@ -13,6 +13,7 @@ export type ReadyItem = {
   qtyReadyForReplacementDelivery: number;
   qtyReadyForDelivery: number;
   createdAt?: string;
+  notes?: string | null;
 };
 export type SessionOrderItem = {
   orderItemId: string;
@@ -34,11 +35,12 @@ export type SessionOrderItem = {
   qtyReadyForReplacementDelivery?: number;
   availableRemakeQty: number;
   createdAt?: string;
+  notes?: string | null;
 };
 export type WaiterCatalogWorkspace = { sections: OpsSection[]; products: OpsProduct[] };
 export type WaiterLiveWorkspace = { shift: OpsShift | null; sessions: OpsSessionSummary[]; readyItems: ReadyItem[]; sessionItems: SessionOrderItem[] };
 export type WaiterWorkspace = WaiterLiveWorkspace & WaiterCatalogWorkspace;
-export type StationQueueItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; stationCode: StationCode; qtyWaitingOriginal: number; qtyWaitingReplacement: number; qtyWaiting: number; qtyReady: number; qtyDelivered: number; qtyReplacementDelivered: number; createdAt: string };
+export type StationQueueItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; stationCode: StationCode; qtyWaitingOriginal: number; qtyWaitingReplacement: number; qtyWaiting: number; qtyReady: number; qtyDelivered: number; qtyReplacementDelivered: number; createdAt: string; notes?: string | null };
 export type StationWorkspace = { shift: OpsShift | null; stationCode: StationCode; queue: StationQueueItem[] };
 export type BillableItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; unitPrice: number; qtyBillable: number; qtyDelivered: number; qtyPaid: number; qtyDeferred: number; qtyWaived: number };
 export type BillingExtrasSettings = { taxEnabled: boolean; taxRate: number; serviceEnabled: boolean; serviceRate: number };

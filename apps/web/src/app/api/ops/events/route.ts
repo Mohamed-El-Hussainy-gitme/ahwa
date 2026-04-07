@@ -63,9 +63,9 @@ export async function GET(req: Request) {
             cafeId,
             cursor: lastCursor,
             signal: abortController.signal,
-            onError: (error) => {
+            onError: () => {
               controller.enqueue(
-                encoder.encode(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false, message: error.message, retryAfterMs: 2000 })}\n\n`),
+                encoder.encode(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false })}\n\n`),
               );
             },
           },

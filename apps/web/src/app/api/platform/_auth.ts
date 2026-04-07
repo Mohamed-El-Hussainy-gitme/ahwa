@@ -6,7 +6,6 @@ import {
   type PlatformAdminSession,
 } from '@/lib/platform-auth/session';
 import { getControlPlaneSupabaseAdminKey, getControlPlaneSupabaseUrl } from '@/lib/supabase/env';
-import { assertCriticalEnv } from '@/lib/platform/env-contract';
 
 type PlatformErrorCode =
   | 'UNAUTHORIZED'
@@ -110,7 +109,6 @@ export function platformJsonError(error: unknown, fallbackStatus = 400) {
 }
 
 export function assertPlatformEnv() {
-  assertCriticalEnv();
   if (!getControlPlaneSupabaseUrl()) {
     throw new PlatformApiError(
       'MISSING_CONTROL_PLANE_URL',
