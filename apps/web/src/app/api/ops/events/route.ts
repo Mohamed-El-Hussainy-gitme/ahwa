@@ -1,5 +1,4 @@
 import { NextResponse } from 'next/server';
-import { clearAuthCookies } from '@/lib/auth/cookies';
 import {
   getEnrichedRuntimeMeFromCookie,
   isUnboundRuntimeSessionError,
@@ -27,20 +26,13 @@ export async function GET(req: Request) {
     me = await getEnrichedRuntimeMeFromCookie();
   } catch (error) {
     if (isUnboundRuntimeSessionError(error)) {
-      const response = NextResponse.json(
-        { error: 'UNBOUND_RUNTIME_SESSION' },
-        { status: 409 },
-      );
-      clearAuthCookies(response);
-      return response;
+      return NextResponse.json({ error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
     }
     throw error;
   }
 
   if (!me?.tenantId) {
-    const response = NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
-    clearAuthCookies(response);
-    return response;
+    return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
   const cafeId = String(me.tenantId);
@@ -72,7 +64,9 @@ export async function GET(req: Request) {
             cursor: lastCursor,
             signal: abortController.signal,
             onError: () => {
-              controller.enqueue(encoder.encode(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false })}\n\n`));
+              controller.enqueue(
+                encoder.encode(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false })}\n\n`),
+              );
             },
           },
           send,
@@ -83,8 +77,8 @@ export async function GET(req: Request) {
       }
 
       heartbeat = setInterval(() => {
-        controller.enqueue(encoder.encode(`: heartbeat ${Date.now()}\n\n`));
-      }, 15000);
+        controller.enqueue(encoder.encode(`event: ping\ndata: ${Date.now()}\n\n`));
+      }, 15_000);
     },
     cancel() {
       abortController.abort();

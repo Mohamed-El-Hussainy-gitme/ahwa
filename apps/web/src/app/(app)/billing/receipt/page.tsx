@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useMemo } from 'react';
-import { useCallback } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import { parseBillingAllocations } from '@/lib/ops/billing';
+import { loadBillingReceiptPreviewDraft } from '@/lib/ops/receipt-preview';
 import type { BillingReceipt } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
 import { AccessDenied } from '@/ui/AccessState';
@@ -61,6 +61,9 @@ export default function BillingReceiptPage() {
   const previewDebtorName = String(searchParams.get('debtorName') ?? '').trim();
   const previewAllocationsParam = String(searchParams.get('allocations') ?? '').trim();
 
+  const [storageDraftLoaded, setStorageDraftLoaded] = useState(false);
+  const [storedPreview, setStoredPreview] = useState<{ allocations: ReturnType<typeof parseBillingAllocations>; debtorName: string | null } | null>(null);
+
   const previewAllocations = useMemo(() => {
     try {
       return parseBillingAllocations(previewAllocationsParam);
@@ -69,18 +72,35 @@ export default function BillingReceiptPage() {
     }
   }, [previewAllocationsParam]);
 
+  useEffect(() => {
+    if (paymentId || !previewSessionId) {
+      setStoredPreview(null);
+      setStorageDraftLoaded(true);
+      return;
+    }
+
+    const draft = loadBillingReceiptPreviewDraft(previewSessionId);
+    setStoredPreview(draft ? { allocations: draft.allocations, debtorName: draft.debtorName } : null);
+    setStorageDraftLoaded(true);
+  }, [paymentId, previewSessionId]);
+
+  const effectivePreviewAllocations = previewAllocations.length > 0 ? previewAllocations : storedPreview?.allocations ?? [];
+  const effectivePreviewDebtorName = previewDebtorName || storedPreview?.debtorName || '';
+
   const loader = useCallback(
     () =>
       opsClient.billingReceipt({
         paymentId: paymentId || undefined,
         sessionId: paymentId ? undefined : previewSessionId,
-        allocations: paymentId ? undefined : previewAllocations,
-        debtorName: paymentId ? undefined : previewDebtorName || undefined,
+        allocations: paymentId ? undefined : effectivePreviewAllocations,
+        debtorName: paymentId ? undefined : effectivePreviewDebtorName || undefined,
       }),
-    [paymentId, previewSessionId, previewAllocations, previewDebtorName],
+    [paymentId, previewSessionId, effectivePreviewAllocations, effectivePreviewDebtorName],
   );
   const { data, error } = useOpsWorkspace<BillingReceipt>(loader, {
-    enabled: Boolean(paymentId) || (Boolean(previewSessionId) && previewAllocations.length > 0 && (can.owner || can.billing)),
+    cacheKey: `workspace:billing:receipt:${paymentId || previewSessionId || 'preview'}`,
+    staleTimeMs: 60_000,
+    enabled: Boolean(paymentId) || (Boolean(previewSessionId) && effectivePreviewAllocations.length > 0 && (can.owner || can.billing)),
     shouldReloadOnEvent: () => false,
   });
 
@@ -93,6 +113,10 @@ export default function BillingReceiptPage() {
   }
 
   const isPreview = data?.mode === 'preview' || (!paymentId && Boolean(previewSessionId));
+
+  if (!paymentId && previewSessionId && !storageDraftLoaded) {
+    return null;
+  }
 
   return (
     <>
@@ -136,7 +160,7 @@ export default function BillingReceiptPage() {
         titleClassName="text-center"
         subtitleClassName="text-center"
       >
-        {!paymentId && (!previewSessionId || previewAllocations.length === 0) ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">بيانات الشيك غير مكتملة.</div> : null}
+        {!paymentId && (!previewSessionId || effectivePreviewAllocations.length === 0) ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">بيانات الشيك غير مكتملة.</div> : null}
         {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
         {!data && !error && (paymentId || previewSessionId) ? <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-neutral-500">{isPreview ? 'Loading guest check...' : 'Loading sales receipt...'}</div> : null}
         {data ? (
