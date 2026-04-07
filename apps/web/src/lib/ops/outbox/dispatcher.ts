@@ -258,8 +258,19 @@ export async function dispatchOpsOutboxAcrossConfiguredDatabases(limit?: number)
 }
 
 export function scheduleOpsOutboxDispatch(input: DispatchOpsOutboxBatchInput) {
-  const enabled = String(process.env.AHWA_OPS_OUTBOX_INLINE_DISPATCH_ENABLED ?? 'false').trim().toLowerCase();
-  if (enabled === '0' || enabled === 'false' || enabled === 'off') {
+  const policy = getOutboxDispatchPolicy();
+  if (policy === 'background') {
+    if (!isQStashConfigured()) {
+      return;
+    }
+
+    void enqueueInternalRequestWithQStash({
+      path: `/api/internal/ops/outbox/dispatch?databaseKey=${encodeURIComponent(input.databaseKey.trim())}${input.cafeId ? `&cafeId=${encodeURIComponent(String(input.cafeId).trim())}` : ''}${typeof input.limit === 'number' ? `&limit=${encodeURIComponent(String(input.limit))}` : ''}`,
+      method: 'POST',
+      retries: 3,
+      timeoutSeconds: 30,
+      dedupeKey: `ops-outbox:${input.databaseKey.trim()}:${input.cafeId ? String(input.cafeId).trim() : '*'}:${input.limit ?? 'default'}`,
+    }).catch(() => undefined);
     return;
   }
 
@@ -277,4 +288,14 @@ export function scheduleOpsOutboxDispatch(input: DispatchOpsOutboxBatchInput) {
     });
 
   kicks.set(key, task.then(() => undefined));
+
+  if (policy === 'hybrid' && isQStashConfigured()) {
+    void enqueueInternalRequestWithQStash({
+      path: `/api/internal/ops/outbox/dispatch?databaseKey=${encodeURIComponent(input.databaseKey.trim())}${input.cafeId ? `&cafeId=${encodeURIComponent(String(input.cafeId).trim())}` : ''}${typeof input.limit === 'number' ? `&limit=${encodeURIComponent(String(input.limit))}` : ''}`,
+      method: 'POST',
+      retries: 3,
+      timeoutSeconds: 30,
+      dedupeKey: `ops-outbox-hybrid:${input.databaseKey.trim()}:${input.cafeId ? String(input.cafeId).trim() : '*'}:${input.limit ?? 'default'}`,
+    }).catch(() => undefined);
+  }
 }

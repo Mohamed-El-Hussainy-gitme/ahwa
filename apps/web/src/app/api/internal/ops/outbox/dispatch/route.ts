@@ -1,11 +1,16 @@
 import { NextResponse } from 'next/server';
 import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
 import { dispatchOpsOutboxAcrossConfiguredDatabases, dispatchOpsOutboxBatch } from '@/lib/ops/outbox/dispatcher';
+import { verifyQStashRequest } from '@/lib/platform/qstash-auth';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function isAuthorized(req: Request) {
+async function isAuthorized(req: Request, rawBody: string) {
+  if (await verifyQStashRequest(req, rawBody)) {
+    return true;
+  }
+
   const expected = String(process.env.CRON_SECRET ?? '').trim();
   if (!expected) {
     throw new Error('CRON_SECRET is required');
@@ -26,6 +31,7 @@ function getOptionalNumber(value: string | null) {
 }
 
 export async function POST(req: Request) {
+  const rawBody = await req.text();
   const url = new URL(req.url);
   const observation = beginServerObservation('ops.outbox.dispatch.route', {
     path: url.pathname,
@@ -34,7 +40,7 @@ export async function POST(req: Request) {
   }, req.headers.get('x-request-id'));
 
   try {
-    if (!isAuthorized(req)) {
+    if (!(await isAuthorized(req, rawBody))) {
       logServerObservation(observation, 'error', { status: 401, message: 'UNAUTHORIZED' });
       return NextResponse.json({ error: 'UNAUTHORIZED' }, { status: 401 });
     }

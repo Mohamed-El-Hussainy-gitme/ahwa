@@ -115,7 +115,14 @@ async function loadOpenShift(cafeId: string, databaseKey: string): Promise<OpsSh
   return normalizeShift(data ?? null);
 }
 
-async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: string): Promise<any[]> {
+type RawOpenSessionRow = {
+  id: string;
+  session_label: string | null;
+  status: string | null;
+  opened_at: string | null;
+};
+
+async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: string): Promise<RawOpenSessionRow[]> {
   const { data, error } = await adminOps(databaseKey)
     .from('service_sessions')
     .select('id, session_label, status, opened_at')
@@ -124,7 +131,63 @@ async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: st
     .eq('status', 'open')
     .order('opened_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as any[];
+  return ((data ?? []) as any[]).map((row) => ({
+    id: String((row as any).id),
+    session_label: (row as any).session_label ? String((row as any).session_label) : null,
+    status: (row as any).status ? String((row as any).status) : 'open',
+    opened_at: (row as any).opened_at ? String((row as any).opened_at) : null,
+  }));
+}
+
+function buildSessionLabel(row: RawOpenSessionRow) {
+  const label = String(row.session_label ?? '').trim();
+  if (label) {
+    return label;
+  }
+  return `جلسة ${String(row.id).slice(0, 6)}`;
+}
+
+function normalizeOpenSessions(rows: RawOpenSessionRow[], itemRows: any[] = []): OpsSessionSummary[] {
+  const aggregates = new Map<string, { readyCount: number; billableCount: number }>();
+
+  for (const row of itemRows) {
+    const sessionId = String((row as any).service_session_id ?? '').trim();
+    if (!sessionId) {
+      continue;
+    }
+
+    const current = aggregates.get(sessionId) ?? { readyCount: 0, billableCount: 0 };
+    const qtyReady = Number((row as any).qty_ready ?? 0);
+    const qtyTotal = Number((row as any).qty_total ?? 0);
+    const qtyCancelled = Number((row as any).qty_cancelled ?? 0);
+    const qtyDelivered = Number((row as any).qty_delivered ?? 0);
+    const qtyReplacementDelivered = Number((row as any).qty_replacement_delivered ?? 0);
+    const qtyPaid = Number((row as any).qty_paid ?? 0);
+    const qtyDeferred = Number((row as any).qty_deferred ?? 0);
+    const qtyWaived = Number((row as any).qty_waived ?? 0);
+
+    const totalOriginalReady = Math.min(qtyReady, Math.max(qtyTotal - qtyCancelled, 0));
+    const qtyReadyForNormalDelivery = Math.max(totalOriginalReady - qtyDelivered, 0);
+    const qtyReadyForReplacementDelivery = Math.max(qtyReady - totalOriginalReady - qtyReplacementDelivered, 0);
+    const qtyReadyForDelivery = qtyReadyForNormalDelivery + qtyReadyForReplacementDelivery;
+    const qtyBillable = Math.max(qtyDelivered - qtyPaid - qtyDeferred - qtyWaived, 0);
+
+    current.readyCount += qtyReadyForDelivery;
+    current.billableCount += qtyBillable;
+    aggregates.set(sessionId, current);
+  }
+
+  return rows.map((row) => {
+    const aggregate = aggregates.get(String(row.id)) ?? { readyCount: 0, billableCount: 0 };
+    return {
+      id: String(row.id),
+      label: buildSessionLabel(row),
+      status: String(row.status ?? 'open'),
+      openedAt: String(row.opened_at ?? new Date().toISOString()),
+      billableCount: aggregate.billableCount,
+      readyCount: aggregate.readyCount,
+    } satisfies OpsSessionSummary;
+  });
 }
 
 function normalizeOrderNotePreset(value: unknown): string | null {
@@ -281,7 +344,7 @@ export async function buildWaiterWorkspace(
   const includeCatalog = scope.includeCatalog !== false;
   const includeSessionItems = scope.includeSessionItems !== false;
   const includeReadyItems = scope.includeReadyItems !== false;
-  const openSessionRows = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
+  const sessionRows = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
   const notePresets = await loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null);
 
   let sections: OpsSection[] = [];
@@ -293,7 +356,7 @@ export async function buildWaiterWorkspace(
     products = catalog.products.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes) && allowedSectionIds.has(row.sectionId));
   }
 
-  const openSessionIds = openSessionRows.map((session: any) => String(session.id));
+  const openSessionIds = sessionRows.map((session) => String(session.id));
   const openSessionIdsSet = new Set(openSessionIds);
 
   let itemRows: any[] = [];
@@ -384,29 +447,7 @@ export async function buildWaiterWorkspace(
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     : [];
 
-  const billableMap = new Map<string, number>();
-  for (const item of sessionItems) {
-    const qtyBillable = Math.max(item.qtyDelivered - item.qtyPaid - item.qtyDeferred - item.qtyWaived, 0);
-    billableMap.set(item.serviceSessionId, (billableMap.get(item.serviceSessionId) ?? 0) + qtyBillable);
-  }
-
-  const readyMap = new Map<string, number>();
-  for (const item of readyItems) {
-    readyMap.set(item.serviceSessionId, (readyMap.get(item.serviceSessionId) ?? 0) + item.qtyReadyForDelivery);
-  }
-
-  const sessions: OpsSessionSummary[] = openSessionRows.map((row: any) => {
-    const id = String(row.id ?? '').trim();
-    const rawLabel = String(row.session_label ?? '').trim();
-    return {
-      id,
-      label: rawLabel || `جلسة ${id.slice(0, 6)}`,
-      status: String(row.status ?? 'open'),
-      openedAt: String(row.opened_at ?? new Date().toISOString()),
-      billableCount: billableMap.get(id) ?? 0,
-      readyCount: readyMap.get(id) ?? 0,
-    } satisfies OpsSessionSummary;
-  });
+  const sessions = normalizeOpenSessions(sessionRows, itemRows);
 
   return { shift: normalizedShift, sessions, sections, products, sessionItems, readyItems, notePresets };
 }
@@ -447,7 +488,7 @@ export async function buildStationWorkspace(cafeId: string, stationCode: Station
   let rows: any[] = [];
   if (normalizedShift) {
     const openSessions = await loadOpenSessions(cafeId, normalizedShift.id, databaseKey);
-    const openSessionIds = openSessions.map((row: any) => String(row.id));
+    const openSessionIds = openSessions.map((row) => String(row.id));
     if (openSessionIds.length > 0) {
       const { data, error } = await admin
         .from('order_items')
@@ -1060,7 +1101,7 @@ export async function buildOpsNavSummary(cafeId: string, databaseKey: string): P
 
   const shift = await loadOpenShift(cafeId, databaseKey);
   const openSessions = shift ? await loadOpenSessions(cafeId, shift.id, databaseKey) : [];
-  const openSessionIds = openSessions.map((row: any) => String(row.id));
+  const openSessionIds = openSessions.map((row) => String(row.id));
 
   const [readyItems, billableItems, deferredSummaries, stationBarista, stationShisha] = await Promise.all([
     buildReadyItemsWorkspace(cafeId, databaseKey),

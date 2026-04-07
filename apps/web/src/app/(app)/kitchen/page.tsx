@@ -33,7 +33,8 @@ export default function KitchenPage() {
     enabled: Boolean(shift),
     cacheKey: 'workspace:kitchen:barista',
     staleTimeMs: 10_000,
-    pollIntervalMs: 4000,
+    pollIntervalMs: 1500,
+    pollAlways: true,
     shouldReloadOnEvent: (event) => shouldReloadStationWorkspace(event, 'barista'),
   });
   const previousWaitingQtyRef = useRef(0);

@@ -1,0 +1,34 @@
+{
+  "name": "default-ops-mix",
+  "durationMs": 180000,
+  "tiers": {
+    "small": {
+      "cafes": 8,
+      "loopsPerCafe": 1,
+      "quantityRange": [1, 1],
+      "delayRangeMs": [400, 1200],
+      "stationWeights": { "barista": 0.8, "shisha": 0.2 }
+    },
+    "medium": {
+      "cafes": 2,
+      "loopsPerCafe": 2,
+      "quantityRange": [1, 2],
+      "delayRangeMs": [250, 900],
+      "stationWeights": { "barista": 0.75, "shisha": 0.25 }
+    },
+    "heavy": {
+      "cafes": 1,
+      "loopsPerCafe": 4,
+      "quantityRange": [1, 2],
+      "delayRangeMs": [100, 500],
+      "stationWeights": { "barista": 0.7, "shisha": 0.3 }
+    },
+    "enterprise": {
+      "cafes": 0,
+      "loopsPerCafe": 6,
+      "quantityRange": [1, 3],
+      "delayRangeMs": [50, 250],
+      "stationWeights": { "barista": 0.65, "shisha": 0.35 }
+    }
+  }
+}
