@@ -70,18 +70,3 @@ export async function persistOrderNotePreset(input: {
     throw error;
   }
 }
-
-export function dispatchOrderNotePresetInBackground(input: {
-  cafeId: string;
-  databaseKey: string;
-  note: string | null | undefined;
-  productStationCodes: readonly StationCode[];
-}) {
-  void persistOrderNotePreset(input).catch((error) => {
-    console.error('order_note_preset_persist_failed', {
-      cafeId: input.cafeId,
-      databaseKey: input.databaseKey,
-      error,
-    });
-  });
-}

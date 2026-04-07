@@ -7,7 +7,7 @@ import {
   requireSessionOrderAccess,
 } from '@/app/api/ops/_helpers';
 import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '../_station-events';
-import { dispatchOrderNotePresetInBackground } from '../../_order-note-presets';
+import { persistOrderNotePreset } from '../../_order-note-presets';
 
 type OpenAndCreateRequestBody = {
   label?: string;
@@ -71,7 +71,7 @@ export async function POST(req: Request) {
     }, ctx.databaseKey);
 
     const orderId = String(createRpc.order_id ?? '').trim();
-    dispatchOrderNotePresetInBackground({
+    await persistOrderNotePreset({
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
       note: body.notes,

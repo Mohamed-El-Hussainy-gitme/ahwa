@@ -12,7 +12,6 @@ type WorkspaceOptions = {
   realtimeDebounceMs?: number;
   pollIntervalMs?: number;
   pollWhenHidden?: boolean;
-  pollAlways?: boolean;
   cacheKey?: string;
 };
 
@@ -43,7 +42,6 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
     realtimeDebounceMs = DEFAULT_REALTIME_DEBOUNCE_MS,
     pollIntervalMs = 0,
     pollWhenHidden = false,
-    pollAlways = false,
     cacheKey,
   } = options;
   const [data, setData] = useState<T | null>(null);
@@ -177,7 +175,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
       if (!pollWhenHidden && document.visibilityState !== 'visible') {
         return;
       }
-      if (!pollAlways && !shouldUsePollingFallback()) {
+      if (!shouldUsePollingFallback()) {
         return;
       }
       void runReload('background');
@@ -186,7 +184,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
     return () => {
       window.clearInterval(interval);
     };
-  }, [enabled, pollAlways, pollIntervalMs, pollWhenHidden, runReload, shouldUsePollingFallback]);
+  }, [enabled, pollIntervalMs, pollWhenHidden, runReload, shouldUsePollingFallback]);
 
   useEffect(() => {
     if (!enabled) {
