@@ -115,7 +115,18 @@ async function loadOpenShift(cafeId: string, databaseKey: string): Promise<OpsSh
   return normalizeShift(data ?? null);
 }
 
-async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: string): Promise<any[]> {
+function normalizeOpenSession(row: any): OpsSessionSummary {
+  return {
+    id: String(row.id ?? ''),
+    label: String(row.session_label ?? row.label ?? ''),
+    status: String(row.status ?? 'open'),
+    openedAt: String(row.opened_at ?? row.openedAt ?? new Date().toISOString()),
+    billableCount: Number(row.billableCount ?? 0),
+    readyCount: Number(row.readyCount ?? 0),
+  };
+}
+
+async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: string): Promise<OpsSessionSummary[]> {
   const { data, error } = await adminOps(databaseKey)
     .from('service_sessions')
     .select('id, session_label, status, opened_at')
@@ -124,7 +135,7 @@ async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: st
     .eq('status', 'open')
     .order('opened_at', { ascending: false });
   if (error) throw error;
-  return (data ?? []) as any[];
+  return (data ?? []).map((row: any) => normalizeOpenSession(row));
 }
 
 function normalizeOrderNotePreset(value: unknown): string | null {

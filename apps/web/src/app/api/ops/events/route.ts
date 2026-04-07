@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import {
   getEnrichedRuntimeMeFromCookie,
+  isSupportRuntimeSessionError,
   isUnboundRuntimeSessionError,
 } from '@/lib/runtime/me';
 import { subscribeOpsEvents } from '@/lib/ops/events';
@@ -25,7 +26,7 @@ export async function GET(req: Request) {
   try {
     me = await getEnrichedRuntimeMeFromCookie();
   } catch (error) {
-    if (isUnboundRuntimeSessionError(error)) {
+    if (isUnboundRuntimeSessionError(error) || isSupportRuntimeSessionError(error)) {
       return NextResponse.json({ error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
     }
     throw error;
@@ -71,8 +72,14 @@ export async function GET(req: Request) {
           },
           send,
         );
-      } catch (error) {
-        controller.error(error);
+      } catch {
+        controller.enqueue(
+          encoder.encode(`event: reconnect
+data: ${JSON.stringify({ cafeId, ok: false })}
+
+`),
+        );
+        controller.close();
         return;
       }
 
