@@ -5,12 +5,12 @@ import { useCallback, useMemo, useState } from 'react';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
-import type { WaiterWorkspace } from '@/lib/ops/types';
-import { applyDeliverToWaiterWorkspace } from '@/lib/ops/workspacePatches';
+import type { ReadyItem } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { MobileShell } from '@/ui/MobileShell';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { clampPositive } from '@/ui/ops/sessionHelpers';
+import { shouldReloadReadyWorkspace } from '@/lib/ops/reload-rules';
 import { opsBadge, opsGhostButton, opsMetricCard, opsSurface } from '@/ui/ops/premiumStyles';
 
 export default function ReadyPage() {
@@ -19,22 +19,29 @@ export default function ReadyPage() {
   const [readySelection, setReadySelection] = useState<Record<string, number>>({});
   const [localError, setLocalError] = useState<string | null>(null);
 
-  const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
-  const { data, setData, error } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
+  const readyLoader = useCallback(() => opsClient.readyItems(), []);
+  const { data, setData, error } = useOpsWorkspace<ReadyItem[]>(readyLoader, {
     enabled: Boolean(shift) && canAccess,
-    pollIntervalMs: canAccess ? 1500 : undefined,
+    cacheKey: 'workspace:ready',
+    staleTimeMs: 10_000,
+    pollIntervalMs: canAccess ? 4000 : undefined,
+    shouldReloadOnEvent: shouldReloadReadyWorkspace,
   });
 
   const deliverCommand = useOpsCommand(
     async (orderItemId: string, quantity: number) => {
       await opsClient.deliver(orderItemId, quantity);
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
-      setData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
+      setData((current) =>
+        (current ?? [])
+          .map((item) => item.orderItemId !== orderItemId ? item : { ...item, qtyReadyForDelivery: Math.max(item.qtyReadyForDelivery - quantity, 0) })
+          .filter((item) => item.qtyReadyForDelivery > 0 || item.qtyReadyForReplacementDelivery > 0),
+      );
     },
     { onError: setLocalError },
   );
 
-  const readyItems = useMemo(() => data?.readyItems ?? [], [data?.readyItems]);
+  const readyItems = useMemo(() => data ?? [], [data]);
   const effectiveError = localError ?? error ?? null;
   const readyTotal = readyItems.reduce((sum, item) => sum + item.qtyReadyForDelivery, 0);
   const replacements = readyItems.reduce((sum, item) => sum + item.qtyReadyForReplacementDelivery, 0);
