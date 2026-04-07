@@ -30,6 +30,8 @@ type SessionCardView = OpsSessionSummary & {
   lastActivityAt: string;
   openedLabel: string;
   activityLabel: string;
+  displayLabel: string;
+  shortCode: string;
 };
 
 function formatClockLabel(value: string | null | undefined) {
@@ -51,6 +53,8 @@ function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderIte
       latestAt = item.createdAt;
     }
   }
+  const shortCode = String(session.id ?? '').trim().slice(0, 6);
+  const displayLabel = String(session.label ?? '').trim() || (shortCode ? `جلسة ${shortCode}` : 'جلسة مفتوحة');
   return {
     ...session,
     totalItemQty,
@@ -58,6 +62,8 @@ function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderIte
     lastActivityAt: latestAt,
     openedLabel: formatClockLabel(session.openedAt),
     activityLabel: formatClockLabel(latestAt),
+    displayLabel,
+    shortCode,
   };
 }
 
@@ -400,9 +406,24 @@ export default function OrdersPage() {
                         : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
                     ].join(' ')}
                   >
-                    <div className="truncate text-sm font-bold">{session.label}</div>
-                    <div className={['mt-1 text-xs', active ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
-                      جاهز {session.readyCount} • للحساب {session.billableCount}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold">{session.displayLabel}</div>
+                        <div className={['mt-1 text-[11px]', active ? 'text-white/75' : 'text-[#8a7763]'].join(' ')}>
+                          {session.shortCode ? `#${session.shortCode}` : 'جلسة مفتوحة'}
+                        </div>
+                      </div>
+                      {session.totalItemQty > 0 ? (
+                        <div className={[ 'rounded-full px-2 py-1 text-[11px] font-black', active ? 'bg-white/12 text-white' : 'bg-[#f4ede3] text-[#6f5b49]' ].join(' ')}>
+                          {session.totalItemQty}
+                        </div>
+                      ) : null}
+                    </div>
+                    <div className={['mt-2 text-xs', active ? 'text-white/80' : 'text-[#6f5b49]'].join(' ')}>
+                      جاهز {session.readyCount} • للحساب {session.billableCount} • أصناف {session.totalProductCount}
+                    </div>
+                    <div className={['mt-1 text-[11px]', active ? 'text-white/70' : 'text-[#8a7763]'].join(' ')}>
+                      فتح {session.openedLabel} • آخر حركة {session.activityLabel}
                     </div>
                   </button>
                 );
