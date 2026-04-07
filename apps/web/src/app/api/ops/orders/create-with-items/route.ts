@@ -1,18 +1,22 @@
+import { adminOps } from '@/app/api/ops/_server';
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
 import {
+  enqueueOpsMutation,
   jsonError,
+  kickOpsOutboxDispatch,
   ok,
+  publishOpsMutation,
   requireOpenOpsShift,
   requireOpsActorContext,
+  requireScopedOrderSelectionAccess,
   requireSessionOrderAccess,
 } from '@/app/api/ops/_helpers';
-import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '../_station-events';
-import { persistOrderNotePreset } from '../../_order-note-presets';
+import { normalizeNullableStationCode } from '@/lib/ops/stations';
+import type { StationCode } from '@/lib/ops/types';
 
 type CreateOrderRequestBody = {
   serviceSessionId?: string;
-  notes?: string;
-  items?: Array<{ productId?: string; quantity?: number; notes?: string }>;
+  items?: Array<{ productId?: string; quantity?: number }>;
 };
 
 type CreateOrderRpcResult = {
@@ -20,6 +24,11 @@ type CreateOrderRpcResult = {
   service_session_id?: string;
 };
 
+type MenuProductRow = {
+  id?: string | null;
+  station_code?: StationCode | null;
+  is_active?: boolean | null;
+};
 
 export async function POST(req: Request) {
   try {
@@ -32,7 +41,6 @@ export async function POST(req: Request) {
     const items = body.items.map((item) => ({
       menu_product_id: String(item.productId ?? '').trim(),
       qty: Number(item.quantity ?? 0),
-      notes: String(item.notes ?? '').trim() || null,
     }));
 
     if (items.some((item) => !item.menu_product_id || !Number.isInteger(item.qty) || item.qty <= 0)) {
@@ -42,43 +50,85 @@ export async function POST(req: Request) {
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
 
-    const { productStationCodes } = await requireOrderSelectionStationCodes(
-      ctx,
-      items.map((item) => item.menu_product_id),
-    );
+    const uniqueProductIds = Array.from(new Set(items.map((item) => item.menu_product_id)));
+    const { data: productRows, error: productError } = await adminOps(ctx.databaseKey)
+      .from('menu_products')
+      .select('id, station_code, is_active')
+      .eq('cafe_id', ctx.cafeId)
+      .in('id', uniqueProductIds);
+
+    if (productError) {
+      throw productError;
+    }
+
+    const products = (productRows ?? []) as MenuProductRow[];
+    if (products.length !== uniqueProductIds.length) {
+      throw new Error('INVALID_INPUT');
+    }
+
+    const productStationCodes = new Map<string, StationCode>();
+    const stationCodes = products.map((product) => {
+      const stationCode = normalizeNullableStationCode(product.station_code);
+      if (!product.id || !stationCode || product.is_active !== true) {
+        throw new Error('INVALID_INPUT');
+      }
+      productStationCodes.set(String(product.id), stationCode);
+      return stationCode;
+    });
+
+    requireScopedOrderSelectionAccess(ctx, stationCodes);
+
+    const stationQuantities = new Map<StationCode, number>();
+    for (const item of items) {
+      const stationCode = productStationCodes.get(item.menu_product_id);
+      if (!stationCode) {
+        throw new Error('INVALID_INPUT');
+      }
+      stationQuantities.set(stationCode, (stationQuantities.get(stationCode) ?? 0) + item.qty);
+    }
 
     const rpc = await callOpsRpc<CreateOrderRpcResult>('ops_create_order_with_items_with_outbox', {
       p_cafe_id: ctx.cafeId,
       p_shift_id: shift.id,
       p_service_session_id: String(body.serviceSessionId),
       p_items: items,
-      p_notes: String(body.notes ?? '').trim() || null,
       ...actorRpcParams(ctx, 'p_created_by_staff_id', 'p_created_by_owner_id'),
     }, ctx.databaseKey);
 
     const orderId = String(rpc.order_id ?? '').trim();
-    await persistOrderNotePreset({
-      cafeId: ctx.cafeId,
-      databaseKey: ctx.databaseKey,
-      note: body.notes,
-      productStationCodes,
-    });
     const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();
     if (!orderId || !serviceSessionId) {
       throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
     }
 
-    dispatchStationOrderSubmittedInBackground(ctx, {
-      orderId,
-      serviceSessionId,
-      items: body.items.map((item) => ({
-        productId: String(item.productId ?? ''),
-        quantity: Number(item.quantity ?? 0),
-      })),
-      productStationCodes,
-    });
+    for (const [stationCode, quantity] of stationQuantities.entries()) {
+      if (quantity <= 0) continue;
+      const eventData = {
+        serviceSessionId,
+        stationCode,
+        quantity,
+        itemsCount: quantity,
+      };
+      const eventId = await enqueueOpsMutation(ctx, {
+        type: 'station.order_submitted',
+        entityId: orderId,
+        shiftId: shift.id,
+        data: eventData,
+        scopes: [stationCode, 'dashboard', 'nav-summary'],
+      });
+      await publishOpsMutation(ctx, {
+        id: eventId,
+        type: 'station.order_submitted',
+        entityId: orderId,
+        shiftId: shift.id,
+        data: eventData,
+        scopes: [stationCode, 'dashboard', 'nav-summary'],
+      });
+    }
 
-    return ok({ ok: true, orderId, serviceSessionId });
+    kickOpsOutboxDispatch(ctx);
+
+    return ok({ ok: true, orderId });
   } catch (e) {
     return jsonError(e, 400);
   }

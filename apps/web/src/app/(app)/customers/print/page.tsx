@@ -17,8 +17,6 @@ export default function CustomersPrintPage() {
   const { can, shift } = useAuthz();
   const loader = useCallback(() => opsClient.deferredCustomersWorkspace(), []);
   const { data, error } = useOpsWorkspace<{ items: DeferredCustomerSummary[] }>(loader, {
-    cacheKey: 'workspace:customers:print',
-    staleTimeMs: 60_000,
     enabled: can.owner || can.billing,
     shouldReloadOnEvent: () => false,
   });

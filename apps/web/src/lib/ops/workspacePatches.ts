@@ -1,4 +1,4 @@
-import type { BillingWorkspace, ReadyItem, SessionOrderItem, StationQueueItem, StationWorkspace, WaiterLiveWorkspace, WaiterWorkspace } from './types';
+import type { BillingWorkspace, ReadyItem, SessionOrderItem, StationQueueItem, StationWorkspace, WaiterWorkspace } from './types';
 
 function clamp(value: number) {
   return Number.isFinite(value) && value > 0 ? Math.trunc(value) : 0;
@@ -17,17 +17,15 @@ function buildReadyItemFromSessionItem(item: SessionOrderItem): ReadyItem {
   };
 }
 
-export function appendOrTouchSession<T extends Pick<WaiterLiveWorkspace, 'sessions'>>(workspace: T | null, sessionId: string, label: string): T | null {
+export function appendOrTouchSession(workspace: WaiterWorkspace | null, sessionId: string, label: string): WaiterWorkspace | null {
   if (!workspace) return workspace;
-  const touchedAt = new Date().toISOString();
-  const existing = workspace.sessions.find((session) => session.id === sessionId) ?? null;
-  const rest = workspace.sessions.filter((session) => session.id !== sessionId);
-  const nextSession = existing
-    ? { ...existing, label: label || existing.label, openedAt: touchedAt }
-    : { id: sessionId, label, status: 'open', openedAt: touchedAt, billableCount: 0, readyCount: 0 };
+  const exists = workspace.sessions.some((session) => session.id === sessionId);
+  if (exists) {
+    return workspace;
+  }
   return {
     ...workspace,
-    sessions: [nextSession, ...rest],
+    sessions: [{ id: sessionId, label, status: 'open', openedAt: new Date().toISOString(), billableCount: 0, readyCount: 0 }, ...workspace.sessions],
   };
 }
 
@@ -57,7 +55,7 @@ export function applyReadyToStationWorkspace(workspace: StationWorkspace | null,
   };
 }
 
-export function applyReadyToWaiterWorkspace<T extends Pick<WaiterLiveWorkspace, 'readyItems' | 'sessionItems' | 'sessions'>>(workspace: T | null, item: StationQueueItem, quantity: number): T | null {
+export function applyReadyToWaiterWorkspace(workspace: WaiterWorkspace | null, item: StationQueueItem, quantity: number): WaiterWorkspace | null {
   if (!workspace) return workspace;
   const qty = clamp(quantity);
   if (!qty) return workspace;
@@ -110,7 +108,7 @@ export function applyReadyToWaiterWorkspace<T extends Pick<WaiterLiveWorkspace, 
   };
 }
 
-export function applyDeliverToWaiterWorkspace<T extends Pick<WaiterLiveWorkspace, 'readyItems' | 'sessionItems' | 'sessions'>>(workspace: T | null, orderItemId: string, quantity: number): T | null {
+export function applyDeliverToWaiterWorkspace(workspace: WaiterWorkspace | null, orderItemId: string, quantity: number): WaiterWorkspace | null {
   if (!workspace) return workspace;
   const qty = clamp(quantity);
   if (!qty) return workspace;

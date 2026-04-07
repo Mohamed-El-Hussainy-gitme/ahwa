@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { clearRuntimeSessionCookie } from '@/lib/auth/cookies';
 import {
   getEnrichedRuntimeMeFromCookie,
   isSupportRuntimeSessionError,
@@ -12,12 +13,16 @@ export async function GET() {
   try {
     const me = await getEnrichedRuntimeMeFromCookie();
     if (!me) {
-      return NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
+      const response = NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
+      clearRuntimeSessionCookie(response);
+      return response;
     }
 
     const databaseKey = String(me.databaseKey ?? '').trim();
     if (!databaseKey) {
-      return NextResponse.json({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
+      const response = NextResponse.json({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
+      clearRuntimeSessionCookie(response);
+      return response;
     }
 
     const state = await readCurrentShiftState({ cafeId: String(me.tenantId), databaseKey });
@@ -49,7 +54,9 @@ export async function GET() {
     });
   } catch (error) {
     if (isUnboundRuntimeSessionError(error) || isSupportRuntimeSessionError(error)) {
-      return NextResponse.json({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
+      const response = NextResponse.json({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
+      clearRuntimeSessionCookie(response);
+      return response;
     }
     const code = error instanceof Error ? error.message : 'SHIFT_FETCH_FAILED';
     return NextResponse.json({ ok: false, error: code }, { status: 500 });

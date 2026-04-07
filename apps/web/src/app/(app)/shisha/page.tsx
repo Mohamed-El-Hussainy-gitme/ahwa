@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { SessionOrderItem, StationQueueItem, StationWorkspace, WaiterCatalogWorkspace, WaiterLiveWorkspace } from '@/lib/ops/types';
+import type { SessionOrderItem, StationQueueItem, StationWorkspace, WaiterWorkspace } from '@/lib/ops/types';
 import {
   appendOrTouchSession,
   applyDeliverToWaiterWorkspace,
@@ -19,7 +19,6 @@ import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
-import { shouldReloadStationWorkspace, shouldReloadWaiterCatalogWorkspace, shouldReloadWaiterLiveWorkspace } from '@/lib/ops/reload-rules';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import {
   opsAccentButton,
@@ -27,7 +26,6 @@ import {
   opsBadge,
   opsEmptyState,
   opsGhostButton,
-  opsInput,
   opsPrimaryButton,
   opsSectionTitle,
   opsSurface,
@@ -42,61 +40,44 @@ export default function ShishaPage() {
   const [label, setLabel] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [creatingNew, setCreatingNew] = useState(false);
-  const [noteOpen, setNoteOpen] = useState(false);
-  const [noteDraft, setNoteDraft] = useState('');
-  const [orderNotes, setOrderNotes] = useState('');
   const [selectedSectionId, setSelectedSectionId] = useState('');
   const [draft, setDraft] = useState<Record<string, number>>({});
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerLabel, setComposerLabel] = useState('');
+  const composerInputRef = useRef<HTMLInputElement | null>(null);
 
   const stationLoader = useCallback(() => opsClient.stationWorkspace('shisha'), []);
-  const waiterLiveLoader = useCallback(() => opsClient.waiterLiveWorkspace(), []);
-  const waiterCatalogLoader = useCallback(() => opsClient.waiterCatalogWorkspace(), []);
+  const waiterLoader = useCallback(() => opsClient.waiterWorkspace(), []);
 
   const { data: stationData, setData: setStationData, error: stationError } = useOpsWorkspace<StationWorkspace>(
     stationLoader,
     {
       enabled: Boolean(shift),
-      cacheKey: 'workspace:shisha:station',
-      staleTimeMs: 10_000,
-      pollIntervalMs: 4000,
-      shouldReloadOnEvent: (event) => shouldReloadStationWorkspace(event, 'shisha'),
+      pollIntervalMs: 1500,
     },
   );
 
-  const { data: liveData, setData: setLiveData, error: liveError } = useOpsWorkspace<WaiterLiveWorkspace>(waiterLiveLoader, {
+  const { data: orderData, setData: setOrderData, error: orderError } = useOpsWorkspace<WaiterWorkspace>(waiterLoader, {
     enabled: Boolean(shift),
-    cacheKey: 'workspace:shisha:live',
-    staleTimeMs: 10_000,
-    pollIntervalMs: 4000,
-    shouldReloadOnEvent: shouldReloadWaiterLiveWorkspace,
-  });
-
-  const { data: catalogData, error: catalogError } = useOpsWorkspace<WaiterCatalogWorkspace>(waiterCatalogLoader, {
-    enabled: Boolean(shift),
-    cacheKey: 'workspace:shisha:catalog',
-    staleTimeMs: 120_000,
-    shouldReloadOnEvent: shouldReloadWaiterCatalogWorkspace,
+    pollIntervalMs: 1500,
   });
 
   const previousQueueQtyRef = useRef(0);
 
-  const notePresets = liveData?.notePresets ?? [];
-  const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
-
   const queue = stationData?.queue ?? [];
-  const sessions = liveData?.sessions ?? [];
-  const sections = (catalogData?.sections ?? []).filter((section) => section.stationCode === 'shisha');
-  const products = (catalogData?.products ?? []).filter((product) => product.stationCode === 'shisha');
+  const sessions = orderData?.sessions ?? [];
+  const sections = (orderData?.sections ?? []).filter((section) => section.stationCode === 'shisha');
+  const products = (orderData?.products ?? []).filter((product) => product.stationCode === 'shisha');
   const effectiveSessionId = !creatingNew ? sessionId || sessions[0]?.id || '' : '';
   const effectiveSelectedSectionId = selectedSectionId || sections[0]?.id || '';
   const filteredProducts = products.filter(
     (product) => !effectiveSelectedSectionId || product.sectionId === effectiveSelectedSectionId,
   );
-  const readyItems = readyItemsForStation(liveData?.readyItems ?? [], 'shisha');
+  const readyItems = readyItemsForStation(orderData?.readyItems ?? [], 'shisha');
   const currentSessionItems = useMemo(
-    () => sessionItemsForSession(liveData?.sessionItems ?? [], effectiveSessionId, 'shisha'),
-    [liveData?.sessionItems, effectiveSessionId],
+    () => sessionItemsForSession(orderData?.sessionItems ?? [], effectiveSessionId, 'shisha'),
+    [orderData?.sessionItems, effectiveSessionId],
   );
   const draftLines = Object.entries(draft).filter(([, quantity]) => quantity > 0);
   const draftQtyTotal = draftLines.reduce((sum, [, quantity]) => sum + quantity, 0);
@@ -123,20 +104,17 @@ export default function ShishaPage() {
   }, [creatingNew, effectiveSessionId]);
 
   useEffect(() => {
-    if (!noteOpen) return;
-    const timer = window.setTimeout(() => {
-      noteTextareaRef.current?.focus();
-      noteTextareaRef.current?.select();
-    }, 40);
-    return () => window.clearTimeout(timer);
-  }, [noteOpen]);
+    if (!composerOpen) return;
+    const id = window.setTimeout(() => composerInputRef.current?.focus(), 120);
+    return () => window.clearTimeout(id);
+  }, [composerOpen]);
 
   const readyCommand = useOpsCommand(
     async (item: StationQueueItem, quantity: number) => {
       await opsClient.markReady(item.orderItemId, quantity);
       setQueueSelection((state) => ({ ...state, [item.orderItemId]: 1 }));
       setStationData((current) => applyReadyToStationWorkspace(current, item, quantity));
-      setLiveData((current) => applyReadyToWaiterWorkspace(current, item, quantity));
+      setOrderData((current) => applyReadyToWaiterWorkspace(current, item, quantity));
     },
     { onError: setLocalError },
   );
@@ -145,7 +123,7 @@ export default function ShishaPage() {
     async (orderItemId: string, quantity: number) => {
       await opsClient.deliver(orderItemId, quantity);
       setReadySelection((state) => ({ ...state, [orderItemId]: 1 }));
-      setLiveData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
+      setOrderData((current) => applyDeliverToWaiterWorkspace(current, orderItemId, quantity));
     },
     { onError: setLocalError },
   );
@@ -167,30 +145,25 @@ export default function ShishaPage() {
 
   const submitCommand = useOpsCommand(
     async () => {
-      if (!liveData || !draftLines.length) return;
+      if (!orderData || !draftLines.length) return;
 
       if (creatingNew || !effectiveSessionId) {
         const created = await opsClient.openAndCreateOrder({
           label: label || undefined,
-          notes: orderNotes || undefined,
-          items: draftLines.map(([productId, quantity]) => ({ productId, quantity, notes: orderNotes || undefined })),
+          items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
         });
         setSessionId(created.sessionId);
         setCreatingNew(false);
-        setLiveData((current) => appendOrTouchSession(current, created.sessionId, created.label));
+        setOrderData((current) => appendOrTouchSession(current, created.sessionId, created.label));
       } else {
         await opsClient.createOrderWithItems({
           serviceSessionId: effectiveSessionId,
-          notes: orderNotes || undefined,
-          items: draftLines.map(([productId, quantity]) => ({ productId, quantity, notes: orderNotes || undefined })),
+          items: draftLines.map(([productId, quantity]) => ({ productId, quantity })),
         });
       }
 
       setDraft({});
       setLabel('');
-      setOrderNotes('');
-      setNoteDraft('');
-      setNoteOpen(false);
     },
     { onError: setLocalError },
   );
@@ -213,6 +186,7 @@ export default function ShishaPage() {
   }
 
   function inc(id: string) {
+    if (composerOpen) return;
     if (!creatingNew && !effectiveSessionId) {
       warnSessionRequired();
       return;
@@ -231,6 +205,7 @@ export default function ShishaPage() {
   }
 
   function selectExistingSession(nextSessionId: string) {
+    if (composerOpen || submitCommand.busy) return;
     setSessionId(nextSessionId);
     setCreatingNew(false);
     setLabel('');
@@ -238,33 +213,28 @@ export default function ShishaPage() {
   }
 
   function beginNewSession() {
-    setCreatingNew(true);
-    setSessionId('');
-    setLabel('');
-    setDraft({});
+    if (submitCommand.busy) return;
+    setComposerLabel(label);
+    setComposerOpen(true);
     setSessionWarning(null);
   }
 
-  function openNoteComposer() {
-    setNoteDraft(orderNotes);
-    setNoteOpen(true);
+  function cancelComposer() {
+    setComposerOpen(false);
+    if (!draftQtyTotal) {
+      setCreatingNew(false);
+    }
   }
 
-  function cancelNoteComposer() {
-    setNoteDraft(orderNotes);
-    setNoteOpen(false);
+  function confirmComposer() {
+    setCreatingNew(true);
+    setSessionId('');
+    setLabel(composerLabel.trim());
+    setSessionWarning(null);
+    setComposerOpen(false);
   }
 
-  function confirmNoteComposer() {
-    setOrderNotes(noteDraft.trim());
-    setNoteOpen(false);
-  }
-
-  function applyNotePreset(preset: string) {
-    setNoteDraft(preset);
-  }
-
-  const effectiveError = localError ?? stationError ?? liveError ?? catalogError;
+  const effectiveError = localError ?? stationError ?? orderError;
 
   return (
     <MobileShell
@@ -291,26 +261,15 @@ export default function ShishaPage() {
               <div className="mt-1 text-xs text-[#7d6a59]">
                 {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر أصناف الشيشة ثم أرسل الطلب دفعة واحدة'}
               </div>
-              {orderNotes ? <div className="mt-1 line-clamp-1 text-xs font-semibold text-[#9b6b2e]">ملاحظة الطلب: {orderNotes}</div> : null}
             </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <button
-                type="button"
-                onClick={openNoteComposer}
-                disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
-                className={[opsGhostButton, 'shrink-0'].join(' ')}
-              >
-                ملاحظة
-              </button>
-              <button
-                type="button"
-                onClick={() => void submitCommand.run()}
-                disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
-                className={[opsPrimaryButton, 'shrink-0'].join(' ')}
-              >
-                {submitCommand.busy ? 'جارٍ الإرسال...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => void submitCommand.run()}
+              disabled={submitCommand.busy || draftLines.length === 0 || (!creatingNew && !effectiveSessionId)}
+              className={[opsPrimaryButton, 'shrink-0'].join(' ')}
+            >
+              {submitCommand.busy ? 'جارٍ الإرسال...' : creatingNew ? 'فتح وإرسال' : 'إرسال'}
+            </button>
           </div>
         </StickyActionBar>
       }
@@ -343,6 +302,7 @@ export default function ShishaPage() {
                     key={session.id}
                     type="button"
                     onClick={() => selectExistingSession(session.id)}
+                    disabled={composerOpen || submitCommand.busy}
                     className={[
                       'rounded-[20px] border px-3 py-3 text-right transition duration-150 hover:-translate-y-[1px]',
                       active
@@ -357,18 +317,6 @@ export default function ShishaPage() {
                   </button>
                 );
               })}
-            </div>
-          ) : null}
-
-          {creatingNew ? (
-            <div className="mt-3 space-y-2">
-              <input
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder="اسم أو رقم الجلسة الجديدة"
-                className={opsInput}
-              />
-              <div className="text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولده النظام تلقائيًا.</div>
             </div>
           ) : null}
 
@@ -451,14 +399,11 @@ export default function ShishaPage() {
                   </div>
                 </div>
 
-                {item.qtyWaitingReplacement > 0 || item.notes ? (
+                {item.qtyWaitingReplacement > 0 ? (
                   <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                    {item.qtyWaitingReplacement > 0 ? <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span> : null}
-                    {item.notes ? <span className={opsBadge('info')}>ملاحظة مرفقة</span> : null}
+                    <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span>
                   </div>
                 ) : null}
-
-                {item.notes ? <div className="mt-2 rounded-[16px] bg-[#fff8ef] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">{item.notes}</div> : null}
 
                 <QuantityStepper
                   label="تجهيز الآن"
@@ -523,54 +468,33 @@ export default function ShishaPage() {
             />
           </section>
         ) : null}
-      </div>
-
-      {noteOpen ? (
-        <div className="fixed inset-0 z-[72] flex items-end justify-center bg-[#1e1712]/45 p-3 sm:items-center">
-          <div className="w-full max-w-md rounded-[28px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
+      {composerOpen ? (
+        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-[#1e1712]/30 p-4">
+          <div className="w-full max-w-md rounded-[28px] border border-[#eadcca] bg-[#fffdf8] p-5 shadow-[0_26px_60px_rgba(30,23,18,0.22)]">
             <div className="text-right">
-              <div className="text-base font-black text-[#1e1712]">ملاحظة الطلب</div>
-              <div className="mt-1 text-sm text-[#7d6a59]">أضف ملاحظة للكابتن أوردر أو لمحطة الشيشة، وسيتم إرسالها مع هذه الدفعة.</div>
+              <div className="text-base font-black text-[#1e1712]">تعريف جلسة شيشة جديدة</div>
+              <div className="mt-1 text-sm text-[#7d6a59]">اكتب اسمًا أو رقمًا واضحًا للجلسة لتسهيل العودة إليها أثناء التشغيل.</div>
             </div>
-            <textarea
-              ref={noteTextareaRef}
-              value={noteDraft}
-              onChange={(e) => setNoteDraft(e.target.value)}
-              placeholder="مثال: معسل تفاحتين خفيف • بعد القهوة • تجهيز سريع"
-              className="mt-4 min-h-28 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
+            <input
+              ref={composerInputRef}
+              value={composerLabel}
+              onChange={(e) => setComposerLabel(e.target.value)}
+              placeholder="مثال: طاولة 7 أو أحمد"
+              className="mt-4 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
             />
-            {notePresets.length ? (
-              <div className="mt-3">
-                <div className="mb-2 text-right text-xs font-semibold text-[#7d6a59]">اختيار سريع</div>
-                <div className="flex gap-2 overflow-x-auto pb-1">
-                  {notePresets.map((preset) => (
-                    <button
-                      key={preset}
-                      type="button"
-                      onClick={() => applyNotePreset(preset)}
-                      className={[
-                        'rounded-[18px] border px-3 py-2 text-sm whitespace-nowrap transition',
-                        noteDraft.trim() === preset ? 'border-[#9b6b2e] bg-[#9b6b2e] text-white' : 'border-[#dac9b6] bg-[#fffaf3] text-[#5e4d3f]',
-                      ].join(' ')}
-                    >
-                      {preset}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-            <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن تركها فارغة أو تعديلها قبل كل إرسال.</div>
+            <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولد النظام اسمًا تلقائيًا.</div>
             <div className="mt-4 flex gap-2">
-              <button type="button" onClick={cancelNoteComposer} className={[opsGhostButton, 'flex-1 justify-center'].join(' ')}>
+              <button type="button" onClick={cancelComposer} className={[opsGhostButton, 'flex-1 justify-center'].join(' ')}>
                 إلغاء
               </button>
-              <button type="button" onClick={confirmNoteComposer} className={[opsPrimaryButton, 'flex-1 justify-center'].join(' ')}>
-                اعتماد الملاحظة
+              <button type="button" onClick={confirmComposer} className={[opsPrimaryButton, 'flex-1 justify-center'].join(' ')}>
+                اعتماد الجلسة
               </button>
             </div>
           </div>
         </div>
       ) : null}
+      </div>
     </MobileShell>
   );
 }

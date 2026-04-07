@@ -29,8 +29,6 @@ export function OwnerOnboardingGuideCard() {
   const session = useSession();
   const loader = useCallback(() => opsClient.ownerOnboardingGuide(), []);
   const { data, error, loading, reload } = useOpsWorkspace<OwnerOnboardingGuide>(loader, {
-    cacheKey: 'workspace:owner:onboarding',
-    staleTimeMs: 60_000,
     shouldReloadOnEvent: () => true,
   });
   const [dismissed, setDismissed] = useState(false);
