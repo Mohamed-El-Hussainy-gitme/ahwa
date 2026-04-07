@@ -60,11 +60,7 @@ export default function MenuPage() {
   });
 
   const loader = useCallback(() => opsClient.menuWorkspace(), []);
-  const { data, error, setData } = useOpsWorkspace<MenuWorkspace>(loader, {
-    enabled: can.manageMenu,
-    cacheKey: 'workspace:menu',
-    staleTimeMs: 60_000,
-  });
+  const { data, error, setData } = useOpsWorkspace<MenuWorkspace>(loader, { enabled: can.manageMenu });
 
   useEffect(() => {
     if (data?.billingSettings) {
@@ -316,7 +312,7 @@ export default function MenuPage() {
             <div className="font-semibold">تصدير المنيو</div>
             <div className="mt-1 text-xs text-[#8a7763]">افتح نسخة قابلة للطباعة واحفظها PDF أو اطبعها مباشرة.</div>
           </div>
-          <Link href="/menu/print" className="rounded-2xl border bg-[#fffdf9] px-4 py-2 text-sm font-semibold text-[#5e4d3f]">تصدير PDF</Link>
+          <Link href="/menu/print" target="_blank" className="rounded-2xl border bg-[#fffdf9] px-4 py-2 text-sm font-semibold text-[#5e4d3f]">تصدير PDF</Link>
         </div>
       </section>
 

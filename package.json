@@ -44,8 +44,5 @@
     "failure:ops": "node ./scripts/load/run-ops-failure-lab.mjs",
     "report:capacity": "node ./scripts/load/build-capacity-report.mjs",
     "verify:phase30": "node ./scripts/verify-phase30-load-lab.mjs"
-  },
-  "dependencies": {
-    "@vercel/analytics": "^2.0.1"
   }
 }

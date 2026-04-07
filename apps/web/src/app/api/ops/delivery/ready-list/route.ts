@@ -1,4 +1,4 @@
-import { buildReadyItemsWorkspace } from '@/app/api/ops/_server';
+import { buildWaiterWorkspace } from '@/app/api/ops/_server';
 import { jsonError, ok, requireOpsActorContext, requireWaiterWorkspaceAccess } from '@/app/api/ops/_helpers';
 
 export async function POST() {
@@ -10,7 +10,7 @@ export async function POST() {
         ? { readyStationCodes: ['barista'] as const, sessionItemStationCodes: ['barista'] as const }
         : {};
 
-    return ok(await buildReadyItemsWorkspace(ctx.cafeId, ctx.databaseKey, scope));
+    return ok((await buildWaiterWorkspace(ctx.cafeId, ctx.databaseKey, scope)).readyItems);
   } catch (e) {
     return jsonError(e, 400);
   }

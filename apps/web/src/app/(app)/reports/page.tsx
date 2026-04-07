@@ -421,11 +421,7 @@ export default function ReportsPage() {
   const [tab, setTab] = useState<ReportTab>('current');
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const loader = useCallback(() => opsClient.reportsWorkspace(), []);
-  const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, {
-    enabled: session.user?.baseRole === 'owner',
-    cacheKey: 'workspace:reports',
-    staleTimeMs: 60_000,
-  });
+  const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, { enabled: session.user?.baseRole === 'owner' });
   const selectedPeriod = useMemo(
     () => data && (tab === 'day' || tab === 'week' || tab === 'month' || tab === 'year') ? data.periods[tab] : null,
     [data, tab],
@@ -462,7 +458,7 @@ export default function ReportsPage() {
           <div className="flex items-center gap-2">
             <Link
               href={tab === 'deferred' ? '/customers/print' : `/reports/print?tab=${tab}`}
-             
+              target="_blank"
               className="rounded-xl border bg-[#fffdf9] px-3 py-2 text-xs font-semibold text-[#5e4d3f]"
             >
               تصدير PDF

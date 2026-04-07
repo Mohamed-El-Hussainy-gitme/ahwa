@@ -10,7 +10,6 @@ import { applyReadyToStationWorkspace } from '@/lib/ops/workspacePatches';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
-import { shouldReloadStationWorkspace } from '@/lib/ops/reload-rules';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import {
   opsAlert,
@@ -31,10 +30,7 @@ export default function KitchenPage() {
   const loader = useCallback(() => opsClient.stationWorkspace('barista'), []);
   const { data, setData, error } = useOpsWorkspace<StationWorkspace>(loader, {
     enabled: Boolean(shift),
-    cacheKey: 'workspace:kitchen:barista',
-    staleTimeMs: 10_000,
-    pollIntervalMs: 4000,
-    shouldReloadOnEvent: (event) => shouldReloadStationWorkspace(event, 'barista'),
+    pollIntervalMs: 1500,
   });
   const previousWaitingQtyRef = useRef(0);
   const readyCommand = useOpsCommand(
@@ -121,14 +117,11 @@ export default function KitchenPage() {
                 </div>
               </div>
 
-              {item.qtyWaitingReplacement > 0 || item.notes ? (
+              {item.qtyWaitingReplacement > 0 ? (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                  {item.qtyWaitingReplacement > 0 ? <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span> : null}
-                  {item.notes ? <span className={opsBadge('info')}>ملاحظة مرفقة</span> : null}
+                  <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span>
                 </div>
               ) : null}
-
-              {item.notes ? <div className="mt-2 rounded-[16px] bg-[#fff8ef] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">{item.notes}</div> : null}
 
               <QuantityStepper
                 label="تجهيز الآن"
