@@ -18,6 +18,7 @@ function isPublicPath(path: string) {
     /^\/c\/[^/]+\/(login|activate)\/?$/.test(path) ||
 
     path.startsWith('/api/auth/') ||
+    path.startsWith('/api/public/') ||
     path.startsWith('/api/device-gate/') ||
     path === '/api/platform/auth/login' ||
     path === '/api/platform/bootstrap' ||
@@ -28,6 +29,7 @@ function isPublicPath(path: string) {
     path === '/icon-192x192.png' ||
     path === '/icon-512x512.png' ||
     path === '/apple-icon.png' ||
+    path.startsWith('/brand/') ||
     path.startsWith('/og/')
   );
 }

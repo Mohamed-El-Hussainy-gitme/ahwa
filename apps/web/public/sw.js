@@ -1,4 +1,4 @@
-const SW_VERSION = "ahwa-sw-v1";
+const SW_VERSION = "ahwa-sw-v3";
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const PAGE_CACHE = `${SW_VERSION}-pages`;
 const MENU_CACHE = `${SW_VERSION}-menu`;
@@ -12,6 +12,8 @@ const STATIC_ASSETS = [
   "/apple-icon.png",
   "/brand/ahwa-logo.png",
   "/brand/ahwa-logo.svg",
+  "/brand/ahwa-login-logo.webp",
+  "/brand/ahwa-mark.webp",
 ];
 
 self.addEventListener("install", (event) => {
@@ -34,10 +36,6 @@ self.addEventListener("activate", (event) => {
 
 function isMenuRequest(url) {
   return url.pathname.startsWith("/api/public/cafes/") && url.pathname.endsWith("/menu");
-}
-
-function isCafePage(url) {
-  return url.pathname.startsWith("/c/");
 }
 
 async function staleWhileRevalidate(request, cacheName) {
@@ -86,14 +84,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (request.mode === "navigate" && isCafePage(url)) {
+  if (request.mode === "navigate") {
     event.respondWith(networkFirstPage(request));
     return;
   }
 
   if (STATIC_ASSETS.includes(url.pathname)) {
-    event.respondWith(
-      caches.match(request).then((cached) => cached || fetch(request))
-    );
+    event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
   }
 });
