@@ -47,22 +47,17 @@ export async function POST(req: Request) {
       items.map((item) => item.menu_product_id),
     );
 
-    const rpc = await callOpsRpc<CreateOrderRpcResult>('ops_create_order_with_items_with_outbox', {
-      p_cafe_id: ctx.cafeId,
-      p_shift_id: shift.id,
-      p_service_session_id: String(body.serviceSessionId),
-      p_items: items,
-      p_notes: String(body.notes ?? '').trim() || null,
-      ...actorRpcParams(ctx, 'p_created_by_staff_id', 'p_created_by_owner_id'),
-    }, ctx.databaseKey);
+    const { stationCodes, productStationCodes } = await requireOrderSelectionStationCodes({
+  databaseKey: ctx.databaseKey,
+  items: body.items,
+});
 
-    const orderId = String(rpc.order_id ?? '').trim();
-    await persistOrderNotePreset({
-      cafeId: ctx.cafeId,
-      databaseKey: ctx.databaseKey,
-      note: body.notes,
-      productStationCodes,
-    });
+void persistOrderNotePreset({
+  cafeId: ctx.cafeId,
+  databaseKey: ctx.databaseKey,
+  note: body.notes,
+  productStationCodes: stationCodes,
+});
     const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();
     if (!orderId || !serviceSessionId) {
       throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
