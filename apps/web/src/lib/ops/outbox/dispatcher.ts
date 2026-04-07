@@ -5,6 +5,8 @@ import type { OpsRealtimeEvent } from '@/lib/ops/types';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { listConfiguredOperationalDatabasesFromEnv } from '@/lib/supabase/env';
+import { getOutboxDispatchPolicy } from '@/lib/platform/env-contract';
+import { enqueueInternalRequestWithQStash, isQStashConfigured } from '@/lib/platform/qstash';
 
 type OutboxClaimRow = {
   id?: string | null;
