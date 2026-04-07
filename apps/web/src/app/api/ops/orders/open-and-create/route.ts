@@ -43,7 +43,7 @@ export async function POST(req: Request) {
 
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
-    const { stationCodes, productStationCodes } = await requireOrderSelectionStationCodes(
+    const { productStationCodes } = await requireOrderSelectionStationCodes(
       ctx,
       items.map((item) => item.menu_product_id),
     );
@@ -75,7 +75,7 @@ export async function POST(req: Request) {
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
       note: body.notes,
-      productStationCodes: stationCodes,
+      productStationCodes,
     });
     if (!orderId) throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
 

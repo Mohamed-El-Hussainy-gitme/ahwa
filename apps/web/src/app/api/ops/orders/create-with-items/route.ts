@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
 
-    const { stationCodes, productStationCodes } = await requireOrderSelectionStationCodes(
+    const { productStationCodes } = await requireOrderSelectionStationCodes(
       ctx,
       items.map((item) => item.menu_product_id),
     );
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
       note: body.notes,
-      productStationCodes: stationCodes,
+      productStationCodes,
     });
     const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();
     if (!orderId || !serviceSessionId) {
