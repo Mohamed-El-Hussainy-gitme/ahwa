@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
+import { Analytics } from "@vercel/analytics/next"
 
 const resolvedAppUrl =
   process.env.NEXT_PUBLIC_APP_URL ??
