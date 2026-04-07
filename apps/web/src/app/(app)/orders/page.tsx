@@ -269,6 +269,21 @@ export default function OrdersPage() {
     setSessionWarning(null);
   }
 
+  function openNoteComposer() {
+    setNoteDraft(orderNotes);
+    setNoteOpen(true);
+  }
+
+  function cancelNoteComposer() {
+    setNoteDraft(orderNotes);
+    setNoteOpen(false);
+  }
+
+  function confirmNoteComposer() {
+    setOrderNotes(noteDraft.trim());
+    setNoteOpen(false);
+  }
+
   function cancelComposer() {
     setComposerOpen(false);
     if (!draftQtyTotal) {
