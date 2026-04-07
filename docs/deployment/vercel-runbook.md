@@ -6,7 +6,7 @@ Only `apps/web` remains as a deployable application package.
 
 ### Root directory
 
-Set Root Directory to the repository root (`.`).
+Set Root Directory to `apps/web`.
 
 ### Required environment variables
 

@@ -44,16 +44,13 @@ function formatClockLabel(value: string | null | undefined) {
 
 function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderItem[]): SessionCardView {
   let totalItemQty = 0;
-  let latestAt = typeof session.openedAt === 'string' ? session.openedAt : '';
-
+  let latestAt = session.openedAt;
   for (const item of items) {
     totalItemQty += Math.max(Number(item.qtyTotal ?? 0), 0);
-    const createdAt = typeof item.createdAt === 'string' ? item.createdAt : '';
-    if (createdAt && (!latestAt || createdAt > latestAt)) {
-      latestAt = createdAt;
+    if (item.createdAt && item.createdAt > latestAt) {
+      latestAt = item.createdAt;
     }
   }
-
   return {
     ...session,
     totalItemQty,
@@ -131,7 +128,7 @@ export default function OrdersPage() {
       .sort((a, b) => {
         if (!creatingNew && a.id === effectiveSessionId) return -1;
         if (!creatingNew && b.id === effectiveSessionId) return 1;
-        return (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '');
+        return b.lastActivityAt.localeCompare(a.lastActivityAt);
       });
   }, [creatingNew, effectiveSessionId, liveData?.sessionItems, sessions]);
 
