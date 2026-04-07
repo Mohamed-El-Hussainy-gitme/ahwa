@@ -89,8 +89,6 @@ export default function ComplaintsPage() {
 
   const loader = useCallback(() => opsClient.complaintsWorkspace(), []);
   const { data, error } = useOpsWorkspace<ComplaintsWorkspace>(loader, {
-    cacheKey: 'workspace:complaints',
-    staleTimeMs: 20_000,
     enabled: Boolean(shift),
   });
 

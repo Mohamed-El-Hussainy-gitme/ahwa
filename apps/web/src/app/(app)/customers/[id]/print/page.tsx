@@ -26,8 +26,6 @@ export default function CustomerLedgerPrintPage() {
   const debtorName = useMemo(() => decodeURIComponent(String(params.id ?? '')), [params.id]);
   const loader = useCallback(() => opsClient.deferredCustomerLedger(debtorName), [debtorName]);
   const { data, error } = useOpsWorkspace<DeferredCustomerLedgerWorkspace>(loader, {
-    cacheKey: `workspace:customer-ledger:print:${debtorName}`,
-    staleTimeMs: 60_000,
     enabled: Boolean(debtorName) && (can.owner || can.billing),
     shouldReloadOnEvent: () => false,
   });

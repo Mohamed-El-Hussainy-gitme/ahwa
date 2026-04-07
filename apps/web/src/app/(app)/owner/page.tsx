@@ -14,7 +14,6 @@ const cards = [
   { href: '/staff', title: 'فريق العمل', icon: 'crown', description: 'البيانات، الحالة، والصلاحيات التشغيلية.' },
   { href: '/menu', title: 'المنيو', icon: 'menu', description: 'الأقسام والأصناف والأسعار داخل القهوة.' },
   { href: '/reports', title: 'التقارير', icon: 'chart', description: 'تقارير يومية وأسبوعية وشهرية للإدارة.' },
-  { href: '/qr-ordering', title: 'QR الطلب', icon: 'menu', description: 'طباعة QR خاص بالمقهى لفتح المنيو والطلب الذاتي.' },
   { href: '/support?source=in_app&page=/owner', title: 'الدعم', icon: 'support', description: 'بلاغ مباشر أو وصول مؤقت للدعم الفني.' },
 ] as const;
 

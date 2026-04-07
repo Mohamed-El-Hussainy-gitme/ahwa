@@ -18,8 +18,7 @@
     "react-dom": "19.2.3",
     "ioredis": "^5.8.1",
     "zod": "^4.3.6",
-    "zustand": "^5.0.11",
-    "qrcode": "^1.5.4"
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

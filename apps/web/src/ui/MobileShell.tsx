@@ -5,7 +5,6 @@ import { usePathname } from 'next/navigation';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { BottomNav } from '@/ui/BottomNav';
 import { useAuthz } from '@/lib/authz';
-import { useSession } from '@/lib/session';
 import { useOpsChrome } from '@/lib/ops/chrome';
 import { AppIcon } from '@/ui/icons/AppIcon';
 import BrandLogo from '@/ui/brand/BrandLogo';
@@ -317,10 +316,8 @@ export function MobileShell({
   stickyFooter?: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const session = useSession();
   const { can, effectiveRole } = useAuthz();
   const { summary, lastLoadedAt, sync } = useOpsChrome();
-  const cafeName = session.user?.cafeName?.trim() || session.user?.cafeId || 'القهوة الحالية';
   const stickyFooterBox = useElementHeight<HTMLDivElement>();
   const bottomNavBox = useElementHeight<HTMLDivElement>();
 
@@ -363,12 +360,7 @@ export function MobileShell({
                   <BrandLogo className="w-[74px] shrink-0" withWordmark />
                   <div className="min-w-0">
                     <div className="text-[11px] font-semibold tracking-[0.24em] text-[#9b6b2e]">تشغيل القهوة</div>
-                    <div className="mt-0.5 flex items-center gap-2">
-                      <div className="truncate text-[16px] font-semibold text-[#1e1712]">{title}</div>
-                      <div className="max-w-[138px] truncate rounded-full border border-[#dccab6] bg-[#fff7ed] px-2.5 py-1 text-[11px] font-semibold text-[#7c5222]">
-                        {cafeName}
-                      </div>
-                    </div>
+                    <div className="truncate text-[16px] font-semibold text-[#1e1712]">{title}</div>
                   </div>
                 </div>
               </div>

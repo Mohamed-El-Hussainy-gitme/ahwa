@@ -23,8 +23,6 @@ import type {
   StationQueueItem,
   StationWorkspace,
   WaiterWorkspace,
-  WaiterCatalogWorkspace,
-  WaiterLiveWorkspace,
   BillingWorkspace,
 } from '@/lib/ops/types';
 import { normalizeNullableStationCode, normalizeStationCode } from '@/lib/ops/stations';
@@ -33,39 +31,11 @@ type WaiterWorkspaceScope = {
   productStationCodes?: readonly StationCode[] | null;
   readyStationCodes?: readonly StationCode[] | null;
   sessionItemStationCodes?: readonly StationCode[] | null;
-  includeCatalog?: boolean;
-  includeSessionItems?: boolean;
-  includeReadyItems?: boolean;
 };
 
 type ComplaintsWorkspaceScope = {
   itemStationCodes?: readonly StationCode[] | null;
 };
-
-type CacheEntry<T> = {
-  value: T;
-  expiresAt: number;
-};
-
-const opsMemoryCache = new Map<string, CacheEntry<unknown>>();
-const MENU_WORKSPACE_CACHE_TTL_MS = 60_000;
-const ACTIVE_MENU_CACHE_TTL_MS = 30_000;
-const BILLING_SETTINGS_CACHE_TTL_MS = 15_000;
-const DEFERRED_SUMMARY_CACHE_TTL_MS = 10_000;
-const ORDER_NOTE_PRESETS_CACHE_TTL_MS = 15_000;
-
-async function readThroughCache<T>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T> {
-  const now = Date.now();
-  const cached = opsMemoryCache.get(key) as CacheEntry<T> | undefined;
-  if (cached && cached.expiresAt > now) return cached.value;
-  const value = await loader();
-  opsMemoryCache.set(key, { value, expiresAt: now + ttlMs });
-  return value;
-}
-
-function cacheKey(prefix: string, cafeId: string, databaseKey: string) {
-  return `${prefix}:${databaseKey}:${cafeId}`;
-}
 
 export type BoundOperationalDatabaseContext = {
   cafeId: string;
@@ -127,52 +97,6 @@ async function loadOpenSessions(cafeId: string, shiftId: string, databaseKey: st
   return (data ?? []) as any[];
 }
 
-function normalizeOrderNotePreset(value: unknown): string | null {
-  const normalized = String(value ?? '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return normalized || null;
-}
-
-async function loadOrderNotePresets(
-  cafeId: string,
-  databaseKey: string,
-  allowedStationCodes?: readonly StationCode[] | null,
-): Promise<string[]> {
-  const stationCodes = (allowedStationCodes ?? []).filter(Boolean).sort();
-  const scopedKey = stationCodes.length ? stationCodes.join(',') : 'all';
-
-  return readThroughCache(cacheKey(`order-note-presets:${scopedKey}`, cafeId, databaseKey), ORDER_NOTE_PRESETS_CACHE_TTL_MS, async () => {
-    let query = adminOps(databaseKey)
-      .from('order_note_presets')
-      .select('note_text, station_code, usage_count, last_used_at')
-      .eq('cafe_id', cafeId)
-      .eq('is_active', true)
-      .order('usage_count', { ascending: false })
-      .order('last_used_at', { ascending: false })
-      .limit(8);
-
-    if (stationCodes.length) {
-      query = query.or(`station_code.is.null,station_code.in.(${stationCodes.join(',')})`);
-    }
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    const seen = new Set<string>();
-    const presets: string[] = [];
-    for (const row of data ?? []) {
-      const normalized = normalizeOrderNotePreset((row as any)?.note_text);
-      if (!normalized || seen.has(normalized)) {
-        continue;
-      }
-      seen.add(normalized);
-      presets.push(normalized);
-    }
-    return presets;
-  });
-}
-
 export async function listBillableRows(cafeId: string, databaseKey: string, shiftId?: string | null, openSessionIds?: string[]): Promise<BillableItem[]> {
   const admin = adminOps(databaseKey);
   if (!shiftId) return [];
@@ -212,59 +136,70 @@ export async function listBillableRows(cafeId: string, databaseKey: string, shif
     .filter((row) => row.qtyBillable > 0);
 }
 
-async function loadMenuWorkspaceCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products'>> {
-  return readThroughCache(cacheKey('menu-workspace', cafeId, databaseKey), MENU_WORKSPACE_CACHE_TTL_MS, async () => {
-    const admin = adminOps(databaseKey);
-    const [{ data: sections, error: sectionsError }, { data: products, error: productsError }] = await Promise.all([
-      admin.from('menu_sections').select('id, title, station_code, sort_order, is_active').eq('cafe_id', cafeId).order('sort_order', { ascending: true }),
-      admin.from('menu_products').select('id, section_id, product_name, station_code, unit_price, sort_order, is_active').eq('cafe_id', cafeId).order('section_id', { ascending: true }).order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
-    ]);
-    if (sectionsError) throw sectionsError;
-    if (productsError) throw productsError;
-    return {
-      sections: (sections ?? []).map((row: any) => ({ id: String(row.id), title: String(row.title), stationCode: normalizeStationCode(row.station_code), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies OpsSection),
-      products: (products ?? []).map((row: any) => ({ id: String(row.id), sectionId: String(row.section_id), name: String(row.product_name), stationCode: normalizeStationCode(row.station_code), unitPrice: Number(row.unit_price ?? 0), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies OpsProduct),
-    };
-  });
-}
-
-async function loadActiveMenuCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products'>> {
-  return readThroughCache(cacheKey('active-menu', cafeId, databaseKey), ACTIVE_MENU_CACHE_TTL_MS, async () => {
-    const workspace = await loadMenuWorkspaceCatalog(cafeId, databaseKey);
-    const sections = workspace.sections.filter((row) => row.isActive);
-    const allowedSectionIds = new Set(sections.map((row) => row.id));
-    const products = workspace.products.filter((row) => row.isActive && allowedSectionIds.has(row.sectionId));
-    return { sections, products };
-  });
-}
-
 export async function buildMenuWorkspace(cafeId: string, databaseKey: string): Promise<MenuWorkspace> {
-  const [catalog, billingSettings] = await Promise.all([
-    loadMenuWorkspaceCatalog(cafeId, databaseKey),
+  const admin = adminOps(databaseKey);
+  const [{ data: sections, error: sectionsError }, { data: products, error: productsError }, billingSettings] = await Promise.all([
+    admin
+      .from('menu_sections')
+      .select('id, title, station_code, sort_order, is_active')
+      .eq('cafe_id', cafeId)
+      .order('sort_order', { ascending: true }),
+    admin
+      .from('menu_products')
+      .select('id, section_id, product_name, station_code, unit_price, sort_order, is_active')
+      .eq('cafe_id', cafeId)
+      .order('section_id', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true }),
     loadBillingSettings(cafeId, databaseKey),
   ]);
 
-  return { sections: catalog.sections, products: catalog.products, billingSettings };
+  if (sectionsError) throw sectionsError;
+  if (productsError) throw productsError;
+
+  return {
+    sections: (sections ?? []).map(
+      (row: any) =>
+        ({
+          id: String(row.id),
+          title: String(row.title),
+          stationCode: normalizeStationCode(row.station_code),
+          sortOrder: Number(row.sort_order ?? 0),
+          isActive: Boolean(row.is_active),
+        }) satisfies OpsSection,
+    ),
+    products: (products ?? []).map(
+      (row: any) =>
+        ({
+          id: String(row.id),
+          sectionId: String(row.section_id),
+          name: String(row.product_name),
+          stationCode: normalizeStationCode(row.station_code),
+          unitPrice: Number(row.unit_price ?? 0),
+          sortOrder: Number(row.sort_order ?? 0),
+          isActive: Boolean(row.is_active),
+        }) satisfies OpsProduct,
+    ),
+    billingSettings,
+  };
 }
 
 
 export async function loadBillingSettings(cafeId: string, databaseKey: string): Promise<BillingExtrasSettings> {
-  return readThroughCache(cacheKey('billing-settings', cafeId, databaseKey), BILLING_SETTINGS_CACHE_TTL_MS, async () => {
-    const { data, error } = await adminOps(databaseKey)
-      .from('cafe_billing_settings')
-      .select('tax_enabled, tax_rate, service_enabled, service_rate')
-      .eq('cafe_id', cafeId)
-      .maybeSingle();
+  const { data, error } = await adminOps(databaseKey)
+    .from('cafe_billing_settings')
+    .select('tax_enabled, tax_rate, service_enabled, service_rate')
+    .eq('cafe_id', cafeId)
+    .maybeSingle();
 
-    if (error) throw error;
+  if (error) throw error;
 
-    return {
-      taxEnabled: Boolean(data?.tax_enabled),
-      taxRate: Number(data?.tax_rate ?? 0),
-      serviceEnabled: Boolean(data?.service_enabled),
-      serviceRate: Number(data?.service_rate ?? 0),
-    } satisfies BillingExtrasSettings;
-  });
+  return {
+    taxEnabled: Boolean(data?.tax_enabled),
+    taxRate: Number(data?.tax_rate ?? 0),
+    serviceEnabled: Boolean(data?.service_enabled),
+    serviceRate: Number(data?.service_rate ?? 0),
+  } satisfies BillingExtrasSettings;
 }
 
 function allowStationCode(stationCode: StationCode, allowed: readonly StationCode[] | null | undefined) {
@@ -278,29 +213,41 @@ export async function buildWaiterWorkspace(
 ): Promise<WaiterWorkspace> {
   const admin = adminOps(databaseKey);
   const normalizedShift = await loadOpenShift(cafeId, databaseKey);
-  const includeCatalog = scope.includeCatalog !== false;
-  const includeSessionItems = scope.includeSessionItems !== false;
-  const includeReadyItems = scope.includeReadyItems !== false;
-  const sessions = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
-  const notePresets = await loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null);
+  const [sessions, sectionsResult, productsResult] = await Promise.all([
+    normalizedShift ? loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : Promise.resolve([] as any[]),
+    admin
+      .from('menu_sections')
+      .select('id, title, station_code, sort_order')
+      .eq('cafe_id', cafeId)
+      .eq('is_active', true)
+      .order('sort_order', { ascending: true }),
+    admin
+      .from('menu_products')
+      .select('id, section_id, product_name, station_code, unit_price, sort_order')
+      .eq('cafe_id', cafeId)
+      .eq('is_active', true)
+      .order('section_id', { ascending: true })
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true }),
+  ]);
 
-  let sections: OpsSection[] = [];
-  let products: OpsProduct[] = [];
-  if (includeCatalog) {
-    const catalog = await loadActiveMenuCatalog(cafeId, databaseKey);
-    sections = catalog.sections.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes));
-    const allowedSectionIds = new Set(sections.map((row) => row.id));
-    products = catalog.products.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes) && allowedSectionIds.has(row.sectionId));
-  }
+  if (sectionsResult.error) throw sectionsResult.error;
+  if (productsResult.error) throw productsResult.error;
 
-  const openSessionIds = sessions.map((session: any) => String(session.id));
+  const sections = (sectionsResult.data ?? []).filter((row: any) => allowStationCode(normalizeStationCode(row.station_code), scope.productStationCodes));
+  const allowedSectionIds = new Set(sections.map((row: any) => String(row.id)));
+  const products = (productsResult.data ?? []).filter((row: any) => {
+    const stationCode = normalizeStationCode(row.station_code);
+    return allowStationCode(stationCode, scope.productStationCodes) && allowedSectionIds.has(String(row.section_id));
+  });
+  const openSessionIds = (sessions ?? []).map((session: any) => String(session.id));
   const openSessionIdsSet = new Set(openSessionIds);
 
   let itemRows: any[] = [];
-  if (normalizedShift && openSessionIds.length > 0 && (includeSessionItems || includeReadyItems)) {
+  if (normalizedShift && openSessionIds.length > 0) {
     const { data, error } = await admin
       .from('order_items')
-      .select('id, service_session_id, station_code, unit_price, qty_total, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled, notes, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
+      .select('id, service_session_id, station_code, unit_price, qty_total, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
       .eq('cafe_id', cafeId)
       .eq('shift_id', normalizedShift.id)
       .in('service_session_id', openSessionIds)
@@ -309,112 +256,98 @@ export async function buildWaiterWorkspace(
     itemRows = (data ?? []) as any[];
   }
 
-  const sessionItems: SessionOrderItem[] = includeSessionItems
-    ? itemRows
-        .filter((row) => openSessionIdsSet.has(String(row.service_session_id ?? '')))
-        .filter((row) => allowStationCode(normalizeStationCode(row.station_code), scope.sessionItemStationCodes))
-        .map((row: any) => {
-          const qtyReady = Number(row.qty_ready ?? 0);
-          const qtyTotal = Number(row.qty_total ?? 0);
-          const qtyCancelled = Number(row.qty_cancelled ?? 0);
-          const qtyDelivered = Number(row.qty_delivered ?? 0);
-          const qtyReplacementDelivered = Number(row.qty_replacement_delivered ?? 0);
-          const qtyPaid = Number(row.qty_paid ?? 0);
-          const qtyDeferred = Number(row.qty_deferred ?? 0);
-          const qtyWaived = Number(row.qty_waived ?? 0);
-          const qtyRemade = Number(row.qty_remade ?? 0);
-          const totalOriginalReady = Math.min(qtyReady, Math.max(qtyTotal - qtyCancelled, 0));
-          const qtyReadyForNormalDelivery = Math.max(totalOriginalReady - qtyDelivered, 0);
-          const qtyReadyForReplacementDelivery = Math.max(qtyReady - totalOriginalReady - qtyReplacementDelivered, 0);
-          const qtyReadyForDelivery = qtyReadyForNormalDelivery + qtyReadyForReplacementDelivery;
-          const availableRemakeQty = Math.max(qtyDelivered + qtyReplacementDelivered - qtyRemade, 0);
-          return {
-            orderItemId: String(row.id),
-            serviceSessionId: String(row.service_session_id),
-            sessionLabel: String(row.service_sessions?.session_label ?? ''),
-            productName: String(row.menu_products?.product_name ?? ''),
-            stationCode: normalizeStationCode(row.station_code),
-            unitPrice: Number(row.unit_price ?? 0),
-            qtyTotal,
-            qtyReady,
-            qtyDelivered,
-            qtyReplacementDelivered,
-            qtyPaid,
-            qtyDeferred,
-            qtyWaived,
-            qtyRemade,
-            qtyCancelled,
-            qtyReadyForDelivery,
-            qtyReadyForReplacementDelivery,
-            availableRemakeQty,
-            createdAt: String(row.created_at),
-            notes: row.notes ? String(row.notes) : null,
-          } satisfies SessionOrderItem;
-        })
-    : [];
+  const sessionItems: SessionOrderItem[] = itemRows
+    .filter((row) => openSessionIdsSet.has(String(row.service_session_id ?? '')))
+    .filter((row) => allowStationCode(normalizeStationCode(row.station_code), scope.sessionItemStationCodes))
+    .map((row: any) => {
+      const qtyReady = Number(row.qty_ready ?? 0);
+      const qtyTotal = Number(row.qty_total ?? 0);
+      const qtyCancelled = Number(row.qty_cancelled ?? 0);
+      const qtyDelivered = Number(row.qty_delivered ?? 0);
+      const qtyReplacementDelivered = Number(row.qty_replacement_delivered ?? 0);
+      const qtyPaid = Number(row.qty_paid ?? 0);
+      const qtyDeferred = Number(row.qty_deferred ?? 0);
+      const qtyWaived = Number(row.qty_waived ?? 0);
+      const qtyRemade = Number(row.qty_remade ?? 0);
+      const totalOriginalReady = Math.min(qtyReady, Math.max(qtyTotal - qtyCancelled, 0));
+      const qtyReadyForNormalDelivery = Math.max(totalOriginalReady - qtyDelivered, 0);
+      const qtyReadyForReplacementDelivery = Math.max(qtyReady - totalOriginalReady - qtyReplacementDelivered, 0);
+      return {
+        orderItemId: String(row.id),
+        serviceSessionId: String(row.service_session_id),
+        sessionLabel: String(row.service_sessions?.session_label ?? ''),
+        productName: String(row.menu_products?.product_name ?? ''),
+        stationCode: normalizeStationCode(row.station_code),
+        unitPrice: Number(row.unit_price ?? 0),
+        qtyTotal,
+        qtyReady,
+        qtyDelivered,
+        qtyReplacementDelivered,
+        qtyPaid,
+        qtyDeferred,
+        qtyWaived,
+        qtyCancelled,
+        qtyRemade,
+        qtyReadyForDelivery: qtyReadyForNormalDelivery + qtyReadyForReplacementDelivery,
+        availableRemakeQty: Math.max(qtyDelivered + qtyReplacementDelivered - qtyRemade, 0),
+      } satisfies SessionOrderItem;
+    });
 
-  const readyItems: ReadyItem[] = includeReadyItems
-    ? itemRows
-        .filter((row) => openSessionIdsSet.has(String(row.service_session_id ?? '')))
-        .filter((row) => allowStationCode(normalizeStationCode(row.station_code), scope.readyStationCodes))
-        .map((row: any) => {
-          const qtyReady = Number(row.qty_ready ?? 0);
-          const qtyTotal = Number(row.qty_total ?? 0);
-          const qtyCancelled = Number(row.qty_cancelled ?? 0);
-          const qtyDelivered = Number(row.qty_delivered ?? 0);
-          const qtyReplacementDelivered = Number(row.qty_replacement_delivered ?? 0);
-          const totalOriginalReady = Math.min(qtyReady, Math.max(qtyTotal - qtyCancelled, 0));
-          const qtyReadyForNormalDelivery = Math.max(totalOriginalReady - qtyDelivered, 0);
-          const qtyReadyForReplacementDelivery = Math.max(qtyReady - totalOriginalReady - qtyReplacementDelivered, 0);
-          const qtyReadyForDelivery = qtyReadyForNormalDelivery + qtyReadyForReplacementDelivery;
-          return {
-            orderItemId: String(row.id),
-            serviceSessionId: String(row.service_session_id),
-            sessionLabel: String(row.service_sessions?.session_label ?? ''),
-            productName: String(row.menu_products?.product_name ?? ''),
-            stationCode: normalizeStationCode(row.station_code),
-            qtyReadyForNormalDelivery,
-            qtyReadyForReplacementDelivery,
-            qtyReadyForDelivery,
-            createdAt: String(row.created_at),
-            notes: row.notes ? String(row.notes) : null,
-          } satisfies ReadyItem;
-        })
-        .filter((row) => row.qtyReadyForDelivery > 0 || row.qtyReadyForReplacementDelivery > 0)
-        .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
-    : [];
+  const readyItems: ReadyItem[] = sessionItems
+    .filter((item) => allowStationCode(item.stationCode, scope.readyStationCodes))
+    .map((item) => {
+      const totalOriginalReady = Math.min(item.qtyReady, Math.max(item.qtyTotal - item.qtyCancelled, 0));
+      const qtyReadyForNormalDelivery = Math.max(totalOriginalReady - item.qtyDelivered, 0);
+      const qtyReadyForReplacementDelivery = Math.max(item.qtyReady - totalOriginalReady - item.qtyReplacementDelivered, 0);
+      const qtyReadyForDelivery = qtyReadyForNormalDelivery + qtyReadyForReplacementDelivery;
+      if (qtyReadyForDelivery <= 0) return null;
+      return {
+        orderItemId: item.orderItemId,
+        serviceSessionId: item.serviceSessionId,
+        sessionLabel: item.sessionLabel,
+        productName: item.productName,
+        stationCode: item.stationCode,
+        qtyReadyForNormalDelivery,
+        qtyReadyForReplacementDelivery,
+        qtyReadyForDelivery,
+      } satisfies ReadyItem;
+    })
+    .filter(Boolean) as ReadyItem[];
 
-  return { shift: normalizedShift, sessions, sections, products, sessionItems, readyItems, notePresets };
-}
+  const billableMap = new Map<string, number>();
+  for (const item of sessionItems) {
+    const qtyBillable = Math.max(item.qtyDelivered - item.qtyPaid - item.qtyDeferred - item.qtyWaived, 0);
+    billableMap.set(item.serviceSessionId, (billableMap.get(item.serviceSessionId) ?? 0) + qtyBillable);
+  }
+  const readyMap = new Map<string, number>();
+  for (const item of readyItems) {
+    readyMap.set(item.serviceSessionId, (readyMap.get(item.serviceSessionId) ?? 0) + item.qtyReadyForDelivery);
+  }
 
-export async function buildReadyItemsWorkspace(cafeId: string, databaseKey: string, scope: WaiterWorkspaceScope = {}): Promise<ReadyItem[]> {
-  const workspace = await buildWaiterWorkspace(cafeId, databaseKey, {
-    ...scope,
-    includeCatalog: false,
-    includeSessionItems: false,
-    includeReadyItems: true,
-  });
-  return workspace.readyItems;
-}
-
-export async function buildWaiterCatalogWorkspace(cafeId: string, databaseKey: string, scope: WaiterWorkspaceScope = {}): Promise<WaiterCatalogWorkspace> {
-  const workspace = await buildWaiterWorkspace(cafeId, databaseKey, {
-    ...scope,
-    includeCatalog: true,
-    includeSessionItems: false,
-    includeReadyItems: false,
-  });
-  return { sections: workspace.sections, products: workspace.products };
-}
-
-export async function buildWaiterLiveWorkspace(cafeId: string, databaseKey: string, scope: WaiterWorkspaceScope = {}): Promise<WaiterLiveWorkspace> {
-  const workspace = await buildWaiterWorkspace(cafeId, databaseKey, {
-    ...scope,
-    includeCatalog: false,
-    includeSessionItems: true,
-    includeReadyItems: true,
-  });
-  return { shift: workspace.shift, sessions: workspace.sessions, sessionItems: workspace.sessionItems, readyItems: workspace.readyItems, notePresets: workspace.notePresets };
+  return {
+    shift: normalizedShift,
+    sessions: (sessions ?? []).map(
+      (s: any) =>
+        ({
+          id: String(s.id),
+          label: String(s.session_label),
+          status: String(s.status),
+          openedAt: String(s.opened_at),
+          billableCount: billableMap.get(String(s.id)) ?? 0,
+          readyCount: readyMap.get(String(s.id)) ?? 0,
+        }) satisfies OpsSessionSummary,
+    ),
+    sections: (sections ?? []).map(
+      (s: any) =>
+        ({ id: String(s.id), title: String(s.title), stationCode: String(s.station_code) as StationCode, sortOrder: Number(s.sort_order ?? 0) }) satisfies OpsSection,
+    ),
+    products: (products ?? []).map(
+      (p: any) =>
+        ({ id: String(p.id), sectionId: String(p.section_id), name: String(p.product_name), stationCode: String(p.station_code) as StationCode, unitPrice: Number(p.unit_price ?? 0), sortOrder: Number(p.sort_order ?? 0) }) satisfies OpsProduct,
+    ),
+    readyItems,
+    sessionItems,
+  };
 }
 
 export async function buildStationWorkspace(cafeId: string, stationCode: StationCode, databaseKey: string): Promise<StationWorkspace> {
@@ -427,7 +360,7 @@ export async function buildStationWorkspace(cafeId: string, stationCode: Station
     if (openSessionIds.length > 0) {
       const { data, error } = await admin
         .from('order_items')
-        .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, notes, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
+        .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
         .eq('cafe_id', cafeId)
         .eq('shift_id', normalizedShift.id)
         .eq('station_code', stationCode)
@@ -461,7 +394,6 @@ export async function buildStationWorkspace(cafeId: string, stationCode: Station
         qtyDelivered: Number(row.qty_delivered ?? 0),
         qtyReplacementDelivered: Number(row.qty_replacement_delivered ?? 0),
         createdAt: String(row.created_at),
-        notes: row.notes ? String(row.notes) : null,
       };
     })
     .filter((row) => row.qtyWaiting > 0);
@@ -520,18 +452,19 @@ export async function ensureRuntimeContract(scope: RuntimeContractScope, databas
 }
 
 async function loadDeferredCustomerSummaryRows(cafeId: string, databaseKey: string): Promise<DeferredCustomerSummaryRow[]> {
-  return readThroughCache(cacheKey('deferred-summary', cafeId, databaseKey), DEFERRED_SUMMARY_CACHE_TTL_MS, async () => {
-    const { data, error } = await adminOps(databaseKey)
-      .from('deferred_customer_balances')
-      .select('debtor_name, entry_count, debt_total, repayment_total, balance, last_entry_at, last_debt_at, last_repayment_at, last_entry_kind')
-      .eq('cafe_id', cafeId)
-      .order('balance', { ascending: false })
-      .order('last_entry_at', { ascending: false })
-      .order('debtor_name', { ascending: true });
+  await ensureRuntimeContract('core', databaseKey);
 
-    if (error) throw error;
-    return (data ?? []) as DeferredCustomerSummaryRow[];
-  });
+  const admin = adminOps(databaseKey);
+  const { data, error } = await admin
+    .from('deferred_customer_balances')
+    .select('debtor_name, entry_count, debt_total, repayment_total, balance, last_entry_at, last_debt_at, last_repayment_at, last_entry_kind')
+    .eq('cafe_id', cafeId)
+    .order('balance', { ascending: false })
+    .order('last_entry_at', { ascending: false })
+    .order('debtor_name', { ascending: true });
+
+  if (error) throw error;
+  return (data ?? []) as DeferredCustomerSummaryRow[];
 }
 
 export async function buildBillingWorkspace(cafeId: string, databaseKey: string): Promise<BillingWorkspace> {
@@ -1032,45 +965,13 @@ export async function buildDashboardWorkspace(cafeId: string, databaseKey: strin
 }
 
 export async function buildOpsNavSummary(cafeId: string, databaseKey: string): Promise<OpsNavSummary> {
-  await ensureRuntimeContract('core', databaseKey);
-
-  const shift = await loadOpenShift(cafeId, databaseKey);
-  const openSessions = shift ? await loadOpenSessions(cafeId, shift.id, databaseKey) : [];
-  const openSessionIds = openSessions.map((row: any) => String(row.id));
-
-  const [readyItems, billableItems, deferredSummaries, stationBarista, stationShisha] = await Promise.all([
-    buildReadyItemsWorkspace(cafeId, databaseKey),
-    shift ? listBillableRows(cafeId, databaseKey, shift.id, openSessionIds) : Promise.resolve([] as BillableItem[]),
-    loadDeferredCustomerSummaryRows(cafeId, databaseKey),
-    buildStationWorkspace(cafeId, 'barista', databaseKey),
-    buildStationWorkspace(cafeId, 'shisha', databaseKey),
+  const [dashboard, deferredCustomers] = await Promise.all([
+    buildDashboardWorkspace(cafeId, databaseKey),
+    buildDeferredCustomersWorkspace(cafeId, databaseKey),
   ]);
 
-  let deferredOutstanding = 0;
-  let deferredCustomerCount = 0;
-  for (const row of deferredSummaries) {
-    const balance = Number(row.balance ?? 0);
-    deferredOutstanding += balance;
-    if (balance > 0) deferredCustomerCount += 1;
-  }
-
-  const oldestPendingSource = [...stationBarista.queue, ...stationShisha.queue].map((item) => item.createdAt).filter(Boolean).sort()[0] ?? null;
-  const oldestReadySource = readyItems.map((item) => item.createdAt).filter(Boolean).sort()[0] ?? null;
-
   return {
-    shift,
-    openSessions: openSessions.length,
-    waitingBarista: stationBarista.queue.reduce((sum, item) => sum + item.qtyWaiting, 0),
-    waitingShisha: stationShisha.queue.reduce((sum, item) => sum + item.qtyWaiting, 0),
-    readyForDelivery: readyItems.reduce((sum, item) => sum + item.qtyReadyForDelivery, 0),
-    billableQty: billableItems.reduce((sum, item) => sum + item.qtyBillable, 0),
-    deferredOutstanding,
-    deferredCustomerCount,
-    queueHealth: {
-      oldestPendingMinutes: minutesSince(oldestPendingSource),
-      oldestReadyMinutes: minutesSince(oldestReadySource),
-      stalledSessionsCount: 0,
-      stalledThresholdMinutes: STALLED_SESSION_THRESHOLD_MINUTES,
-    },
+    ...dashboard,
+    deferredCustomerCount: deferredCustomers.filter((item) => item.balance > 0).length,
   };
 }
