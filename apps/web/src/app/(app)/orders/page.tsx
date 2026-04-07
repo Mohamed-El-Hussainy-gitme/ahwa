@@ -30,6 +30,8 @@ type SessionCardView = OpsSessionSummary & {
   lastActivityAt: string;
   openedLabel: string;
   activityLabel: string;
+  displayLabel: string;
+  shortCode: string;
 };
 
 function formatClockLabel(value: string | null | undefined) {
@@ -44,13 +46,15 @@ function formatClockLabel(value: string | null | undefined) {
 
 function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderItem[]): SessionCardView {
   let totalItemQty = 0;
-  let latestAt = session.openedAt;
+  let latestAt = session.openedAt ?? '';
   for (const item of items) {
     totalItemQty += Math.max(Number(item.qtyTotal ?? 0), 0);
     if (item.createdAt && item.createdAt > latestAt) {
       latestAt = item.createdAt;
     }
   }
+  const shortCode = String(session.id ?? '').trim().slice(0, 6);
+  const displayLabel = String(session.label ?? '').trim() || (shortCode ? `جلسة ${shortCode}` : 'جلسة مفتوحة');
   return {
     ...session,
     totalItemQty,
@@ -58,6 +62,8 @@ function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderIte
     lastActivityAt: latestAt,
     openedLabel: formatClockLabel(session.openedAt),
     activityLabel: formatClockLabel(latestAt),
+    displayLabel,
+    shortCode,
   };
 }
 
@@ -84,8 +90,9 @@ export default function OrdersPage() {
   const { data: liveData, setData: setLiveData, error: liveError } = useOpsWorkspace<WaiterLiveWorkspace>(liveLoader, {
     enabled: Boolean(shift),
     cacheKey: 'workspace:orders:live',
-    staleTimeMs: 12_000,
-    pollIntervalMs: 4000,
+    staleTimeMs: 6_000,
+    pollIntervalMs: 1500,
+    pollAlways: true,
     shouldReloadOnEvent: shouldReloadWaiterLiveWorkspace,
   });
   const { data: catalogData, error: catalogError } = useOpsWorkspace<WaiterCatalogWorkspace>(catalogLoader, {
@@ -128,7 +135,7 @@ export default function OrdersPage() {
       .sort((a, b) => {
         if (!creatingNew && a.id === effectiveSessionId) return -1;
         if (!creatingNew && b.id === effectiveSessionId) return 1;
-        return b.lastActivityAt.localeCompare(a.lastActivityAt);
+        return (b.lastActivityAt ?? '').localeCompare(a.lastActivityAt ?? '');
       });
   }, [creatingNew, effectiveSessionId, liveData?.sessionItems, sessions]);
 
@@ -366,6 +373,10 @@ export default function OrdersPage() {
         </div>
       ) : null}
 
+      <div className="mb-3 rounded-[22px] border border-[#e0d1bf] bg-[#f7efe4] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">
+        اختر جلسة أو أنشئ جلسة جديدة ثم أضف الأصناف.
+      </div>
+
       <div className="space-y-3">
         <section id="sessions-panel" className={[opsSurface, 'p-3'].join(' ')}>
           <div className="mb-3 flex items-center justify-between gap-2">
@@ -382,7 +393,6 @@ export default function OrdersPage() {
             <div className="grid grid-cols-2 gap-2">
               {sessionCards.map((session) => {
                 const active = !creatingNew && effectiveSessionId === session.id;
-                const sessionCode = session.id.slice(0, 6).toUpperCase();
                 return (
                   <button
                     key={session.id}
@@ -390,40 +400,30 @@ export default function OrdersPage() {
                     onClick={() => selectExistingSession(session.id)}
                     disabled={composerOpen || submitCommand.busy}
                     className={[
-                      'w-full rounded-[20px] border px-3 py-3 text-right transition disabled:opacity-60',
+                      'rounded-[20px] border px-3 py-3 text-right transition disabled:opacity-60',
                       active
                         ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]'
                         : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
                     ].join(' ')}
                   >
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm font-black">{session.label}</div>
-                        <div className={['mt-1 text-[11px]', active ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
-                          تشغيل {sessionCode}
+                      <div className="min-w-0">
+                        <div className="truncate text-sm font-bold">{session.displayLabel}</div>
+                        <div className={['mt-1 text-[11px]', active ? 'text-white/75' : 'text-[#8a7763]'].join(' ')}>
+                          {session.shortCode ? `#${session.shortCode}` : 'جلسة مفتوحة'}
                         </div>
                       </div>
-                      {active ? <div className={opsBadge('accent')}>الحالية</div> : null}
+                      {session.totalItemQty > 0 ? (
+                        <div className={[ 'rounded-full px-2 py-1 text-[11px] font-black', active ? 'bg-white/12 text-white' : 'bg-[#f4ede3] text-[#6f5b49]' ].join(' ')}>
+                          {session.totalItemQty}
+                        </div>
+                      ) : null}
                     </div>
-
-                    <div className={['mt-2 space-y-1 text-[11px]', active ? 'text-white/85' : 'text-[#6b5a4c]'].join(' ')}>
-                      <div className="flex items-center justify-between gap-2">
-                        <span>فُتحت</span>
-                        <span className="font-semibold">{session.openedLabel}</span>
-                      </div>
-                      <div className="flex items-center justify-between gap-2">
-                        <span>آخر حركة</span>
-                        <span className="font-semibold">{session.activityLabel}</span>
-                      </div>
+                    <div className={['mt-2 text-xs', active ? 'text-white/80' : 'text-[#6f5b49]'].join(' ')}>
+                      جاهز {session.readyCount} • للحساب {session.billableCount} • أصناف {session.totalProductCount}
                     </div>
-
-                    <div className={['mt-2 flex items-center justify-between gap-2 text-[11px]', active ? 'text-white' : 'text-[#5e4d3f]'].join(' ')}>
-                      <span>إجمالي {session.totalItemQty}</span>
-                      <span>{session.totalProductCount} صنف</span>
-                    </div>
-                    <div className={['mt-1 flex items-center justify-between gap-2 text-[11px] font-semibold', active ? 'text-white' : 'text-[#5e4d3f]'].join(' ')}>
-                      <span>جاهز {session.readyCount}</span>
-                      <span>للحساب {session.billableCount}</span>
+                    <div className={['mt-1 text-[11px]', active ? 'text-white/70' : 'text-[#8a7763]'].join(' ')}>
+                      فتح {session.openedLabel} • آخر حركة {session.activityLabel}
                     </div>
                   </button>
                 );

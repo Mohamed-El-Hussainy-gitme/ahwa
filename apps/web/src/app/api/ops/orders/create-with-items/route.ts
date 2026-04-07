@@ -7,7 +7,7 @@ import {
   requireSessionOrderAccess,
 } from '@/app/api/ops/_helpers';
 import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '../_station-events';
-import { persistOrderNotePreset } from '../../_order-note-presets';
+import { dispatchOrderNotePresetInBackground } from '../../_order-note-presets';
 
 type CreateOrderRequestBody = {
   serviceSessionId?: string;
@@ -42,7 +42,7 @@ export async function POST(req: Request) {
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
 
-    const { productStationCodes } = await requireOrderSelectionStationCodes(
+    const { stationCodes, productStationCodes } = await requireOrderSelectionStationCodes(
       ctx,
       items.map((item) => item.menu_product_id),
     );
@@ -57,11 +57,11 @@ export async function POST(req: Request) {
     }, ctx.databaseKey);
 
     const orderId = String(rpc.order_id ?? '').trim();
-    await persistOrderNotePreset({
+    dispatchOrderNotePresetInBackground({
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
       note: body.notes,
-      productStationCodes,
+      productStationCodes: stationCodes,
     });
     const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();
     if (!orderId || !serviceSessionId) {

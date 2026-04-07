@@ -23,8 +23,9 @@ export default function ReadyPage() {
   const { data, setData, error } = useOpsWorkspace<ReadyItem[]>(readyLoader, {
     enabled: Boolean(shift) && canAccess,
     cacheKey: 'workspace:ready',
-    staleTimeMs: 10_000,
-    pollIntervalMs: canAccess ? 4000 : undefined,
+    staleTimeMs: 5_000,
+    pollIntervalMs: canAccess ? 1500 : undefined,
+    pollAlways: true,
     shouldReloadOnEvent: shouldReloadReadyWorkspace,
   });
 

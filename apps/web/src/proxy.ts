@@ -4,6 +4,7 @@ import { PLATFORM_ADMIN_COOKIE } from '@/lib/platform-auth/session';
 const RUNTIME_SESSION_COOKIE = 'ahwa_runtime_session';
 const LEGACY_PLATFORM_SESSION_COOKIE = 'ahwa_platform_session';
 
+
 function isPublicPath(path: string) {
   return (
     path === '/' ||
@@ -12,17 +13,19 @@ function isPublicPath(path: string) {
     path === '/owner-password' ||
     path === '/partner/login' ||
     path === '/platform/login' ||
-
+    path === '/manifest.webmanifest' ||
+    path === '/site.webmanifest' ||
+    path === '/favicon.ico' ||
+    path === '/apple-icon.png' ||
     /^\/c\/[^/]+\/?$/.test(path) ||
-
     /^\/c\/[^/]+\/(login|activate)\/?$/.test(path) ||
-
     path.startsWith('/api/auth/') ||
+    path.startsWith('/api/public/') ||
     path.startsWith('/api/device-gate/') ||
     path === '/api/platform/auth/login' ||
     path === '/api/platform/bootstrap' ||
     path.startsWith('/_next/') ||
-    path === '/favicon.ico'
+    /^\/[^?]+\.(?:png|jpg|jpeg|webp|svg|ico|gif|css|js|map|txt|xml|json|webmanifest)$/.test(path)
   );
 }
 
