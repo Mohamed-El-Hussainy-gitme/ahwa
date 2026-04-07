@@ -53,7 +53,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         tenantSlug: cafe.cafeSlug,
         databaseKey: cafe.databaseKey,
         runtimeUserId: owner.ownerId,
-        fullName: owner.fullName,
+        fullName: owner.ownerName,
         accountKind: 'owner',
         shiftId: String(shift.id),
         shiftRole: null,

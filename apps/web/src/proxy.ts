@@ -18,6 +18,7 @@ function isPublicPath(path: string) {
     /^\/c\/[^/]+\/(login|activate)\/?$/.test(path) ||
 
     path.startsWith('/api/auth/') ||
+    path.startsWith('/api/public/') ||
     path.startsWith('/api/device-gate/') ||
     path === '/api/platform/auth/login' ||
     path === '/api/platform/bootstrap' ||
