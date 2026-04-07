@@ -281,15 +281,7 @@ export async function buildWaiterWorkspace(
   const includeCatalog = scope.includeCatalog !== false;
   const includeSessionItems = scope.includeSessionItems !== false;
   const includeReadyItems = scope.includeReadyItems !== false;
-  const sessionRows = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
-  const sessions: OpsSessionSummary[] = sessionRows.map((row: any) => ({
-    id: String(row.id ?? ''),
-    label: String(row.session_label ?? row.label ?? ''),
-    status: String(row.status ?? 'open'),
-    openedAt: String(row.opened_at ?? row.openedAt ?? ''),
-    billableCount: Number(row.billable_count ?? row.billableCount ?? 0),
-    readyCount: Number(row.ready_count ?? row.readyCount ?? 0),
-  }));
+  const sessions = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
   const notePresets = await loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null);
 
   let sections: OpsSection[] = [];

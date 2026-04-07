@@ -45,5 +45,9 @@
     "report:capacity": "node ./scripts/load/build-capacity-report.mjs",
     "verify:phase30": "node ./scripts/verify-phase30-load-lab.mjs"
   },
-  "packageManager": "npm@10.9.2"
+  "packageManager": "npm@10.9.2",
+  "engines": {
+    "node": "20.x",
+    "npm": "10.x"
+  }
 }

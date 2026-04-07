@@ -29,9 +29,9 @@ npm run build:web
 ## Vercel project settings
 
 - Framework: Next.js
-- Root Directory: `apps/web`
+- Root Directory: repository root (`.`)
 - Install Command: `npm ci`
-- Build Command: `npm run build:web`
+- Build Command: `npm run build`
 
 ## Required Vercel environment variables
 

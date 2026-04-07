@@ -44,8 +44,8 @@ function formatClockLabel(value: string | null | undefined) {
 
 function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderItem[]): SessionCardView {
   let totalItemQty = 0;
-  const openedAt = typeof session.openedAt === 'string' ? session.openedAt : '';
-  let latestAt = openedAt;
+  let latestAt = typeof session.openedAt === 'string' ? session.openedAt : '';
+
   for (const item of items) {
     totalItemQty += Math.max(Number(item.qtyTotal ?? 0), 0);
     const createdAt = typeof item.createdAt === 'string' ? item.createdAt : '';
@@ -53,13 +53,13 @@ function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderIte
       latestAt = createdAt;
     }
   }
+
   return {
     ...session,
-    openedAt,
     totalItemQty,
     totalProductCount: items.length,
     lastActivityAt: latestAt,
-    openedLabel: formatClockLabel(openedAt),
+    openedLabel: formatClockLabel(session.openedAt),
     activityLabel: formatClockLabel(latestAt),
   };
 }
