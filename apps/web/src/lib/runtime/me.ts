@@ -125,6 +125,12 @@ export async function getEnrichedRuntimeMeFromSessionToken(sessionToken: string)
   return enrichRuntimeMe(me, sessionToken);
 }
 
+export async function getBaseRuntimeMeFromCookie(): Promise<RuntimeMe | null> {
+  const token = await getCookieValue(RUNTIME_SESSION_COOKIE);
+  if (!token) return null;
+  return getBaseRuntimeMeFromSessionToken(token);
+}
+
 export async function getEnrichedRuntimeMeFromCookie(): Promise<EnrichedRuntimeMe | null> {
   const token = await getCookieValue(RUNTIME_SESSION_COOKIE);
   if (!token) return null;
