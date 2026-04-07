@@ -21,7 +21,6 @@ import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/u
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 import { shouldReloadStationWorkspace, shouldReloadWaiterCatalogWorkspace, shouldReloadWaiterLiveWorkspace } from '@/lib/ops/reload-rules';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
-import { SessionSelectorGrid } from '@/ui/ops/SessionSelectorGrid';
 import {
   opsAccentButton,
   opsAlert,
@@ -329,16 +328,31 @@ export default function ShishaPage() {
             </button>
           </div>
 
-          <SessionSelectorGrid
-            items={sessions.map((session) => ({
-              id: session.id,
-              label: session.label,
-              subtitle: `جاهز ${session.readyCount} • للحساب ${session.billableCount}`,
-            }))}
-            activeId={!creatingNew ? effectiveSessionId : null}
-            onSelect={selectExistingSession}
-            emptyLabel="لا توجد جلسات شيشة مفتوحة الآن."
-          />
+          {sessions.length ? (
+            <div className="grid grid-cols-2 gap-2">
+              {sessions.map((session) => {
+                const active = !creatingNew && effectiveSessionId === session.id;
+                return (
+                  <button
+                    key={session.id}
+                    type="button"
+                    onClick={() => selectExistingSession(session.id)}
+                    className={[
+                      'rounded-[20px] border px-3 py-3 text-right transition duration-150 hover:-translate-y-[1px]',
+                      active
+                        ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]'
+                        : 'border-[#decdb9] bg-[#f8f1e7] text-[#2f241b] hover:bg-[#f3e8da]',
+                    ].join(' ')}
+                  >
+                    <div className="truncate text-sm font-bold">{session.label}</div>
+                    <div className={['mt-1 text-xs', active ? 'text-white/75' : 'text-[#8a7763]'].join(' ')}>
+                      جاهز {session.readyCount} • للحساب {session.billableCount}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          ) : null}
 
           {creatingNew ? (
             <div className="mt-3 space-y-2">
@@ -352,6 +366,7 @@ export default function ShishaPage() {
             </div>
           ) : null}
 
+          {!sessions.length && !creatingNew ? <div className={`mt-3 ${opsEmptyState()}`}>لا توجد جلسات شيشة مفتوحة الآن.</div> : null}
           {!sections.length ? <div className={`mt-3 ${opsEmptyState('warning')}`}>لا توجد أقسام منيو شيشة متاحة الآن.</div> : null}
         </section>
 

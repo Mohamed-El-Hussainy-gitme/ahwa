@@ -379,7 +379,7 @@ export async function buildStationWorkspace(cafeId: string, stationCode: Station
     if (openSessionIds.length > 0) {
       const { data, error } = await admin
         .from('order_items')
-        .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, notes, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
+        .select('id, service_session_id, station_code, qty_total, qty_submitted, qty_ready, qty_delivered, qty_replacement_delivered, qty_remade, qty_cancelled, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
         .eq('cafe_id', cafeId)
         .eq('shift_id', normalizedShift.id)
         .eq('station_code', stationCode)
