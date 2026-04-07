@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
@@ -33,9 +33,6 @@ export default function OrdersPage() {
   const [readySelection, setReadySelection] = useState<Record<string, number>>({});
   const [remakeSelection, setRemakeSelection] = useState<Record<string, number>>({});
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
-  const [composerOpen, setComposerOpen] = useState(false);
-  const [composerLabel, setComposerLabel] = useState('');
-  const composerInputRef = useRef<HTMLInputElement | null>(null);
 
   const loader = useCallback(() => opsClient.waiterWorkspace(), []);
   const { data, setData, error: workspaceError } = useOpsWorkspace<WaiterWorkspace>(loader, {
@@ -67,12 +64,6 @@ export default function OrdersPage() {
       setSessionWarning(null);
     }
   }, [creatingNew, effectiveSessionId]);
-
-  useEffect(() => {
-    if (!composerOpen) return;
-    const id = window.setTimeout(() => composerInputRef.current?.focus(), 120);
-    return () => window.clearTimeout(id);
-  }, [composerOpen]);
 
   const submitCommand = useOpsCommand(
     async () => {
@@ -136,7 +127,6 @@ export default function OrdersPage() {
   }
 
   function inc(id: string) {
-    if (composerOpen) return;
     if (!creatingNew && !effectiveSessionId) {
       warnSessionRequired();
       return;
@@ -155,7 +145,6 @@ export default function OrdersPage() {
   }
 
   function selectExistingSession(nextSessionId: string) {
-    if (composerOpen || submitCommand.busy) return;
     setSessionId(nextSessionId);
     setCreatingNew(false);
     setLabel('');
@@ -163,25 +152,11 @@ export default function OrdersPage() {
   }
 
   function beginNewSession() {
-    if (submitCommand.busy) return;
-    setComposerLabel(label);
-    setComposerOpen(true);
-    setSessionWarning(null);
-  }
-
-  function cancelComposer() {
-    setComposerOpen(false);
-    if (!draftQtyTotal) {
-      setCreatingNew(false);
-    }
-  }
-
-  function confirmComposer() {
     setCreatingNew(true);
     setSessionId('');
-    setLabel(composerLabel.trim());
+    setLabel('');
+    setDraft({});
     setSessionWarning(null);
-    setComposerOpen(false);
   }
 
   return (
@@ -275,6 +250,18 @@ export default function OrdersPage() {
                   </div>
                 </button>
               ))}
+            </div>
+          ) : null}
+
+          {creatingNew ? (
+            <div className="mt-3 space-y-2">
+              <input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder="اسم أو رقم الجلسة الجديدة"
+                className="w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
+              />
+              <div className="text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولده النظام تلقائيًا.</div>
             </div>
           ) : null}
 
@@ -377,32 +364,6 @@ export default function OrdersPage() {
             />
           </section>
         ) : null}
-      {composerOpen ? (
-        <div className="fixed inset-0 z-[60] flex items-end justify-center bg-[#1e1712]/30 p-4">
-          <div className="w-full max-w-md rounded-[28px] border border-[#eadcca] bg-[#fffdf8] p-5 shadow-[0_26px_60px_rgba(30,23,18,0.22)]">
-            <div className="text-right">
-              <div className="text-base font-black text-[#1e1712]">تعريف جلسة جديدة</div>
-              <div className="mt-1 text-sm text-[#7d6a59]">اكتب اسمًا أو رقمًا واضحًا للجلسة لتسهيل العودة إليها أثناء التشغيل.</div>
-            </div>
-            <input
-              ref={composerInputRef}
-              value={composerLabel}
-              onChange={(e) => setComposerLabel(e.target.value)}
-              placeholder="مثال: طاولة 7 أو أحمد"
-              className="mt-4 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
-            />
-            <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولد النظام اسمًا تلقائيًا.</div>
-            <div className="mt-4 flex gap-2">
-              <button type="button" onClick={cancelComposer} className={[opsGhostButton, 'flex-1 justify-center'].join(' ')}>
-                إلغاء
-              </button>
-              <button type="button" onClick={confirmComposer} className={[opsPrimaryButton, 'flex-1 justify-center'].join(' ')}>
-                اعتماد الجلسة
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
       </div>
     </MobileShell>
   );

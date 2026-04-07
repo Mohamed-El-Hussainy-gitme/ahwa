@@ -19,7 +19,7 @@ export function setRuntimeSessionCookie(response: NextResponse, token: string, m
   response.cookies.set(RUNTIME_SESSION_COOKIE, token, {
     httpOnly: true,
     secure: secure(),
-    sameSite: "lax",
+    sameSite: "strict",
     path: "/",
     maxAge: maxAgeSeconds,
   });
@@ -29,7 +29,7 @@ export function setPlatformSessionCookie(response: NextResponse, token: string, 
   response.cookies.set(PLATFORM_SESSION_COOKIE, token, {
     httpOnly: true,
     secure: secure(),
-    sameSite: "lax",
+    sameSite: "strict",
     path: "/",
     maxAge: maxAgeSeconds,
   });
@@ -60,7 +60,7 @@ export function clearRuntimeSessionCookie(response: NextResponse) {
   response.cookies.set(RUNTIME_SESSION_COOKIE, '', {
     httpOnly: true,
     secure: secure(),
-    sameSite: 'lax',
+    sameSite: 'strict',
     path: '/',
     maxAge: 0,
   });
@@ -71,7 +71,7 @@ export function clearAuthCookies(response: NextResponse) {
     response.cookies.set(name, "", {
       httpOnly: true,
       secure: secure(),
-      sameSite: "lax",
+      sameSite: "strict",
       path: "/",
       maxAge: 0,
     });
