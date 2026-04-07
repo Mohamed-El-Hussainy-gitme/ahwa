@@ -17,6 +17,8 @@ export default function MenuPrintPage() {
   const { can } = useAuthz();
   const loader = useCallback(() => opsClient.menuWorkspace(), []);
   const { data, error } = useOpsWorkspace<MenuWorkspace>(loader, {
+    cacheKey: 'workspace:menu:print',
+    staleTimeMs: 60_000,
     enabled: can.manageMenu,
     shouldReloadOnEvent: () => false,
   });

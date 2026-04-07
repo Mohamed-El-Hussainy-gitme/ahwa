@@ -68,6 +68,8 @@ export default function CustomerLedgerPage() {
 
   const loader = useCallback(() => opsClient.deferredCustomerLedger(debtorName), [debtorName]);
   const { data, error } = useOpsWorkspace<DeferredCustomerLedgerWorkspace>(loader, {
+    cacheKey: `workspace:customer-ledger:${debtorName}`,
+    staleTimeMs: 60_000,
     enabled: Boolean(debtorName),
   });
 
@@ -133,7 +135,7 @@ export default function CustomerLedgerPage() {
               <div className="font-semibold text-[#1e1712]">تصدير كشف الحساب</div>
               <div className="mt-1 text-xs text-[#8a7763]">نسخة مرتبة للطباعة أو الحفظ بصيغة PDF.</div>
             </div>
-            <Link href={`/customers/${encodeURIComponent(debtorName)}/print`} target="_blank" className="rounded-2xl border bg-[#fffdf9] px-4 py-2 text-sm font-semibold text-[#5e4d3f]">تصدير PDF</Link>
+            <Link href={`/customers/${encodeURIComponent(debtorName)}/print`} className="rounded-2xl border bg-[#fffdf9] px-4 py-2 text-sm font-semibold text-[#5e4d3f]">تصدير PDF</Link>
           </div>
         </section>
         <div className="grid grid-cols-2 gap-3">

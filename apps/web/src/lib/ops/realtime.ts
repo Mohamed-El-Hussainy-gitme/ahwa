@@ -15,17 +15,10 @@ export type RealtimeSnapshot = {
   lastErrorAt: number | null;
 };
 
-type RealtimeState = {
-  source: EventSource | null;
-  listeners: Set<Listener>;
-  statusListeners: Set<StatusListener>;
-  snapshot: RealtimeSnapshot;
-  reconnectTimer: ReturnType<typeof setTimeout> | null;
-  reconnectAttempts: number;
-};
+const HEALTHY_CONNECTION_IDLE_WINDOW_MS = 45_000;
 
-const state: RealtimeState = {
-  source: null,
+const state = {
+  source: null as EventSource | null,
   listeners: new Set<Listener>(),
   statusListeners: new Set<StatusListener>(),
   snapshot: {
@@ -33,10 +26,15 @@ const state: RealtimeState = {
     lastEventAt: null,
     lastConnectAt: null,
     lastErrorAt: null,
-  },
-  reconnectTimer: null,
+  } as RealtimeSnapshot,
+  reconnectTimer: null as number | null,
   reconnectAttempts: 0,
+  visibilityHandlerAttached: false,
 };
+
+function isDocumentVisible() {
+  return typeof document === 'undefined' || document.visibilityState === 'visible';
+}
 
 function emitStatus() {
   const snapshot = { ...state.snapshot };
@@ -50,6 +48,10 @@ function setSnapshot(next: Partial<RealtimeSnapshot>) {
   emitStatus();
 }
 
+function markRealtimeActivity() {
+  setSnapshot({ lastEventAt: Date.now() });
+}
+
 function clearReconnectTimer() {
   if (state.reconnectTimer) {
     clearTimeout(state.reconnectTimer);
@@ -57,19 +59,20 @@ function clearReconnectTimer() {
   }
 }
 
-function scheduleReconnect() {
-  if (typeof window === 'undefined' || state.reconnectTimer || !state.listeners.size) {
+function detachVisibilityHandler() {
+  if (typeof document === 'undefined' || !state.visibilityHandlerAttached) {
     return;
   }
+  document.removeEventListener('visibilitychange', handleVisibilityChange);
+  state.visibilityHandlerAttached = false;
+}
 
-  const attempt = Math.min(state.reconnectAttempts + 1, 6);
-  state.reconnectAttempts = attempt;
-  const delay = Math.min(1000 * 2 ** (attempt - 1), 8000);
-  setSnapshot({ state: 'reconnecting' });
-  state.reconnectTimer = setTimeout(() => {
-    state.reconnectTimer = null;
-    ensureSource();
-  }, delay);
+function attachVisibilityHandler() {
+  if (typeof document === 'undefined' || state.visibilityHandlerAttached) {
+    return;
+  }
+  document.addEventListener('visibilitychange', handleVisibilityChange);
+  state.visibilityHandlerAttached = true;
 }
 
 function disposeSource() {
@@ -79,20 +82,24 @@ function disposeSource() {
   }
 }
 
-function handleEvent(event: MessageEvent<string>) {
-  try {
-    const payload = JSON.parse(event.data) as OpsRealtimeEvent;
-    setSnapshot({ lastEventAt: Date.now() });
-    for (const listener of state.listeners) {
-      listener(payload);
-    }
-  } catch {
-    // Ignore malformed realtime payloads.
+function scheduleReconnect() {
+  if (typeof window === 'undefined' || state.reconnectTimer || !state.listeners.size || !isDocumentVisible()) {
+    return;
   }
+
+  const attempt = Math.min(state.reconnectAttempts + 1, 6);
+  state.reconnectAttempts = attempt;
+  const baseDelay = Math.min(1000 * 2 ** (attempt - 1), 30_000);
+  const jitter = Math.floor(Math.random() * 250);
+  setSnapshot({ state: 'reconnecting' });
+  state.reconnectTimer = window.setTimeout(() => {
+    state.reconnectTimer = null;
+    ensureSource();
+  }, baseDelay + jitter);
 }
 
 function ensureSource() {
-  if (state.source || typeof window === 'undefined' || !state.listeners.size) {
+  if (state.source || typeof window === 'undefined' || !state.listeners.size || !isDocumentVisible()) {
     return;
   }
 
@@ -103,30 +110,67 @@ function ensureSource() {
 
   source.onopen = () => {
     state.reconnectAttempts = 0;
+    const now = Date.now();
     setSnapshot({
       state: 'connected',
-      lastConnectAt: Date.now(),
+      lastConnectAt: now,
+      lastEventAt: now,
     });
   };
 
-  source.addEventListener('ops', handleEvent as EventListener);
+  source.addEventListener('ready', () => {
+    markRealtimeActivity();
+  });
+
+  source.addEventListener('ping', () => {
+    markRealtimeActivity();
+  });
+
+  source.addEventListener('ops', ((event: MessageEvent<string>) => {
+    try {
+      const payload = JSON.parse(event.data) as OpsRealtimeEvent;
+      markRealtimeActivity();
+      for (const listener of state.listeners) {
+        listener(payload);
+      }
+    } catch {
+      // Ignore malformed realtime payloads.
+    }
+  }) as EventListener);
+
+  source.addEventListener('reconnect', () => {
+    setSnapshot({
+      state: state.listeners.size ? 'reconnecting' : 'disconnected',
+      lastErrorAt: Date.now(),
+    });
+  });
+
   source.onerror = () => {
     setSnapshot({
       state: state.listeners.size ? 'reconnecting' : 'disconnected',
       lastErrorAt: Date.now(),
     });
-
-    if (source.readyState === EventSource.CLOSED) {
-      disposeSource();
-      scheduleReconnect();
-    }
+    disposeSource();
+    scheduleReconnect();
   };
 
   state.source = source;
 }
 
+function handleVisibilityChange() {
+  if (isDocumentVisible()) {
+    ensureSource();
+    return;
+  }
+
+  clearReconnectTimer();
+  disposeSource();
+  setSnapshot({ state: state.listeners.size ? 'idle' : 'disconnected' });
+}
+
 export function subscribeOpsRealtime(listener: Listener) {
   state.listeners.add(listener);
+  attachVisibilityHandler();
   ensureSource();
 
   return () => {
@@ -135,6 +179,7 @@ export function subscribeOpsRealtime(listener: Listener) {
     if (!state.listeners.size) {
       clearReconnectTimer();
       disposeSource();
+      detachVisibilityHandler();
       setSnapshot({ state: 'disconnected' });
     }
   };
@@ -142,6 +187,19 @@ export function subscribeOpsRealtime(listener: Listener) {
 
 export function getOpsRealtimeSnapshot(): RealtimeSnapshot {
   return { ...state.snapshot };
+}
+
+export function isOpsRealtimeHealthy(snapshot: RealtimeSnapshot = state.snapshot) {
+  if (snapshot.state !== 'connected') {
+    return false;
+  }
+
+  const referenceTime = snapshot.lastEventAt ?? snapshot.lastConnectAt;
+  if (referenceTime === null) {
+    return false;
+  }
+
+  return Date.now() - referenceTime <= HEALTHY_CONNECTION_IDLE_WINDOW_MS;
 }
 
 export function subscribeOpsRealtimeStatus(listener: StatusListener) {
