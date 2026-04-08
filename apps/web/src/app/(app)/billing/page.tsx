@@ -14,6 +14,7 @@ import { StickyActionBar } from '@/ui/StickyActionBar';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 import { buildBillingPreviewUrl, computeBillingTotals } from '@/lib/ops/billing';
 import { saveBillingReceiptPreviewDraft } from '@/lib/ops/receipt-preview';
+import { parseOrderItemNotes } from '@/lib/ops/orderItemNotes';
 import { shouldReloadBillingWorkspace } from '@/lib/ops/reload-rules';
 import {
   opsAccentButton,
@@ -342,6 +343,7 @@ export default function BillingPage() {
           <div className="grid grid-cols-2 gap-2">
             {current.items.map((item) => {
               const selected = selectedQty[item.orderItemId] ?? 0;
+              const parsedNotes = parseOrderItemNotes(item.notes);
 
               return (
                 <div key={item.orderItemId} className={[opsInset, 'p-3'].join(' ')}>
@@ -361,7 +363,10 @@ export default function BillingPage() {
                     {item.qtyWaived > 0 ? <span className={opsBadge('warning')}>مسقط {item.qtyWaived}</span> : null}
                     {item.qtyDeferred > 0 ? <span className={opsBadge('accent')}>آجل {item.qtyDeferred}</span> : null}
                     {item.qtyPaid > 0 ? <span className={opsBadge('success')}>مدفوع {item.qtyPaid}</span> : null}
+                    {parsedNotes.addonSummary ? <span className={opsBadge('accent')}>إضافات: {parsedNotes.addonSummary}</span> : null}
                   </div>
+
+                  {parsedNotes.freeformNotes ? <div className="mt-2 rounded-[16px] bg-[#fff8ef] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">{parsedNotes.freeformNotes}</div> : null}
 
                   <QuantityStepper
                     compact

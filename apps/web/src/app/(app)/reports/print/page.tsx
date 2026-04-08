@@ -5,7 +5,7 @@ import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { DeferredCustomerSummary, ProductReportRow, ReportsWorkspace, ReportsWorkspaceRequest, StaffPerformanceRow, ReportTotals, ReportComplaintEntry, ReportItemIssueEntry } from '@/lib/ops/types';
+import type { AddonReportRow, DeferredCustomerSummary, ProductReportRow, ReportsWorkspace, StaffPerformanceRow, ReportTotals, ReportComplaintEntry, ReportItemIssueEntry } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
 import { AccessDenied } from '@/ui/AccessState';
 import { PrintPageFrame } from '@/ui/print/PrintPageFrame';
@@ -28,6 +28,10 @@ function periodLabel(key: string) {
 
 function sortProducts(items: ProductReportRow[]) {
   return [...items].sort((a, b) => (b.netSales - a.netSales) || (b.qtyDelivered - a.qtyDelivered));
+}
+
+function sortAddons(items: AddonReportRow[]) {
+  return [...items].sort((a, b) => (b.netSales - a.netSales) || (b.usageCount - a.usageCount));
 }
 
 function sortStaff(items: StaffPerformanceRow[]) {
@@ -73,6 +77,7 @@ type PrintableReport = {
   endDate: string;
   totals: ReportTotals;
   products: ProductReportRow[];
+  addons: AddonReportRow[];
   staff: StaffPerformanceRow[];
   complaints: ReportComplaintEntry[];
   itemIssues: ReportItemIssueEntry[];
@@ -84,6 +89,7 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
   }
 
   const topProducts = sortProducts(period.products).slice(0, 12);
+  const topAddons = sortAddons(period.addons).slice(0, 12);
   const topStaff = sortStaff(period.staff).slice(0, 12);
 
   return (
@@ -124,6 +130,30 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
                 <td className="px-3 py-2">{row.productName}</td>
                 <td className="px-3 py-2">{row.stationCode}</td>
                 <td className="px-3 py-2">{row.qtyDelivered}</td>
+                <td className="px-3 py-2">{formatMoney(row.netSales)} ج</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </section>
+
+      <section>
+        <div className="mb-2 text-sm font-bold">أعلى الإضافات</div>
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b bg-neutral-50 text-right">
+              <th className="px-3 py-2">الإضافة</th>
+              <th className="px-3 py-2">المحطة</th>
+              <th className="px-3 py-2">الاستخدام</th>
+              <th className="px-3 py-2">الصافي</th>
+            </tr>
+          </thead>
+          <tbody>
+            {topAddons.map((row) => (
+              <tr key={row.addonId} className="border-b">
+                <td className="px-3 py-2">{row.addonName}</td>
+                <td className="px-3 py-2">{row.stationCode}</td>
+                <td className="px-3 py-2">{row.usageCount}</td>
                 <td className="px-3 py-2">{formatMoney(row.netSales)} ج</td>
               </tr>
             ))}
@@ -176,13 +206,9 @@ export default function ReportsPrintPage() {
   const { user } = useAuthz();
   const searchParams = useSearchParams();
   const tab = searchParams.get('tab') ?? 'current';
-  const reportsRequest = useMemo<ReportsWorkspaceRequest>(() => ({
-    weekAnchorDate: searchParams.get('weekAnchorDate') ?? undefined,
-    monthAnchorDate: searchParams.get('monthAnchorDate') ?? undefined,
-  }), [searchParams]);
-  const loader = useCallback(() => opsClient.reportsWorkspace(reportsRequest), [reportsRequest]);
+  const loader = useCallback(() => opsClient.reportsWorkspace(), []);
   const { data, error } = useOpsWorkspace<ReportsWorkspace>(loader, {
-    cacheKey: `workspace:reports:print:${reportsRequest.weekAnchorDate ?? '-'}:${reportsRequest.monthAnchorDate ?? '-'}` ,
+    cacheKey: 'workspace:reports:print',
     staleTimeMs: 60_000,
     enabled: user?.baseRole === 'owner',
     shouldReloadOnEvent: () => false,
@@ -201,6 +227,7 @@ export default function ReportsPrintPage() {
             days: [],
             shifts: [data.currentShift],
             products: data.currentProducts,
+            addons: data.currentAddons,
             staff: data.currentStaff,
             complaints: data.currentComplaints,
             itemIssues: data.currentItemIssues,
@@ -221,7 +248,7 @@ export default function ReportsPrintPage() {
     <PrintPageFrame
       title={tab === 'deferred' ? 'تصدير دفتر الآجل' : `تقرير ${periodLabel(tab)}`}
       exportFilename={tab === 'deferred' ? 'دفتر-الآجل' : `تقرير-${periodLabel(tab)}`}
-      subtitle={data ? `مرجع البيانات: ${data.referenceDate}${selectedPeriod ? ` • ${selectedPeriod.startDate} ← ${selectedPeriod.endDate}` : ''}` : 'جاري التحميل...'}
+      subtitle={data ? `مرجع البيانات: ${data.referenceDate}` : 'جاري التحميل...'}
     >
       {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
       {!data && !error ? <div className="rounded-2xl border border-dashed p-4 text-sm text-neutral-500">جاري تجهيز النسخة القابلة للطباعة...</div> : null}

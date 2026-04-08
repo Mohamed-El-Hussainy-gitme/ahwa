@@ -13,6 +13,8 @@ import type {
   DeferredCustomerSummary,
   DeferredLedgerEntry,
   MenuWorkspace,
+  MenuAddon,
+  ProductAddonLink,
   OpsProduct,
   OpsSection,
   OpsSessionSummary,
@@ -191,7 +193,7 @@ export async function listBillableRows(cafeId: string, databaseKey: string, shif
 
   let query = admin
     .from('order_items')
-    .select('id, service_session_id, unit_price, qty_delivered, qty_paid, qty_deferred, qty_waived, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
+    .select('id, service_session_id, unit_price, qty_delivered, qty_paid, qty_deferred, qty_waived, notes, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
     .eq('cafe_id', cafeId)
     .eq('shift_id', shiftId)
     .order('created_at', { ascending: true });
@@ -218,34 +220,50 @@ export async function listBillableRows(cafeId: string, databaseKey: string, shif
         qtyPaid: Number(row.qty_paid ?? 0),
         qtyDeferred: Number(row.qty_deferred ?? 0),
         qtyWaived: Number(row.qty_waived ?? 0),
+        notes: row.notes ? String(row.notes) : null,
       } satisfies BillableItem;
     })
     .filter((row) => row.qtyBillable > 0);
 }
 
-async function loadMenuWorkspaceCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products'>> {
+async function loadMenuWorkspaceCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products' | 'addons' | 'productAddonLinks'>> {
   return readThroughCache(cacheKey('menu-workspace', cafeId, databaseKey), MENU_WORKSPACE_CACHE_TTL_MS, async () => {
     const admin = adminOps(databaseKey);
-    const [{ data: sections, error: sectionsError }, { data: products, error: productsError }] = await Promise.all([
+    const [
+      { data: sections, error: sectionsError },
+      { data: products, error: productsError },
+      { data: addons, error: addonsError },
+      { data: productAddonLinks, error: productAddonLinksError },
+    ] = await Promise.all([
       admin.from('menu_sections').select('id, title, station_code, sort_order, is_active').eq('cafe_id', cafeId).order('sort_order', { ascending: true }),
       admin.from('menu_products').select('id, section_id, product_name, station_code, unit_price, sort_order, is_active').eq('cafe_id', cafeId).order('section_id', { ascending: true }).order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
+      admin.from('menu_addons').select('id, addon_name, station_code, unit_price, sort_order, is_active').eq('cafe_id', cafeId).order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
+      admin.from('menu_product_addons').select('menu_product_id, menu_addon_id').eq('cafe_id', cafeId),
     ]);
     if (sectionsError) throw sectionsError;
     if (productsError) throw productsError;
+    if (addonsError) throw addonsError;
+    if (productAddonLinksError) throw productAddonLinksError;
     return {
       sections: (sections ?? []).map((row: any) => ({ id: String(row.id), title: String(row.title), stationCode: normalizeStationCode(row.station_code), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies OpsSection),
       products: (products ?? []).map((row: any) => ({ id: String(row.id), sectionId: String(row.section_id), name: String(row.product_name), stationCode: normalizeStationCode(row.station_code), unitPrice: Number(row.unit_price ?? 0), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies OpsProduct),
+      addons: (addons ?? []).map((row: any) => ({ id: String(row.id), name: String(row.addon_name), stationCode: normalizeStationCode(row.station_code), unitPrice: Number(row.unit_price ?? 0), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies MenuAddon),
+      productAddonLinks: (productAddonLinks ?? []).map((row: any) => ({ productId: String(row.menu_product_id), addonId: String(row.menu_addon_id) }) satisfies ProductAddonLink),
     };
   });
 }
 
-async function loadActiveMenuCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products'>> {
+async function loadActiveMenuCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products' | 'addons' | 'productAddonLinks'>> {
   return readThroughCache(cacheKey('active-menu', cafeId, databaseKey), ACTIVE_MENU_CACHE_TTL_MS, async () => {
     const workspace = await loadMenuWorkspaceCatalog(cafeId, databaseKey);
     const sections = workspace.sections.filter((row) => row.isActive);
     const allowedSectionIds = new Set(sections.map((row) => row.id));
     const products = workspace.products.filter((row) => row.isActive && allowedSectionIds.has(row.sectionId));
-    return { sections, products };
+    const productIds = new Set(products.map((row) => row.id));
+    const addons = workspace.addons.filter((row) => row.isActive);
+    const addonIds = new Set(addons.map((row) => row.id));
+    const productAddonLinks = workspace.productAddonLinks.filter((row) => productIds.has(row.productId) && addonIds.has(row.addonId));
+    return { sections, products, addons, productAddonLinks };
   });
 }
 
@@ -255,7 +273,7 @@ export async function buildMenuWorkspace(cafeId: string, databaseKey: string): P
     loadBillingSettings(cafeId, databaseKey),
   ]);
 
-  return { sections: catalog.sections, products: catalog.products, billingSettings };
+  return { sections: catalog.sections, products: catalog.products, addons: catalog.addons, productAddonLinks: catalog.productAddonLinks, billingSettings };
 }
 
 
@@ -288,34 +306,33 @@ export async function buildWaiterWorkspace(
   scope: WaiterWorkspaceScope = {},
 ): Promise<WaiterWorkspace> {
   const admin = adminOps(databaseKey);
+  const normalizedShift = await loadOpenShift(cafeId, databaseKey);
   const includeCatalog = scope.includeCatalog !== false;
   const includeSessionItems = scope.includeSessionItems !== false;
   const includeReadyItems = scope.includeReadyItems !== false;
-  const includeLiveData = includeSessionItems || includeReadyItems;
-
-  const [catalog, normalizedShift, notePresets] = await Promise.all([
-    includeCatalog ? loadActiveMenuCatalog(cafeId, databaseKey) : Promise.resolve(null),
-    includeLiveData ? loadOpenShift(cafeId, databaseKey) : Promise.resolve(null),
-    includeLiveData
-      ? loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null)
-      : Promise.resolve([]),
-  ]);
-
   const sessions = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
+  const notePresets = await loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null);
 
   let sections: OpsSection[] = [];
   let products: OpsProduct[] = [];
-  if (catalog) {
+  let addons: MenuAddon[] = [];
+  let productAddonLinks: ProductAddonLink[] = [];
+  if (includeCatalog) {
+    const catalog = await loadActiveMenuCatalog(cafeId, databaseKey);
     sections = catalog.sections.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes));
     const allowedSectionIds = new Set(sections.map((row) => row.id));
     products = catalog.products.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes) && allowedSectionIds.has(row.sectionId));
+    const productIds = new Set(products.map((row) => row.id));
+    addons = catalog.addons.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes));
+    const addonIds = new Set(addons.map((row) => row.id));
+    productAddonLinks = catalog.productAddonLinks.filter((row) => productIds.has(row.productId) && addonIds.has(row.addonId));
   }
 
   const openSessionIds = sessions.map((session: any) => String(session.id));
   const openSessionIdsSet = new Set(openSessionIds);
 
   let itemRows: any[] = [];
-  if (normalizedShift && openSessionIds.length > 0 && includeLiveData) {
+  if (normalizedShift && openSessionIds.length > 0 && (includeSessionItems || includeReadyItems)) {
     const { data, error } = await admin
       .from('order_items')
       .select('id, service_session_id, station_code, unit_price, qty_total, qty_ready, qty_delivered, qty_replacement_delivered, qty_paid, qty_deferred, qty_waived, qty_remade, qty_cancelled, notes, created_at, menu_products!inner(product_name), service_sessions!inner(session_label)')
@@ -402,7 +419,7 @@ export async function buildWaiterWorkspace(
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     : [];
 
-  return { shift: normalizedShift, sessions, sections, products, sessionItems, readyItems, notePresets };
+  return { shift: normalizedShift, sessions, sections, products, addons, productAddonLinks, sessionItems, readyItems, notePresets };
 }
 
 export async function buildReadyItemsWorkspace(cafeId: string, databaseKey: string, scope: WaiterWorkspaceScope = {}): Promise<ReadyItem[]> {
@@ -420,7 +437,11 @@ export async function buildWaiterCatalogWorkspace(cafeId: string, databaseKey: s
   const sections = catalog.sections.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes));
   const allowedSectionIds = new Set(sections.map((row) => row.id));
   const products = catalog.products.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes) && allowedSectionIds.has(row.sectionId));
-  return { sections, products };
+  const productIds = new Set(products.map((row) => row.id));
+  const addons = catalog.addons.filter((row) => allowStationCode(row.stationCode, scope.productStationCodes));
+  const addonIds = new Set(addons.map((row) => row.id));
+  const productAddonLinks = catalog.productAddonLinks.filter((row) => productIds.has(row.productId) && addonIds.has(row.addonId));
+  return { sections, products, addons, productAddonLinks };
 }
 
 export async function buildWaiterLiveWorkspace(cafeId: string, databaseKey: string, scope: WaiterWorkspaceScope = {}): Promise<WaiterLiveWorkspace> {

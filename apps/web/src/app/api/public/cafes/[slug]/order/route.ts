@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { callOpsRpc } from '@/app/api/ops/_rpc';
 import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '@/app/api/ops/orders/_station-events';
+import { persistOrderItemAddons } from '@/app/api/ops/orders/_addons';
 import { requirePublicOrderingContext, resolveFallbackOwnerActor } from '@/lib/public-ordering';
 import { z } from 'zod';
 
@@ -11,6 +12,7 @@ const publicOrderSchema = z.object({
   items: z.array(z.object({
     productId: z.string().uuid(),
     quantity: z.coerce.number().int().min(1).max(20),
+    addonIds: z.array(z.string().uuid()).max(12).optional().default([]),
   })).min(1).max(30),
 });
 
@@ -42,7 +44,18 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
   try {
     const { cafe, shift } = await requirePublicOrderingContext(slug);
     const owner = await resolveFallbackOwnerActor(cafe.cafeId, cafe.databaseKey);
-    const items = parsed.data.items.map((item) => ({
+    const requestedItems = parsed.data.items.map((item) => ({
+      productId: item.productId,
+      quantity: item.quantity,
+      addonIds: [...new Set((item.addonIds ?? []).map((addonId) => String(addonId).trim()).filter(Boolean))],
+    }));
+
+    const uniqueProductIds = new Set(requestedItems.map((item) => item.productId));
+    if (uniqueProductIds.size !== requestedItems.length) {
+      throw new Error('DUPLICATE_PRODUCT_SELECTION_NOT_SUPPORTED');
+    }
+
+    const items = requestedItems.map((item) => ({
       menu_product_id: item.productId,
       qty: item.quantity,
     }));
@@ -102,13 +115,20 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
     }
 
+    await persistOrderItemAddons({
+      cafeId: cafe.cafeId,
+      orderId,
+      databaseKey: cafe.databaseKey,
+      items: requestedItems,
+    });
+
     dispatchStationOrderSubmittedInBackground(
       { cafeId: cafe.cafeId, databaseKey: cafe.databaseKey, shiftId: String(shift.id) },
       {
         orderId,
         serviceSessionId: createdSessionId,
         sessionLabel: createdSessionLabel,
-        items: parsed.data.items.map((item) => ({ productId: item.productId, quantity: item.quantity })),
+        items: requestedItems.map((item) => ({ productId: item.productId, quantity: item.quantity })),
         productStationCodes,
         source: 'public_qr',
       },

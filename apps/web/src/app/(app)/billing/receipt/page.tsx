@@ -11,6 +11,7 @@ import type { BillingReceipt } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
 import { AccessDenied } from '@/ui/AccessState';
 import { PrintPageFrame } from '@/ui/print/PrintPageFrame';
+import { parseOrderItemNotes } from '@/lib/ops/orderItemNotes';
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', {
@@ -186,17 +187,22 @@ export default function BillingReceiptPage() {
                 <span>Total</span>
               </div>
               <div className="border-y border-dashed">
-                {data.lines.map((line) => (
-                  <div key={`${line.orderItemId}-${line.quantity}`} className="flex items-start justify-between gap-3 border-b border-dashed py-2 last:border-b-0">
-                    <div className="min-w-0 flex-1 text-right">
-                      <div className="truncate font-semibold">{line.productName}</div>
-                      <div className="text-[11px] text-neutral-500">
-                        {line.quantity} x {formatMoney(line.unitPrice)}
+                {data.lines.map((line) => {
+                  const parsedNotes = parseOrderItemNotes(line.notes);
+                  return (
+                    <div key={`${line.orderItemId}-${line.quantity}`} className="flex items-start justify-between gap-3 border-b border-dashed py-2 last:border-b-0">
+                      <div className="min-w-0 flex-1 text-right">
+                        <div className="truncate font-semibold">{line.productName}</div>
+                        <div className="text-[11px] text-neutral-500">
+                          {line.quantity} x {formatMoney(line.unitPrice)}
+                        </div>
+                        {parsedNotes.addonSummary ? <div className="mt-1 text-[11px] font-semibold text-neutral-700">إضافات: {parsedNotes.addonSummary}</div> : null}
+                        {parsedNotes.freeformNotes ? <div className="mt-1 text-[11px] text-neutral-500">{parsedNotes.freeformNotes}</div> : null}
                       </div>
+                      <div className="shrink-0 whitespace-nowrap font-semibold tabular-nums">{formatMoney(line.lineAmount)}</div>
                     </div>
-                    <div className="shrink-0 whitespace-nowrap font-semibold tabular-nums">{formatMoney(line.lineAmount)}</div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
 

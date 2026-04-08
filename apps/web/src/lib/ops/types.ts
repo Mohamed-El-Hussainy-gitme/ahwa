@@ -3,6 +3,8 @@ export type OpsShift = { id: string; kind: string; status: string; openedAt: str
 export type OpsSessionSummary = { id: string; label: string; status: string; openedAt: string; billableCount: number; readyCount: number };
 export type OpsSection = { id: string; title: string; stationCode: StationCode; sortOrder: number; isActive?: boolean };
 export type OpsProduct = { id: string; sectionId: string; name: string; stationCode: StationCode; unitPrice: number; sortOrder: number; isActive?: boolean; isAvailable?: boolean };
+export type MenuAddon = { id: string; name: string; stationCode: StationCode; unitPrice: number; sortOrder: number; isActive?: boolean };
+export type ProductAddonLink = { productId: string; addonId: string };
 export type ReadyItem = {
   orderItemId: string;
   serviceSessionId: string;
@@ -37,15 +39,15 @@ export type SessionOrderItem = {
   createdAt?: string;
   notes?: string | null;
 };
-export type WaiterCatalogWorkspace = { sections: OpsSection[]; products: OpsProduct[] };
+export type WaiterCatalogWorkspace = { sections: OpsSection[]; products: OpsProduct[]; addons: MenuAddon[]; productAddonLinks: ProductAddonLink[] };
 export type WaiterLiveWorkspace = { shift: OpsShift | null; sessions: OpsSessionSummary[]; readyItems: ReadyItem[]; sessionItems: SessionOrderItem[]; notePresets: string[] };
 export type WaiterWorkspace = WaiterLiveWorkspace & WaiterCatalogWorkspace;
 export type StationQueueItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; stationCode: StationCode; qtyWaitingOriginal: number; qtyWaitingReplacement: number; qtyWaiting: number; qtyReady: number; qtyDelivered: number; qtyReplacementDelivered: number; createdAt: string; notes?: string | null };
 export type StationWorkspace = { shift: OpsShift | null; stationCode: StationCode; queue: StationQueueItem[] };
-export type BillableItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; unitPrice: number; qtyBillable: number; qtyDelivered: number; qtyPaid: number; qtyDeferred: number; qtyWaived: number };
+export type BillableItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; unitPrice: number; qtyBillable: number; qtyDelivered: number; qtyPaid: number; qtyDeferred: number; qtyWaived: number; notes?: string | null };
 export type BillingExtrasSettings = { taxEnabled: boolean; taxRate: number; serviceEnabled: boolean; serviceRate: number };
 export type BillingTotals = { subtotal: number; taxAmount: number; serviceAmount: number; total: number };
-export type BillingReceiptLine = { orderItemId: string; productName: string; quantity: number; unitPrice: number; lineAmount: number };
+export type BillingReceiptLine = { orderItemId: string; productName: string; quantity: number; unitPrice: number; lineAmount: number; notes?: string | null };
 export type BillingReceipt = { mode: 'preview' | 'final'; paymentId: string | null; paymentKind: 'cash' | 'deferred' | 'mixed' | 'repayment' | 'adjustment' | 'preview'; sessionId: string; sessionLabel: string; cafeName: string; debtorName: string | null; notes: string | null; createdAt: string; actorLabel: string; totals: BillingTotals; settings: BillingExtrasSettings; lines: BillingReceiptLine[] };
 export type BillingSession = { sessionId: string; sessionLabel: string; items: BillableItem[]; totalBillableAmount: number; totalBillableQty: number };
 export type BillingWorkspace = { shift: OpsShift | null; sessions: BillingSession[]; deferredNames: string[]; billingSettings: BillingExtrasSettings };
@@ -84,6 +86,8 @@ export type OpsNavSummary = {
 export type MenuWorkspace = {
   sections: OpsSection[];
   products: OpsProduct[];
+  addons: MenuAddon[];
+  productAddonLinks: ProductAddonLink[];
   billingSettings: BillingExtrasSettings;
 };
 
@@ -158,11 +162,6 @@ export type DeferredCustomerLedgerWorkspace = {
 
 export type ReportPeriodKey = 'day' | 'week' | 'month' | 'year';
 
-export type ReportsWorkspaceRequest = {
-  weekAnchorDate?: string;
-  monthAnchorDate?: string;
-};
-
 export type ReportTotals = {
   shiftCount: number;
   submittedQty: number;
@@ -231,6 +230,16 @@ export type ProductReportRow = {
   netSales: number;
 };
 
+export type AddonReportRow = {
+  addonId: string;
+  addonName: string;
+  stationCode: StationCode;
+  usageCount: number;
+  linkedOrderItems: number;
+  grossSales: number;
+  netSales: number;
+};
+
 export type StaffPerformanceRow = {
   actorKey: string;
   actorLabel: string;
@@ -258,6 +267,7 @@ export type PeriodReport = {
   days: ReportBusinessDayRow[];
   shifts: ReportShiftRow[];
   products: ProductReportRow[];
+  addons: AddonReportRow[];
   staff: StaffPerformanceRow[];
   complaints: ReportComplaintEntry[];
   itemIssues: ReportItemIssueEntry[];
@@ -267,6 +277,7 @@ export type ReportsWorkspace = {
   referenceDate: string;
   currentShift: ReportShiftRow | null;
   currentProducts: ProductReportRow[];
+  currentAddons: AddonReportRow[];
   currentStaff: StaffPerformanceRow[];
   currentComplaints: ReportComplaintEntry[];
   currentItemIssues: ReportItemIssueEntry[];

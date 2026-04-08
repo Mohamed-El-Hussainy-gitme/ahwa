@@ -30,6 +30,7 @@ type AllocationRow = {
 type OrderItemRow = {
   id: string;
   unit_price: number | string | null;
+  notes: string | null;
   menu_products?: { product_name?: string | null } | Array<{ product_name?: string | null }> | null;
 };
 
@@ -93,7 +94,7 @@ async function loadOrderItems(admin: ReturnType<typeof adminOps>, cafeId: string
 
   const result = await admin
     .from('order_items')
-    .select('id, unit_price, menu_products!inner(product_name)')
+    .select('id, unit_price, notes, menu_products!inner(product_name)')
     .eq('cafe_id', cafeId)
     .in('id', orderItemIds);
 
@@ -147,6 +148,7 @@ export async function GET(req: Request) {
           quantity: Number(row.quantity ?? 0),
           unitPrice: Number(item?.unit_price ?? 0),
           lineAmount: Number(row.amount ?? 0),
+          notes: item?.notes ? String(item.notes) : null,
         };
       });
 
@@ -213,6 +215,7 @@ export async function GET(req: Request) {
         quantity: allocation.quantity,
         unitPrice,
         lineAmount: unitPrice * allocation.quantity,
+        notes: item.notes ? String(item.notes) : null,
       };
     });
 

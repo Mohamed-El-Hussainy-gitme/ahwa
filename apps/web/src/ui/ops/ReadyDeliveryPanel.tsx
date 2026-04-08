@@ -2,6 +2,7 @@
 
 import type { ReadyItem } from '@/lib/ops/types';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
+import { parseOrderItemNotes } from '@/lib/ops/orderItemNotes';
 import { opsBadge, opsDashed, opsInset, opsSurface } from '@/ui/ops/premiumStyles';
 
 type Props = {
@@ -37,6 +38,7 @@ export function ReadyDeliveryPanel({
           <div className="grid grid-cols-2 gap-2">
             {items.map((item) => {
               const quantity = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, item.qtyReadyForDelivery));
+              const parsedNotes = parseOrderItemNotes(item.notes);
 
               return (
                 <div key={item.orderItemId} className={[opsInset, 'p-2.5'].join(' ')}>
@@ -55,6 +57,16 @@ export function ReadyDeliveryPanel({
                   {item.qtyReadyForReplacementDelivery > 0 ? (
                     <div className="mt-2 rounded-full border border-[#ecd9bd] bg-[#fcf3e7] px-2 py-1 text-center text-[10px] font-semibold text-[#a5671e]">
                       بديل مجاني {item.qtyReadyForReplacementDelivery}
+                    </div>
+                  ) : null}
+                  {parsedNotes.addonSummary ? (
+                    <div className="mt-2 rounded-[14px] border border-[#e6d7c4] bg-[#f8f1e6] px-2 py-1 text-right text-[10px] font-semibold text-[#6b4f2a]">
+                      إضافات: {parsedNotes.addonSummary}
+                    </div>
+                  ) : null}
+                  {parsedNotes.freeformNotes ? (
+                    <div className="mt-2 rounded-[14px] bg-[#fff8ef] px-2 py-1 text-right text-[10px] font-semibold text-[#6b5a4c]">
+                      {parsedNotes.freeformNotes}
                     </div>
                   ) : null}
 
@@ -105,6 +117,7 @@ export function ReadyDeliveryPanel({
       <div className="space-y-3">
         {items.map((item) => {
           const quantity = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, item.qtyReadyForDelivery));
+          const parsedNotes = parseOrderItemNotes(item.notes);
 
           return (
             <div key={item.orderItemId} className={[opsInset, 'p-3'].join(' ')}>
@@ -120,11 +133,14 @@ export function ReadyDeliveryPanel({
                 </div>
               </div>
 
-              {item.qtyReadyForReplacementDelivery > 0 ? (
+              {item.qtyReadyForReplacementDelivery > 0 || parsedNotes.addonSummary ? (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
-                  <span className={opsBadge('warning')}>بديل مجاني {item.qtyReadyForReplacementDelivery}</span>
+                  {item.qtyReadyForReplacementDelivery > 0 ? <span className={opsBadge('warning')}>بديل مجاني {item.qtyReadyForReplacementDelivery}</span> : null}
+                  {parsedNotes.addonSummary ? <span className={opsBadge('accent')}>إضافات: {parsedNotes.addonSummary}</span> : null}
                 </div>
               ) : null}
+
+              {parsedNotes.freeformNotes ? <div className="mt-2 rounded-[16px] bg-[#fff8ef] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">{parsedNotes.freeformNotes}</div> : null}
 
               <QuantityStepper
                 label="تسليم الآن"

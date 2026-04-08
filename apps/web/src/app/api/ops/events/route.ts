@@ -39,60 +39,116 @@ export async function GET(req: Request) {
   const cafeId = String(me.tenantId);
   const encoder = new TextEncoder();
   const abortController = new AbortController();
-  let cleanup: (() => void) | null = null;
+  let subscriptionCleanup: (() => void) | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
+  let closed = false;
   const lastCursor = lastEventCursorFromRequest(req);
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const stop = () => {
+        if (closed) {
+          return;
+        }
+        closed = true;
+        abortController.abort();
+        if (heartbeat) {
+          clearInterval(heartbeat);
+          heartbeat = null;
+        }
+        if (subscriptionCleanup) {
+          subscriptionCleanup();
+          subscriptionCleanup = null;
+        }
+      };
+
+      const safeEnqueue = (chunk: string) => {
+        if (closed) {
+          return false;
+        }
+        try {
+          controller.enqueue(encoder.encode(chunk));
+          return true;
+        } catch {
+          stop();
+          return false;
+        }
+      };
+
       const send = (event: OpsRealtimeEvent) => {
         if (event.cafeId !== cafeId) {
           return;
         }
-        controller.enqueue(
-          encoder.encode(`event: ops\nid: ${event.cursor ?? event.id}\ndata: ${JSON.stringify(event)}\n\n`),
-        );
+        safeEnqueue(`event: ops
+id: ${event.cursor ?? event.id}
+data: ${JSON.stringify(event)}
+
+`);
       };
 
-      controller.enqueue(
-        encoder.encode(`event: ready\ndata: ${JSON.stringify({ cafeId, ok: true, cursor: lastCursor })}\n\n`),
+      req.signal.addEventListener(
+        'abort',
+        () => {
+          stop();
+        },
+        { once: true },
       );
 
+      if (!safeEnqueue(`event: ready
+data: ${JSON.stringify({ cafeId, ok: true, cursor: lastCursor })}
+
+`)) {
+        return;
+      }
+
       try {
-        cleanup = await subscribeOpsEvents(
+        subscriptionCleanup = await subscribeOpsEvents(
           {
             cafeId,
             cursor: lastCursor,
             signal: abortController.signal,
             onError: () => {
-              controller.enqueue(
-                encoder.encode(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false })}\n\n`),
-              );
+              safeEnqueue(`event: reconnect
+data: ${JSON.stringify({ cafeId, ok: false })}
+
+`);
             },
           },
           send,
         );
       } catch {
-        controller.enqueue(
-          encoder.encode(`event: reconnect
+        safeEnqueue(`event: reconnect
 data: ${JSON.stringify({ cafeId, ok: false })}
 
-`),
-        );
-        controller.close();
+`);
+        stop();
+        try {
+          controller.close();
+        } catch {}
         return;
       }
 
       heartbeat = setInterval(() => {
-        controller.enqueue(encoder.encode(`event: ping\ndata: ${Date.now()}\n\n`));
+        safeEnqueue(`event: ping
+data: ${Date.now()}
+
+`);
       }, 15_000);
     },
     cancel() {
+      if (closed) {
+        return;
+      }
+      closed = true;
       abortController.abort();
       if (heartbeat) {
         clearInterval(heartbeat);
+        heartbeat = null;
       }
-      cleanup?.();
+      if (subscriptionCleanup) {
+        subscriptionCleanup();
+        subscriptionCleanup = null;
+      }
     },
   });
 

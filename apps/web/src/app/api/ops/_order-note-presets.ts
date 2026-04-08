@@ -24,35 +24,12 @@ export async function persistOrderNotePreset(input: {
   const stationCode = resolvePresetStationCode(input.productStationCodes);
   const now = new Date().toISOString();
   const admin = adminOps(input.databaseKey);
-  const normalizedText = normalizedNote.toLocaleLowerCase('en-US');
-
-  const { error } = await admin.from('order_note_presets').insert({
-    cafe_id: input.cafeId,
-    station_code: stationCode,
-    note_text: normalizedNote,
-    normalized_text: normalizedText,
-    usage_count: 1,
-    last_used_at: now,
-    updated_at: now,
-    is_active: true,
-  });
-
-  if (!error) {
-    return;
-  }
-
-  const duplicateKey =
-    typeof error.message === 'string' &&
-    (error.message.toLowerCase().includes('duplicate key') || error.message.toLowerCase().includes('unique constraint'));
-  if (!duplicateKey) {
-    throw error;
-  }
 
   const { data: existing, error: lookupError } = await admin
     .from('order_note_presets')
     .select('id, usage_count')
     .eq('cafe_id', input.cafeId)
-    .eq('normalized_text', normalizedText)
+    .eq('normalized_text', normalizedNote.toLocaleLowerCase('en-US'))
     .eq('station_scope', stationCode ?? 'all')
     .maybeSingle();
 
@@ -60,22 +37,36 @@ export async function persistOrderNotePreset(input: {
     throw lookupError;
   }
 
-  if (!existing?.id) {
-    throw error;
+  if (existing?.id) {
+    const { error } = await admin
+      .from('order_note_presets')
+      .update({
+        note_text: normalizedNote,
+        usage_count: Number(existing.usage_count ?? 0) + 1,
+        last_used_at: now,
+        updated_at: now,
+        is_active: true,
+      })
+      .eq('id', existing.id);
+
+    if (error) {
+      throw error;
+    }
+    return;
   }
 
-  const { error: updateError } = await admin
-    .from('order_note_presets')
-    .update({
-      note_text: normalizedNote,
-      usage_count: Number(existing.usage_count ?? 0) + 1,
-      last_used_at: now,
-      updated_at: now,
-      is_active: true,
-    })
-    .eq('id', existing.id);
+  const { error } = await admin.from('order_note_presets').insert({
+    cafe_id: input.cafeId,
+    station_code: stationCode,
+    note_text: normalizedNote,
+    normalized_text: normalizedNote.toLocaleLowerCase('en-US'),
+    usage_count: 1,
+    last_used_at: now,
+    updated_at: now,
+    is_active: true,
+  });
 
-  if (updateError) {
-    throw updateError;
+  if (error) {
+    throw error;
   }
 }

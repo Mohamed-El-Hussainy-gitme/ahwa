@@ -1,18 +1,21 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { ProductAddonPicker, type ProductAddonOption } from '@/ui/ProductAddonPicker';
 import type { PublicMenuPayload } from '@/lib/public-ordering';
 
 type StationCode = 'barista' | 'shisha';
 type Section = { id: string; title: string; stationCode: StationCode; sortOrder: number };
 type Product = { id: string; sectionId: string; name: string; stationCode: StationCode; unitPrice: number; sortOrder: number };
+type Addon = { id: string; name: string; stationCode: StationCode; unitPrice: number; sortOrder: number };
+type ProductAddonLink = { productId: string; addonId: string };
 type BillingSettings = { taxEnabled: boolean; taxRate: number; serviceEnabled: boolean; serviceRate: number };
 type MenuPayload = PublicMenuPayload & {
   cafe: { cafeId: string; cafeSlug: string; cafeName: string; databaseKey: string };
-  menu: { sections: Section[]; products: Product[]; billingSettings: BillingSettings };
+  menu: { sections: Section[]; products: Product[]; addons: Addon[]; productAddonLinks: ProductAddonLink[]; billingSettings: BillingSettings };
 };
 
-type CartEntry = { product: Product; quantity: number };
+type CartEntry = { product: Product; quantity: number; addonIds: string[]; addonOptions: ProductAddonOption[]; addonUnitTotal: number };
 
 function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value);
@@ -23,6 +26,8 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
   const [loading, setLoading] = useState(!initialMenu);
   const [error, setError] = useState<string | null>(null);
   const [cart, setCart] = useState<Record<string, number>>({});
+  const [selectedAddons, setSelectedAddons] = useState<Record<string, string[]>>({});
+  const [addonPickerProductId, setAddonPickerProductId] = useState<string | null>(null);
   const [customerName, setCustomerName] = useState('');
   const [tableLabel, setTableLabel] = useState('');
   const [notes, setNotes] = useState('');
@@ -66,6 +71,21 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
     };
   }, [initialMenu, slug]);
 
+  const addonOptionsByProductId = useMemo(() => {
+    if (!menu) return new Map<string, ProductAddonOption[]>();
+    const addonMap = new Map(menu.menu.addons.map((addon) => [addon.id, addon]));
+    const map = new Map<string, ProductAddonOption[]>();
+    for (const link of menu.menu.productAddonLinks) {
+      const addon = addonMap.get(link.addonId);
+      if (!addon) continue;
+      const current = map.get(link.productId);
+      const option = { id: addon.id, name: addon.name, unitPrice: addon.unitPrice } satisfies ProductAddonOption;
+      if (current) current.push(option);
+      else map.set(link.productId, [option]);
+    }
+    return map;
+  }, [menu]);
+
   const sectionsWithProducts = useMemo(() => {
     if (!menu) return [] as Array<Section & { products: Product[] }>;
     return menu.menu.sections
@@ -82,13 +102,16 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
       .map(([productId, quantity]) => {
         const product = menu.menu.products.find((item) => item.id === productId);
         if (!product || quantity <= 0) return null;
-        return { product, quantity } satisfies CartEntry;
+        const addonIds = selectedAddons[productId] ?? [];
+        const addonOptions = (addonOptionsByProductId.get(productId) ?? []).filter((addon) => addonIds.includes(addon.id));
+        const addonUnitTotal = addonOptions.reduce((sum, addon) => sum + addon.unitPrice, 0);
+        return { product, quantity, addonIds, addonOptions, addonUnitTotal } satisfies CartEntry;
       })
       .filter((entry): entry is CartEntry => entry !== null);
-  }, [cart, menu]);
+  }, [addonOptionsByProductId, cart, menu, selectedAddons]);
 
   const totals = useMemo(() => {
-    const subtotal = cartEntries.reduce((sum, entry) => sum + entry.product.unitPrice * entry.quantity, 0);
+    const subtotal = cartEntries.reduce((sum, entry) => sum + (entry.product.unitPrice + entry.addonUnitTotal) * entry.quantity, 0);
     const settings = menu?.menu.billingSettings;
     const taxAmount = settings?.taxEnabled ? subtotal * (settings.taxRate / 100) : 0;
     const serviceAmount = settings?.serviceEnabled ? subtotal * (settings.serviceRate / 100) : 0;
@@ -103,6 +126,11 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
       const quantity = (next[productId] ?? 0) + delta;
       if (quantity <= 0) {
         delete next[productId];
+        setSelectedAddons((currentAddons) => {
+          const copy = { ...currentAddons };
+          delete copy[productId];
+          return copy;
+        });
       } else {
         next[productId] = quantity;
       }
@@ -132,7 +160,7 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
           customerName,
           tableLabel,
           notes,
-          items: cartEntries.map((entry) => ({ productId: entry.product.id, quantity: entry.quantity })),
+          items: cartEntries.map((entry) => ({ productId: entry.product.id, quantity: entry.quantity, addonIds: entry.addonIds })),
         }),
       });
       const payload = await response.json().catch(() => null);
@@ -141,6 +169,7 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
       }
 
       setCart({});
+      setSelectedAddons({});
       setNotes('');
       setSuccessMessage(`تم إرسال طلبك بنجاح. رقم الجلسة: ${payload.sessionLabel || payload.sessionId}`);
     } catch (submitError) {
@@ -190,16 +219,32 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
                     {section.products.map((product) => {
                       const quantity = cart[product.id] ?? 0;
                       return (
-                        <div key={product.id} className="ahwa-card-soft flex items-center justify-between gap-4 p-4">
-                          <div>
-                            <h3 className="text-lg font-bold text-[var(--brand-ink)]">{product.name}</h3>
-                            <p className="mt-1 text-sm text-[var(--brand-muted)]">{formatMoney(product.unitPrice)} ج.م</p>
+                        <div key={product.id} className="ahwa-card-soft p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-start justify-between gap-2">
+                                <div>
+                                  <h3 className="text-lg font-bold text-[var(--brand-ink)]">{product.name}</h3>
+                                  <p className="mt-1 text-sm text-[var(--brand-muted)]">{formatMoney(product.unitPrice)} ج.م</p>
+                                </div>
+                                {addonOptionsByProductId.get(product.id)?.length ? (
+                                  <button className="ahwa-btn-secondary shrink-0 px-3 py-1.5 text-xs" onClick={() => setAddonPickerProductId(product.id)} type="button">إضافات</button>
+                                ) : null}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <button className="ahwa-btn-secondary min-w-10 px-3 py-2" onClick={() => changeQuantity(product.id, -1)} type="button">-</button>
+                              <span className="min-w-8 text-center text-lg font-bold">{quantity}</span>
+                              <button className="ahwa-btn-accent min-w-10 px-3 py-2" onClick={() => changeQuantity(product.id, 1)} type="button">+</button>
+                            </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <button className="ahwa-btn-secondary min-w-10 px-3 py-2" onClick={() => changeQuantity(product.id, -1)} type="button">-</button>
-                            <span className="min-w-8 text-center text-lg font-bold">{quantity}</span>
-                            <button className="ahwa-btn-accent min-w-10 px-3 py-2" onClick={() => changeQuantity(product.id, 1)} type="button">+</button>
-                          </div>
+                          {addonOptionsByProductId.get(product.id)?.length ? (
+                            <div className="mt-3 flex items-center justify-end gap-3 border-t border-[var(--brand-border)] pt-3">
+                              {(selectedAddons[product.id]?.length ?? 0) > 0 ? (
+                                <span className="text-xs font-semibold text-[var(--brand-accent-strong)]">+{selectedAddons[product.id]!.length} إضافة</span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                       );
                     })}
@@ -237,9 +282,10 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
                 <div key={entry.product.id} className="flex items-center justify-between gap-3 text-sm">
                   <div>
                     <p className="font-semibold">{entry.product.name}</p>
-                    <p className="text-[var(--brand-muted)]">{entry.quantity} × {formatMoney(entry.product.unitPrice)}</p>
+                    <p className="text-[var(--brand-muted)]">{entry.quantity} × {formatMoney(entry.product.unitPrice + entry.addonUnitTotal)}</p>
+                    {entry.addonOptions.length ? <p className="mt-1 text-xs text-[var(--brand-accent-strong)]">{entry.addonOptions.map((addon) => addon.name).join(' + ')}</p> : null}
                   </div>
-                  <strong>{formatMoney(entry.product.unitPrice * entry.quantity)} ج.م</strong>
+                  <strong>{formatMoney((entry.product.unitPrice + entry.addonUnitTotal) * entry.quantity)} ج.م</strong>
                 </div>
               )) : <p className="text-sm text-[var(--brand-muted)]">السلة فارغة.</p>}
             </div>
@@ -257,6 +303,19 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
           </div>
         </aside>
       </div>
+      <ProductAddonPicker
+        open={Boolean(addonPickerProductId && menu)}
+        title={menu?.menu.products.find((product) => product.id === addonPickerProductId)?.name ?? ''}
+        options={addonPickerProductId ? (addonOptionsByProductId.get(addonPickerProductId) ?? []) : []}
+        selectedIds={addonPickerProductId ? (selectedAddons[addonPickerProductId] ?? []) : []}
+        onClose={() => setAddonPickerProductId(null)}
+        onSave={(nextIds) => {
+          if (addonPickerProductId) {
+            setSelectedAddons((current) => ({ ...current, [addonPickerProductId]: nextIds }));
+          }
+          setAddonPickerProductId(null);
+        }}
+      />
     </main>
   );
 }

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { BillingExtrasSettings, MenuWorkspace, OpsProduct, OpsSection, StationCode } from '@/lib/ops/types';
+import type { BillingExtrasSettings, MenuAddon, MenuWorkspace, OpsProduct, OpsSection, StationCode } from '@/lib/ops/types';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { AccessDenied } from '@/ui/AccessState';
 
@@ -51,6 +51,19 @@ export default function MenuPage() {
     productName: '',
     stationCode: 'barista' as StationCode,
     unitPrice: '',
+  });
+  const [editingAddonId, setEditingAddonId] = useState('');
+  const [addonForm, setAddonForm] = useState({
+    addonName: '',
+    stationCode: 'barista' as StationCode,
+    unitPrice: '',
+    productIds: [] as string[],
+  });
+  const [addonEditForm, setAddonEditForm] = useState({
+    addonName: '',
+    stationCode: 'barista' as StationCode,
+    unitPrice: '',
+    productIds: [] as string[],
   });
   const [billingSettingsForm, setBillingSettingsForm] = useState<BillingExtrasSettings>({
     taxEnabled: false,
@@ -100,6 +113,30 @@ export default function MenuPage() {
       return true;
     });
   }, [data?.products, effectiveSelectedSectionId, showArchived]);
+
+  const visibleProducts = useMemo(() => (showArchived ? (data?.products ?? []) : (data?.products ?? []).filter((product) => product.isActive !== false)), [data?.products, showArchived]);
+  const visibleAddons = useMemo(() => (showArchived ? (data?.addons ?? []) : (data?.addons ?? []).filter((addon) => addon.isActive !== false)), [data?.addons, showArchived]);
+  const productsByAddon = useMemo(() => {
+    const map = new Map<string, OpsProduct[]>();
+    for (const link of data?.productAddonLinks ?? []) {
+      const product = (data?.products ?? []).find((entry) => entry.id === link.productId);
+      if (!product) continue;
+      const bucket = map.get(link.addonId) ?? [];
+      bucket.push(product);
+      map.set(link.addonId, bucket);
+    }
+    return map;
+  }, [data?.productAddonLinks, data?.products]);
+
+  const toggleAddonProductSelection = useCallback((mode: 'create' | 'edit', productId: string) => {
+    const setter = mode === 'create' ? setAddonForm : setAddonEditForm;
+    setter((current) => ({
+      ...current,
+      productIds: current.productIds.includes(productId)
+        ? current.productIds.filter((entry) => entry !== productId)
+        : [...current.productIds, productId],
+    }));
+  }, []);
 
   const completeAction = useCallback(
     async (notice?: string) => {
@@ -172,6 +209,43 @@ export default function MenuPage() {
     { onError: setLocalError },
   );
 
+  const createAddon = useOpsCommand(
+    async () => {
+      const unitPrice = Number(addonForm.unitPrice);
+      if (!addonForm.addonName.trim() || !Number.isFinite(unitPrice) || unitPrice < 0) {
+        return;
+      }
+      await opsClient.createMenuAddon({
+        addonName: addonForm.addonName.trim(),
+        stationCode: addonForm.stationCode,
+        unitPrice,
+        productIds: addonForm.productIds,
+      });
+      setAddonForm({ addonName: '', stationCode: addonForm.stationCode, unitPrice: '', productIds: [] });
+      await completeAction('تمت إضافة الإضافة وربطها بالأصناف المحددة.');
+    },
+    { onError: setLocalError },
+  );
+
+  const updateAddon = useOpsCommand(
+    async () => {
+      const unitPrice = Number(addonEditForm.unitPrice);
+      if (!editingAddonId || !addonEditForm.addonName.trim() || !Number.isFinite(unitPrice) || unitPrice < 0) {
+        return;
+      }
+      await opsClient.updateMenuAddon({
+        addonId: editingAddonId,
+        addonName: addonEditForm.addonName.trim(),
+        stationCode: addonEditForm.stationCode,
+        unitPrice,
+        productIds: addonEditForm.productIds,
+      });
+      setEditingAddonId('');
+      await completeAction('تم تحديث الإضافة وروابطها.');
+    },
+    { onError: setLocalError },
+  );
+
   const saveBillingSettings = useOpsCommand(
     async () => {
       const payload = {
@@ -231,6 +305,23 @@ export default function MenuPage() {
     { onError: setLocalError },
   );
 
+  const toggleAddon = useOpsCommand(
+    async (addonId: string, isActive: boolean) => {
+      await opsClient.toggleMenuAddon(addonId, isActive);
+      await completeAction(isActive ? 'تم تفعيل الإضافة.' : 'تم تعطيل الإضافة.');
+    },
+    { onError: setLocalError },
+  );
+
+  const deleteAddon = useOpsCommand(
+    async (addonId: string) => {
+      const result = await opsClient.deleteMenuAddon(addonId);
+      setEditingAddonId('');
+      await completeAction(result.mode === 'archived' ? 'الإضافة مستخدمة سابقًا، لذلك تم أرشفتها.' : 'تم حذف الإضافة.');
+    },
+    { onError: setLocalError },
+  );
+
   const reorderProducts = useOpsCommand(
     async (sectionId: string, productIds: string[]) => {
       await opsClient.reorderMenuProducts(sectionId, productIds);
@@ -255,6 +346,18 @@ export default function MenuPage() {
     });
     setLocalNotice(null);
   }, []);
+
+  const beginAddonEdit = useCallback((addon: MenuAddon) => {
+    const linkedProductIds = (data?.productAddonLinks ?? []).filter((entry) => entry.addonId === addon.id).map((entry) => entry.productId);
+    setEditingAddonId(addon.id);
+    setAddonEditForm({
+      addonName: addon.name,
+      stationCode: addon.stationCode,
+      unitPrice: String(addon.unitPrice),
+      productIds: linkedProductIds,
+    });
+    setLocalNotice(null);
+  }, [data?.productAddonLinks]);
 
   const moveSection = useCallback(
     async (sectionId: string, delta: -1 | 1) => {
@@ -289,6 +392,14 @@ export default function MenuPage() {
     [deleteProduct],
   );
 
+  const confirmAddonDelete = useCallback(
+    async (addon: MenuAddon) => {
+      if (!window.confirm(`حذف أو أرشفة الإضافة "${addon.name}"؟`)) return;
+      await deleteAddon.run(addon.id);
+    },
+    [deleteAddon],
+  );
+
   if (!can.manageMenu) {
     return <AccessDenied title="المنيو" />;
   }
@@ -299,12 +410,16 @@ export default function MenuPage() {
     updateSection.busy,
     createProduct.busy,
     updateProduct.busy,
+    createAddon.busy,
+    updateAddon.busy,
     saveBillingSettings.busy,
     toggleSection.busy,
     deleteSection.busy,
     reorderSections.busy,
     toggleProduct.busy,
     deleteProduct.busy,
+    toggleAddon.busy,
+    deleteAddon.busy,
     reorderProducts.busy,
   ].some(Boolean);
 
@@ -562,6 +677,126 @@ export default function MenuPage() {
             ) : null}
           </div>
         </section>
+
+        <section className="rounded-2xl border border-[#decdb9] bg-[#fffdf9] p-3 shadow-sm">
+          <div className="mb-2 text-sm font-semibold text-[#2f241b]">إدارة الإضافات</div>
+          <div className="mb-3 text-xs text-[#8a7763]">الإضافة كيان مستقل في المنيو الإداري، لكن لا تظهر في الطلب إلا عند ربطها بصنف مناسب من نفس المحطة.</div>
+
+          <div className="rounded-2xl border border-[#decdb9] bg-[#f8f1e7] p-3">
+            <div className="mb-2 text-sm font-semibold text-[#2f241b]">إضافة جديدة</div>
+            <div className="space-y-2">
+              <input
+                value={addonForm.addonName}
+                onChange={(event) => setAddonForm((current) => ({ ...current, addonName: event.target.value }))}
+                className="w-full rounded-2xl border border-[#decdb9] bg-[#fffdf9] px-3 py-3 text-right text-sm outline-none"
+                placeholder="اسم الإضافة"
+              />
+              <select
+                value={addonForm.stationCode}
+                onChange={(event) => setAddonForm((current) => ({ ...current, stationCode: event.target.value as StationCode, productIds: [] }))}
+                className="w-full rounded-2xl border border-[#decdb9] bg-[#fffdf9] px-3 py-3 text-right text-sm outline-none"
+              >
+                {stationOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+              <input
+                value={addonForm.unitPrice}
+                onChange={(event) => setAddonForm((current) => ({ ...current, unitPrice: event.target.value }))}
+                className="w-full rounded-2xl border border-[#decdb9] bg-[#fffdf9] px-3 py-3 text-right text-sm outline-none"
+                placeholder="سعر الإضافة"
+                inputMode="decimal"
+              />
+              <div className="rounded-2xl border border-dashed border-[#d7c7b2] bg-[#fffdf9] p-3">
+                <div className="mb-2 text-xs font-semibold text-[#5e4d3f]">ربط الإضافة بالأصناف</div>
+                <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                  {visibleProducts.filter((product) => product.stationCode === addonForm.stationCode).map((product) => (
+                    <label key={product.id} className="flex items-center justify-between gap-3 rounded-2xl border border-[#decdb9] px-3 py-2 text-sm">
+                      <span>{product.name}</span>
+                      <input
+                        type="checkbox"
+                        checked={addonForm.productIds.includes(product.id)}
+                        onChange={() => toggleAddonProductSelection('create', product.id)}
+                      />
+                    </label>
+                  ))}
+                  {!visibleProducts.filter((product) => product.stationCode === addonForm.stationCode).length ? (
+                    <div className="text-xs text-[#8a7763]">لا توجد أصناف نشطة لهذه المحطة حاليًا.</div>
+                  ) : null}
+                </div>
+              </div>
+              <button
+                onClick={() => void createAddon.run()}
+                disabled={busy}
+                className="w-full rounded-2xl bg-[#6e4d22] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60"
+              >
+                إضافة الإضافة
+              </button>
+            </div>
+          </div>
+
+          <div className="mt-3 space-y-2">
+            {visibleAddons.map((addon) => {
+              const linkedProducts = (productsByAddon.get(addon.id) ?? []).filter((product) => showArchived || product.isActive !== false);
+              return (
+                <div key={addon.id} className="rounded-2xl border border-[#decdb9] p-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-right">
+                      <div className="font-semibold text-[#1e1712]">{addon.name}</div>
+                      <div className="text-xs text-[#8a7763]">
+                        {stationOptions.find((option) => option.value === addon.stationCode)?.label ?? addon.stationCode} {' • '} {formatMoney(addon.unitPrice)} ج {addon.isActive === false ? ' • مؤرشف/معطل' : ''}
+                      </div>
+                      <div className="mt-1 text-xs text-[#8a7763]">
+                        {linkedProducts.length ? `مرتبطة بـ: ${linkedProducts.map((product) => product.name).join('، ')}` : 'غير مرتبطة بأي صنف بعد'}
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2 text-xs">
+                      <button onClick={() => beginAddonEdit(addon)} disabled={busy} className="rounded-2xl border border-[#decdb9] bg-[#fffdf9] px-3 py-2">تعديل</button>
+                      <button onClick={() => void toggleAddon.run(addon.id, !addon.isActive)} disabled={busy} className={['rounded-2xl px-3 py-2 font-semibold', addon.isActive ? 'border border-[#ecd9bd] bg-[#fffdf9] text-[#a5671e]' : 'bg-[#2e6a4e] text-white'].join(' ')}>{addon.isActive ? 'تعطيل' : 'تفعيل'}</button>
+                      <button onClick={() => void confirmAddonDelete(addon)} disabled={busy} className="rounded-2xl border border-[#e6c7c2] bg-[#fffdf9] px-3 py-2 text-[#9a3e35]">حذف/أرشفة</button>
+                    </div>
+                  </div>
+
+                  {editingAddonId === addon.id ? (
+                    <div className="mt-3 space-y-2 border-t border-[#decdb9] pt-3">
+                      <input value={addonEditForm.addonName} onChange={(event) => setAddonEditForm((current) => ({ ...current, addonName: event.target.value }))} className="w-full rounded-2xl border border-[#decdb9] bg-[#fffdf9] px-3 py-3 text-right text-sm outline-none" placeholder="اسم الإضافة" />
+                      <select value={addonEditForm.stationCode} onChange={(event) => setAddonEditForm((current) => ({ ...current, stationCode: event.target.value as StationCode, productIds: [] }))} className="w-full rounded-2xl border border-[#decdb9] bg-[#fffdf9] px-3 py-3 text-right text-sm outline-none">
+                        {stationOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                      <input value={addonEditForm.unitPrice} onChange={(event) => setAddonEditForm((current) => ({ ...current, unitPrice: event.target.value }))} className="w-full rounded-2xl border border-[#decdb9] bg-[#fffdf9] px-3 py-3 text-right text-sm outline-none" placeholder="سعر الإضافة" inputMode="decimal" />
+                      <div className="rounded-2xl border border-dashed border-[#d7c7b2] bg-[#fffdf9] p-3">
+                        <div className="mb-2 text-xs font-semibold text-[#5e4d3f]">ربط الإضافة بالأصناف</div>
+                        <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
+                          {visibleProducts.filter((product) => product.stationCode === addonEditForm.stationCode).map((product) => (
+                            <label key={product.id} className="flex items-center justify-between gap-3 rounded-2xl border border-[#decdb9] px-3 py-2 text-sm">
+                              <span>{product.name}</span>
+                              <input type="checkbox" checked={addonEditForm.productIds.includes(product.id)} onChange={() => toggleAddonProductSelection('edit', product.id)} />
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => void updateAddon.run()} disabled={busy} className="flex-1 rounded-2xl bg-[#1e1712] px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">حفظ التعديل</button>
+                        <button onClick={() => setEditingAddonId('')} disabled={busy} className="flex-1 rounded-2xl border border-[#decdb9] bg-[#fffdf9] px-4 py-3 text-sm font-semibold text-[#5e4d3f] disabled:opacity-60">إلغاء</button>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+
+            {!visibleAddons.length ? (
+              <div className="rounded-2xl border border-dashed border-[#d7c7b2] p-4 text-center text-sm text-[#8a7763]">
+                {showArchived ? 'لا توجد إضافات حتى مع إظهار المؤرشفات.' : 'لا توجد إضافات مفعلة بعد.'}
+              </div>
+            ) : null}
+          </div>
+        </section>
+
       </div>
     </MobileShell>
   );

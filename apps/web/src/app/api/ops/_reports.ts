@@ -2,6 +2,7 @@ import type {
   ComplaintRecord,
   DeferredCustomerSummary,
   ItemIssueRecord,
+  AddonReportRow,
   PeriodReport,
   ProductReportRow,
   ReportBusinessDayRow,
@@ -11,7 +12,6 @@ import type {
   ReportsWorkspace,
   ReportShiftRow,
   ReportTotals,
-  ReportsWorkspaceRequest,
   StaffPerformanceRow,
   StationCode,
 } from '@/lib/ops/types';
@@ -42,6 +42,14 @@ type ItemRow = {
   qty_cancelled: number | string | null;
   qty_waived: number | string | null;
   menu_products: RawMenuProductRef | RawMenuProductRef[] | null;
+};
+type OrderItemAddonRow = {
+  menu_addon_id: string | null;
+  addon_name_snapshot: string | null;
+  station_code: string | null;
+  unit_price: number | string | null;
+  quantity: number | string | null;
+  order_items: { shift_id: string | null; qty_delivered: number | string | null; qty_waived: number | string | null } | { shift_id: string | null; qty_delivered: number | string | null; qty_waived: number | string | null }[] | null;
 };
 type PaymentRow = {
   shift_id: string;
@@ -113,6 +121,7 @@ type ActorMaps = { staffNames: Map<string, string>; ownerNames: Map<string, stri
 type AggregateMaps = {
   shiftRowsById: Map<string, ReportShiftRow>;
   productsByShift: Map<string, Map<string, ProductReportRow>>;
+  addonsByShift: Map<string, Map<string, AddonReportRow>>;
   staffByShift: Map<string, Map<string, StaffPerformanceRow>>;
   complaintsByShift: Map<string, ReportComplaintEntry[]>;
   itemIssuesByShift: Map<string, ReportItemIssueEntry[]>;
@@ -146,60 +155,6 @@ function startOfMonth(date: string): string {
   const value = toDateValue(date);
   value.setUTCDate(1);
   return formatDateValue(value);
-}
-
-function endOfWeek(date: string): string {
-  const value = toDateValue(startOfWeek(date));
-  value.setUTCDate(value.getUTCDate() + 6);
-  return formatDateValue(value);
-}
-
-function endOfMonth(date: string): string {
-  const value = toDateValue(startOfMonth(date));
-  value.setUTCMonth(value.getUTCMonth() + 1, 0);
-  return formatDateValue(value);
-}
-
-function clampDate(date: string, maxDate: string): string {
-  return date > maxDate ? maxDate : date;
-}
-
-function isIsoDate(value: string | null | undefined): value is string {
-  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
-}
-
-function diffDaysInclusive(startDate: string, endDate: string): number {
-  const start = toDateValue(startDate).getTime();
-  const end = toDateValue(endDate).getTime();
-  return Math.floor((end - start) / 86_400_000) + 1;
-}
-
-function resolveHistoricalRanges(referenceDate: string, input: ReportsWorkspaceRequest = {}) {
-  const weekAnchorDate = isIsoDate(input.weekAnchorDate) ? input.weekAnchorDate : referenceDate;
-  const monthAnchorDate = isIsoDate(input.monthAnchorDate) ? `${input.monthAnchorDate.slice(0, 7)}-01` : referenceDate;
-
-  const weekStartDate = startOfWeek(weekAnchorDate);
-  const weekEndDate = clampDate(endOfWeek(weekAnchorDate), referenceDate);
-  const monthStartDate = startOfMonth(monthAnchorDate);
-  const monthEndDate = clampDate(endOfMonth(monthAnchorDate), referenceDate);
-
-  if (weekStartDate > referenceDate || monthStartDate > referenceDate) {
-    throw new Error('INVALID_REPORT_PERIOD');
-  }
-
-  if (diffDaysInclusive(weekStartDate, weekEndDate) > 7 || diffDaysInclusive(monthStartDate, monthEndDate) > 31) {
-    throw new Error('INVALID_REPORT_PERIOD');
-  }
-
-  const lookbackDays = Math.max(diffDaysInclusive(monthStartDate, referenceDate), diffDaysInclusive(weekStartDate, referenceDate));
-  if (lookbackDays > 731) {
-    throw new Error('REPORT_PERIOD_TOO_OLD');
-  }
-
-  return {
-    week: { key: 'week' as const, label: 'الأسبوع', startDate: weekStartDate, endDate: weekEndDate },
-    month: { key: 'month' as const, label: 'الشهر', startDate: monthStartDate, endDate: monthEndDate },
-  };
 }
 
 function startOfYear(date: string): string {
@@ -338,6 +293,10 @@ function createProductRow(productId: string, productName: string, stationCode: S
   };
 }
 
+function createAddonRow(addonId: string, addonName: string, stationCode: StationCode): AddonReportRow {
+  return { addonId, addonName, stationCode, usageCount: 0, linkedOrderItems: 0, grossSales: 0, netSales: 0 };
+}
+
 function mergeProductRows(target: ProductReportRow, source: ProductReportRow) {
   target.qtySubmitted += source.qtySubmitted;
   target.qtyReady += source.qtyReady;
@@ -348,6 +307,13 @@ function mergeProductRows(target: ProductReportRow, source: ProductReportRow) {
   target.qtyRemade += source.qtyRemade;
   target.qtyCancelled += source.qtyCancelled;
   target.qtyWaived += source.qtyWaived;
+  target.grossSales += source.grossSales;
+  target.netSales += source.netSales;
+}
+
+function mergeAddonRows(target: AddonReportRow, source: AddonReportRow) {
+  target.usageCount += source.usageCount;
+  target.linkedOrderItems += source.linkedOrderItems;
   target.grossSales += source.grossSales;
   target.netSales += source.netSales;
 }
@@ -396,6 +362,15 @@ function sortProducts(rows: ProductReportRow[]): ProductReportRow[] {
       right.qtyDelivered - left.qtyDelivered ||
       right.qtyReplacementDelivered - left.qtyReplacementDelivered ||
       left.productName.localeCompare(right.productName, 'ar'),
+  );
+}
+
+function sortAddons(rows: AddonReportRow[]): AddonReportRow[] {
+  return [...rows].sort(
+    (left, right) =>
+      right.netSales - left.netSales ||
+      right.usageCount - left.usageCount ||
+      left.addonName.localeCompare(right.addonName, 'ar'),
   );
 }
 
@@ -453,6 +428,7 @@ function buildPeriodReport(input: {
   endDate: string;
   shiftRows: ReportShiftRow[];
   productsByShift: Map<string, Map<string, ProductReportRow>>;
+  addonsByShift: Map<string, Map<string, AddonReportRow>>;
   staffByShift: Map<string, Map<string, StaffPerformanceRow>>;
   complaintsByShift: Map<string, ReportComplaintEntry[]>;
   itemIssuesByShift: Map<string, ReportItemIssueEntry[]>;
@@ -463,6 +439,7 @@ function buildPeriodReport(input: {
   const totals = emptyTotals();
   const daysByDate = new Map<string, ReportBusinessDayRow>();
   const productsById = new Map<string, ProductReportRow>();
+  const addonsById = new Map<string, AddonReportRow>();
   const staffByKey = new Map<string, StaffPerformanceRow>();
   const complaints: ReportComplaintEntry[] = [];
   const itemIssues: ReportItemIssueEntry[] = [];
@@ -479,6 +456,12 @@ function buildPeriodReport(input: {
       const current = productsById.get(product.productId) ?? createProductRow(product.productId, product.productName, product.stationCode);
       mergeProductRows(current, product);
       productsById.set(product.productId, current);
+    }
+
+    for (const addon of input.addonsByShift.get(row.shiftId)?.values() ?? []) {
+      const current = addonsById.get(addon.addonId) ?? createAddonRow(addon.addonId, addon.addonName, addon.stationCode);
+      mergeAddonRows(current, addon);
+      addonsById.set(addon.addonId, current);
     }
 
     for (const staff of input.staffByShift.get(row.shiftId)?.values() ?? []) {
@@ -500,6 +483,7 @@ function buildPeriodReport(input: {
     days: Array.from(daysByDate.values()).sort((left, right) => right.businessDate.localeCompare(left.businessDate)),
     shifts,
     products: sortProducts(Array.from(productsById.values())),
+    addons: sortAddons(Array.from(addonsById.values())),
     staff: sortStaff(Array.from(staffByKey.values())),
     complaints: sortComplaintEntries(complaints).slice(0, 80),
     itemIssues: sortComplaintEntries(itemIssues).slice(0, 80),
@@ -754,13 +738,14 @@ function parseLiveItemIssueEntry(row: ItemIssueDetailRow, shift: ShiftRow, actor
 async function loadSnapshotAggregates(cafeId: string, shiftRows: ShiftRow[], databaseKey: string): Promise<AggregateMaps> {
   const shiftRowsById = new Map<string, ReportShiftRow>();
   const productsByShift = new Map<string, Map<string, ProductReportRow>>();
+  const addonsByShift = new Map<string, Map<string, AddonReportRow>>();
   const staffByShift = new Map<string, Map<string, StaffPerformanceRow>>();
   const complaintsByShift = new Map<string, ReportComplaintEntry[]>();
   const itemIssuesByShift = new Map<string, ReportItemIssueEntry[]>();
 
   const closedShiftIds = shiftRows.filter((row) => row.status === 'closed').map((row) => row.id);
   if (!closedShiftIds.length) {
-    return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
+    return { shiftRowsById, productsByShift, addonsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
   }
 
   const { data, error } = await adminOps(databaseKey)
@@ -783,16 +768,17 @@ async function loadSnapshotAggregates(cafeId: string, shiftRows: ShiftRow[], dat
     itemIssuesByShift.set(shiftId, parseSnapshotItemIssueEntries(snapshot, meta));
   }
 
-  return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
+  return { shiftRowsById, productsByShift, addonsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
 }
 
 async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps: ActorMaps, databaseKey: string): Promise<AggregateMaps> {
   const shiftRowsById = new Map<string, ReportShiftRow>();
   const productsByShift = new Map<string, Map<string, ProductReportRow>>();
+  const addonsByShift = new Map<string, Map<string, AddonReportRow>>();
   const staffByShift = new Map<string, Map<string, StaffPerformanceRow>>();
   const complaintsByShift = new Map<string, ReportComplaintEntry[]>();
   const itemIssuesByShift = new Map<string, ReportItemIssueEntry[]>();
-  if (!shifts.length) return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
+  if (!shifts.length) return { shiftRowsById, productsByShift, addonsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
 
   const shiftIds = shifts.map((row) => row.id);
   const shiftMap = new Map<string, ReportShiftRow>();
@@ -811,6 +797,7 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     { data: complaintRows, error: complaintError },
     { data: itemIssueRows, error: itemIssueError },
     { data: fulfillmentRows, error: fulfillmentError },
+    { data: addonRows, error: addonError },
   ] = await Promise.all([
     adminOps(databaseKey)
       .from('order_items')
@@ -843,6 +830,11 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
       .select('shift_id, event_code, quantity, by_staff_id, by_owner_id')
       .eq('cafe_id', cafeId)
       .in('shift_id', shiftIds),
+    adminOps(databaseKey)
+      .from('order_item_addons')
+      .select('menu_addon_id, addon_name_snapshot, station_code, unit_price, quantity, order_items!inner(shift_id, qty_delivered, qty_waived)')
+      .eq('cafe_id', cafeId)
+      .in('order_items.shift_id', shiftIds),
   ]);
 
   if (itemError) throw itemError;
@@ -851,6 +843,7 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
   if (complaintError) throw complaintError;
   if (itemIssueError) throw itemIssueError;
   if (fulfillmentError) throw fulfillmentError;
+  if (addonError) throw addonError;
 
   for (const row of (itemRows ?? []) as ItemRow[]) {
     const shiftId = String(row.shift_id ?? '');
@@ -899,6 +892,27 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     product.netSales += netSales;
     shiftProducts.set(productId, product);
     productsByShift.set(shiftId, shiftProducts);
+  }
+
+  for (const row of (addonRows ?? []) as OrderItemAddonRow[]) {
+    const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
+    const shiftId = String(orderItemRef?.shift_id ?? '');
+    if (!shiftId || !shiftMap.has(shiftId)) continue;
+    const addonId = String(row.menu_addon_id ?? '').trim();
+    if (!addonId) continue;
+    const usageCount = Math.max(toNumber(orderItemRef?.qty_delivered) - toNumber(orderItemRef?.qty_waived), 0) * Math.max(toNumber(row.quantity), 0);
+    if (usageCount <= 0) continue;
+    const unitPrice = toNumber(row.unit_price);
+    const grossSales = roundMoney(usageCount * unitPrice);
+    const netSales = grossSales;
+    const shiftAddons = addonsByShift.get(shiftId) ?? new Map<string, AddonReportRow>();
+    const addon = shiftAddons.get(addonId) ?? createAddonRow(addonId, String(row.addon_name_snapshot ?? ''), normalizeStationCode(row.station_code));
+    addon.usageCount += usageCount;
+    addon.linkedOrderItems += 1;
+    addon.grossSales += grossSales;
+    addon.netSales += netSales;
+    shiftAddons.set(addonId, addon);
+    addonsByShift.set(shiftId, shiftAddons);
   }
 
   for (const row of (paymentRows ?? []) as PaymentRow[]) {
@@ -1029,7 +1043,7 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
     itemIssuesByShift.set(shiftId, sortComplaintEntries(rows));
   }
 
-  return { shiftRowsById, productsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
+  return { shiftRowsById, productsByShift, addonsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
 }
 
 
@@ -1350,6 +1364,7 @@ function buildValidatedSummaryBackedPeriod(input: {
   dailyByDate: Map<string, unknown>;
   currentShift: ReportShiftRow | null;
   currentProducts: ProductReportRow[];
+  currentAddons: AddonReportRow[];
   currentStaff: StaffPerformanceRow[];
 }): PeriodReport {
   const base = input.detail;
@@ -1406,15 +1421,14 @@ function buildValidatedSummaryBackedPeriod(input: {
   return summaryBacked;
 }
 
-export async function buildReportsWorkspace(cafeId: string, databaseKey: string, input: ReportsWorkspaceRequest = {}): Promise<ReportsWorkspace> {
+export async function buildReportsWorkspace(cafeId: string, databaseKey: string): Promise<ReportsWorkspace> {
   await ensureRuntimeContract('reporting', databaseKey);
 
   const referenceDate = cairoToday();
-  const historicalRanges = resolveHistoricalRanges(referenceDate, input);
   const ranges = {
     day: { key: 'day' as const, label: 'اليوم', startDate: referenceDate, endDate: referenceDate },
-    week: historicalRanges.week,
-    month: historicalRanges.month,
+    week: { key: 'week' as const, label: 'الأسبوع', startDate: startOfWeek(referenceDate), endDate: referenceDate },
+    month: { key: 'month' as const, label: 'الشهر', startDate: startOfMonth(referenceDate), endDate: referenceDate },
     year: { key: 'year' as const, label: 'السنة', startDate: startOfYear(referenceDate), endDate: referenceDate },
   };
 
@@ -1426,8 +1440,8 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string,
       .from('shifts')
       .select('id, shift_kind, status, opened_at, closed_at, business_date')
       .eq('cafe_id', cafeId)
-      .gte('business_date', [ranges.year.startDate, ranges.month.startDate, ranges.week.startDate].sort()[0])
-      .lte('business_date', referenceDate)
+      .gte('business_date', ranges.year.startDate)
+      .lte('business_date', ranges.year.endDate)
       .order('business_date', { ascending: false })
       .order('opened_at', { ascending: false }),
   ]);
@@ -1450,6 +1464,7 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string,
     const emptyMaps: AggregateMaps = {
       shiftRowsById: new Map(),
       productsByShift: new Map(),
+      addonsByShift: new Map(),
       staffByShift: new Map(),
       complaintsByShift: new Map(),
       itemIssuesByShift: new Map(),
@@ -1458,14 +1473,15 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string,
       referenceDate,
       currentShift: null,
       currentProducts: [],
+      currentAddons: [],
       currentStaff: [],
       currentComplaints: [],
       currentItemIssues: [],
       periods: {
-        day: buildPeriodReport({ ...ranges.day, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
-        week: buildPeriodReport({ ...ranges.week, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
-        month: buildPeriodReport({ ...ranges.month, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
-        year: buildPeriodReport({ ...ranges.year, shiftRows: [], productsByShift: emptyMaps.productsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+        day: buildPeriodReport({ ...ranges.day, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+        week: buildPeriodReport({ ...ranges.week, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+        month: buildPeriodReport({ ...ranges.month, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+        year: buildPeriodReport({ ...ranges.year, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
       },
       deferredCustomers: deferredCustomers as DeferredCustomerSummary[],
     };
@@ -1475,6 +1491,7 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string,
 
   const combinedShiftRowsById = new Map<string, ReportShiftRow>(liveAggregates.shiftRowsById);
   const combinedProductsByShift = new Map<string, Map<string, ProductReportRow>>(liveAggregates.productsByShift);
+  const combinedAddonsByShift = new Map<string, Map<string, AddonReportRow>>(liveAggregates.addonsByShift);
   const combinedStaffByShift = new Map<string, Map<string, StaffPerformanceRow>>(liveAggregates.staffByShift);
   const combinedComplaintsByShift = new Map<string, ReportComplaintEntry[]>(liveAggregates.complaintsByShift);
   const combinedItemIssuesByShift = new Map<string, ReportItemIssueEntry[]>(liveAggregates.itemIssuesByShift);
@@ -1487,6 +1504,9 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string,
   const currentProducts = currentShift
     ? sortProducts(Array.from(combinedProductsByShift.get(currentShift.shiftId)?.values() ?? []))
     : [];
+  const currentAddons = currentShift
+    ? sortAddons(Array.from(combinedAddonsByShift.get(currentShift.shiftId)?.values() ?? []))
+    : [];
   const currentStaff = currentShift
     ? sortStaff(Array.from(combinedStaffByShift.get(currentShift.shiftId)?.values() ?? []))
     : [];
@@ -1498,16 +1518,17 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string,
     : [];
 
   const detailPeriods = {
-    day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
-    week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
-    month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
-    year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedProductsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+    day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedProductsByShift, addonsByShift: combinedAddonsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+    week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedProductsByShift, addonsByShift: combinedAddonsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+    month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedProductsByShift, addonsByShift: combinedAddonsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+    year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedProductsByShift, addonsByShift: combinedAddonsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
   };
 
   return {
     referenceDate,
     currentShift,
     currentProducts,
+    currentAddons,
     currentStaff,
     currentComplaints,
     currentItemIssues,

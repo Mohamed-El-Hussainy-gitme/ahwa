@@ -8,11 +8,12 @@ import {
 } from '@/app/api/ops/_helpers';
 import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '../_station-events';
 import { persistOrderNotePreset } from '../../_order-note-presets';
+import { persistOrderItemAddons } from '../_addons';
 
 type CreateOrderRequestBody = {
   serviceSessionId?: string;
   notes?: string;
-  items?: Array<{ productId?: string; quantity?: number; notes?: string }>;
+  items?: Array<{ productId?: string; quantity?: number; notes?: string; addonIds?: string[] }>;
 };
 
 type CreateOrderRpcResult = {
@@ -29,15 +30,29 @@ export async function POST(req: Request) {
       throw new Error('INVALID_INPUT');
     }
 
-    const items = body.items.map((item) => ({
-      menu_product_id: String(item.productId ?? '').trim(),
-      qty: Number(item.quantity ?? 0),
+    const requestedItems = body.items.map((item) => ({
+      productId: String(item.productId ?? '').trim(),
+      quantity: Number(item.quantity ?? 0),
       notes: String(item.notes ?? '').trim() || null,
+      addonIds: Array.isArray(item.addonIds)
+        ? item.addonIds.map((addonId) => String(addonId ?? '').trim()).filter(Boolean)
+        : [],
     }));
 
-    if (items.some((item) => !item.menu_product_id || !Number.isInteger(item.qty) || item.qty <= 0)) {
+    if (requestedItems.some((item) => !item.productId || !Number.isInteger(item.quantity) || item.quantity <= 0)) {
       throw new Error('INVALID_INPUT');
     }
+
+    const uniqueProductIds = new Set(requestedItems.map((item) => item.productId));
+    if (uniqueProductIds.size !== requestedItems.length) {
+      throw new Error('DUPLICATE_PRODUCT_SELECTION_NOT_SUPPORTED');
+    }
+
+    const items = requestedItems.map((item) => ({
+      menu_product_id: item.productId,
+      qty: item.quantity,
+      notes: item.notes,
+    }));
 
     const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const shift = await requireOpenOpsShift(ctx.cafeId, ctx.databaseKey);
@@ -57,25 +72,34 @@ export async function POST(req: Request) {
     }, ctx.databaseKey);
 
     const orderId = String(rpc.order_id ?? '').trim();
-    void persistOrderNotePreset({
+    if (!orderId) {
+      throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
+    }
+
+    await persistOrderItemAddons({
+      cafeId: ctx.cafeId,
+      orderId,
+      databaseKey: ctx.databaseKey,
+      items: requestedItems.map((item) => ({ productId: item.productId, quantity: item.quantity, addonIds: item.addonIds })),
+    });
+
+    await persistOrderNotePreset({
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
       note: body.notes,
       productStationCodes: stationCodes,
-    }).catch((error) => {
-      console.error('[ops][order-note-presets] failed to persist preset', error);
     });
     const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();
-    if (!orderId || !serviceSessionId) {
+    if (!serviceSessionId) {
       throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
     }
 
     dispatchStationOrderSubmittedInBackground(ctx, {
       orderId,
       serviceSessionId,
-      items: body.items.map((item) => ({
-        productId: String(item.productId ?? ''),
-        quantity: Number(item.quantity ?? 0),
+      items: requestedItems.map((item) => ({
+        productId: item.productId,
+        quantity: item.quantity,
       })),
       productStationCodes,
     });

@@ -42,6 +42,8 @@ export default function ShishaPage() {
   const [label, setLabel] = useState('');
   const [sessionId, setSessionId] = useState('');
   const [creatingNew, setCreatingNew] = useState(false);
+  const [composerOpen, setComposerOpen] = useState(false);
+  const [composerLabel, setComposerLabel] = useState('');
   const [noteOpen, setNoteOpen] = useState(false);
   const [noteDraft, setNoteDraft] = useState('');
   const [orderNotes, setOrderNotes] = useState('');
@@ -82,6 +84,7 @@ export default function ShishaPage() {
   const previousQueueQtyRef = useRef(0);
 
   const notePresets = liveData?.notePresets ?? [];
+  const composerInputRef = useRef<HTMLInputElement | null>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   const queue = stationData?.queue ?? [];
@@ -121,6 +124,15 @@ export default function ShishaPage() {
       setSessionWarning(null);
     }
   }, [creatingNew, effectiveSessionId]);
+
+  useEffect(() => {
+    if (!composerOpen) return;
+    const timer = window.setTimeout(() => {
+      composerInputRef.current?.focus();
+      composerInputRef.current?.select();
+    }, 40);
+    return () => window.clearTimeout(timer);
+  }, [composerOpen]);
 
   useEffect(() => {
     if (!noteOpen) return;
@@ -231,6 +243,9 @@ export default function ShishaPage() {
   }
 
   function selectExistingSession(nextSessionId: string) {
+    if (composerOpen || submitCommand.busy) {
+      return;
+    }
     setSessionId(nextSessionId);
     setCreatingNew(false);
     setLabel('');
@@ -238,10 +253,11 @@ export default function ShishaPage() {
   }
 
   function beginNewSession() {
-    setCreatingNew(true);
-    setSessionId('');
-    setLabel('');
-    setDraft({});
+    if (submitCommand.busy) {
+      return;
+    }
+    setComposerLabel(label);
+    setComposerOpen(true);
     setSessionWarning(null);
   }
 
@@ -262,6 +278,21 @@ export default function ShishaPage() {
 
   function applyNotePreset(preset: string) {
     setNoteDraft(preset);
+  }
+
+  function cancelComposer() {
+    setComposerOpen(false);
+    if (!draftQtyTotal) {
+      setCreatingNew(false);
+    }
+  }
+
+  function confirmComposer() {
+    setCreatingNew(true);
+    setSessionId('');
+    setLabel(composerLabel.trim());
+    setSessionWarning(null);
+    setComposerOpen(false);
   }
 
   const effectiveError = localError ?? stationError ?? liveError ?? catalogError;
@@ -286,7 +317,7 @@ export default function ShishaPage() {
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0 text-right">
               <div className="text-sm font-semibold text-[#1e1712]">
-                {creatingNew ? 'جلسة شيشة جديدة' : currentSessionLabel || 'اختر جلسة شيشة'}
+                {creatingNew ? (label ? `جلسة جديدة: ${label}` : 'جلسة جديدة') : currentSessionLabel || 'اختر جلسة شيشة'}
               </div>
               <div className="mt-1 text-xs text-[#7d6a59]">
                 {draftQtyTotal > 0 ? `إجمالي المحدد ${draftQtyTotal}` : 'اختر أصناف الشيشة ثم أرسل الطلب دفعة واحدة'}
@@ -343,6 +374,7 @@ export default function ShishaPage() {
                     key={session.id}
                     type="button"
                     onClick={() => selectExistingSession(session.id)}
+                    disabled={composerOpen || submitCommand.busy}
                     className={[
                       'rounded-[20px] border px-3 py-3 text-right transition duration-150 hover:-translate-y-[1px]',
                       active
@@ -357,18 +389,6 @@ export default function ShishaPage() {
                   </button>
                 );
               })}
-            </div>
-          ) : null}
-
-          {creatingNew ? (
-            <div className="mt-3 space-y-2">
-              <input
-                value={label}
-                onChange={(e) => setLabel(e.target.value)}
-                placeholder="اسم أو رقم الجلسة الجديدة"
-                className={opsInput}
-              />
-              <div className="text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولده النظام تلقائيًا.</div>
             </div>
           ) : null}
 
@@ -524,6 +544,33 @@ export default function ShishaPage() {
           </section>
         ) : null}
       </div>
+
+      {composerOpen ? (
+        <div className="fixed inset-0 z-[70] flex items-end justify-center bg-[#1e1712]/45 p-3 sm:items-center">
+          <div className="w-full max-w-md rounded-[28px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
+            <div className="text-right">
+              <div className="text-base font-black text-[#1e1712]">تعريف جلسة جديدة</div>
+              <div className="mt-1 text-sm text-[#7d6a59]">اكتب اسمًا أو رقمًا واضحًا لجلسة الشيشة لتسهيل العودة إليها أثناء التشغيل.</div>
+            </div>
+            <input
+              ref={composerInputRef}
+              value={composerLabel}
+              onChange={(e) => setComposerLabel(e.target.value)}
+              placeholder="مثال: جلسة 4 أو محمد"
+              className="mt-4 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
+            />
+            <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولد النظام اسمًا تلقائيًا.</div>
+            <div className="mt-4 flex gap-2">
+              <button type="button" onClick={cancelComposer} className={[opsGhostButton, 'flex-1 justify-center'].join(' ')}>
+                إلغاء
+              </button>
+              <button type="button" onClick={confirmComposer} className={[opsPrimaryButton, 'flex-1 justify-center'].join(' ')}>
+                اعتماد الجلسة
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {noteOpen ? (
         <div className="fixed inset-0 z-[72] flex items-end justify-center bg-[#1e1712]/45 p-3 sm:items-center">

@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import type { SessionOrderItem } from '@/lib/ops/types';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
+import { parseOrderItemNotes } from '@/lib/ops/orderItemNotes';
 import { opsBadge, opsDashed, opsInset, opsSurface } from '@/ui/ops/premiumStyles';
 
 type Props = {
@@ -50,6 +51,7 @@ export function SessionRemakePanel({
               const maxQty = item.availableRemakeQty;
               const quantity = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, Math.max(maxQty, 1)));
               const expanded = Boolean(expandedByItem[item.orderItemId]);
+              const parsedNotes = parseOrderItemNotes(item.notes);
 
               return (
                 <div key={item.orderItemId} className={[opsInset, 'p-2'].join(' ')}>
@@ -61,7 +63,9 @@ export function SessionRemakePanel({
                   <div className="mt-2 flex flex-wrap gap-1.5 text-[10px] font-semibold">
                     <span className={opsBadge('warning')}>إعادة {item.availableRemakeQty}</span>
                     {item.qtyReadyForDelivery > 0 ? <span className={opsBadge('success')}>جاهز {item.qtyReadyForDelivery}</span> : null}
+                    {parsedNotes.addonSummary ? <span className={opsBadge('accent')}>إضافات: {parsedNotes.addonSummary}</span> : null}
                   </div>
+                  {parsedNotes.freeformNotes ? <div className="mt-2 rounded-[14px] bg-[#fff8ef] px-2 py-1 text-right text-[10px] font-semibold text-[#6b5a4c]">{parsedNotes.freeformNotes}</div> : null}
 
                   <QuantityStepper
                     compact
@@ -126,6 +130,7 @@ export function SessionRemakePanel({
           const maxQty = item.availableRemakeQty;
           const quantity = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, Math.max(maxQty, 1)));
           const expanded = Boolean(expandedByItem[item.orderItemId]);
+          const parsedNotes = parseOrderItemNotes(item.notes);
 
           return (
             <div key={item.orderItemId} className={[opsInset, 'p-3'].join(' ')}>
@@ -145,7 +150,10 @@ export function SessionRemakePanel({
                 <span className={opsBadge('info')}>تم تسليمه {item.qtyDelivered}</span>
                 {item.qtyReadyForDelivery > 0 ? <span className={opsBadge('success')}>جاهز {item.qtyReadyForDelivery}</span> : null}
                 {item.qtyReplacementDelivered > 0 ? <span className={opsBadge('warning')}>بديل {item.qtyReplacementDelivered}</span> : null}
+                {parsedNotes.addonSummary ? <span className={opsBadge('accent')}>إضافات: {parsedNotes.addonSummary}</span> : null}
               </div>
+
+              {parsedNotes.freeformNotes ? <div className="mt-2 rounded-[16px] bg-[#fff8ef] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">{parsedNotes.freeformNotes}</div> : null}
 
               <QuantityStepper
                 label="إعادة الآن"

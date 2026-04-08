@@ -12,6 +12,7 @@ import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 import { shouldReloadStationWorkspace } from '@/lib/ops/reload-rules';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
+import { parseOrderItemNotes } from '@/lib/ops/orderItemNotes';
 import {
   opsAlert,
   opsBadge,
@@ -108,6 +109,7 @@ export default function KitchenPage() {
       <section id="queue-panel" className="space-y-3">
         {(data?.queue ?? []).map((item) => {
           const qty = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, item.qtyWaiting));
+          const parsedNotes = parseOrderItemNotes(item.notes);
           return (
             <div key={item.orderItemId} className={`${opsSurface} p-3`}>
               <div className="flex items-start justify-between gap-3">
@@ -121,14 +123,15 @@ export default function KitchenPage() {
                 </div>
               </div>
 
-              {item.qtyWaitingReplacement > 0 || item.notes ? (
+              {item.qtyWaitingReplacement > 0 || parsedNotes.addonSummary || parsedNotes.freeformNotes ? (
                 <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold">
                   {item.qtyWaitingReplacement > 0 ? <span className={opsBadge('warning')}>إعادة مجانية {item.qtyWaitingReplacement}</span> : null}
-                  {item.notes ? <span className={opsBadge('info')}>ملاحظة مرفقة</span> : null}
+                  {parsedNotes.addonSummary ? <span className={opsBadge('accent')}>إضافات: {parsedNotes.addonSummary}</span> : null}
+                  {parsedNotes.freeformNotes ? <span className={opsBadge('info')}>ملاحظة مرفقة</span> : null}
                 </div>
               ) : null}
 
-              {item.notes ? <div className="mt-2 rounded-[16px] bg-[#fff8ef] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">{item.notes}</div> : null}
+              {parsedNotes.freeformNotes ? <div className="mt-2 rounded-[16px] bg-[#fff8ef] px-3 py-2 text-right text-xs font-semibold text-[#6b5a4c]">{parsedNotes.freeformNotes}</div> : null}
 
               <QuantityStepper
                 label="تجهيز الآن"

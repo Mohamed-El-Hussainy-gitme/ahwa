@@ -17,6 +17,8 @@ export type PublicMenuPayload = {
   menu: {
     sections: Awaited<ReturnType<typeof buildMenuWorkspace>>['sections'];
     products: Awaited<ReturnType<typeof buildMenuWorkspace>>['products'];
+    addons: Awaited<ReturnType<typeof buildMenuWorkspace>>['addons'];
+    productAddonLinks: Awaited<ReturnType<typeof buildMenuWorkspace>>['productAddonLinks'];
     billingSettings: Awaited<ReturnType<typeof buildMenuWorkspace>>['billingSettings'];
   };
 };
@@ -44,6 +46,8 @@ async function loadPublicMenuUncached(slug: string): Promise<PublicMenuPayload> 
     menu: {
       sections: workspace.sections.filter((section) => section.isActive !== false),
       products: workspace.products.filter((product) => product.isActive !== false),
+      addons: workspace.addons.filter((addon) => addon.isActive !== false),
+      productAddonLinks: workspace.productAddonLinks,
       billingSettings: workspace.billingSettings,
     },
   };
