@@ -1539,6 +1539,7 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
         dailyByDate: summarySnapshots.dailyByDate,
         currentShift,
         currentProducts,
+        currentAddons,
         currentStaff,
       }),
       week: buildValidatedSummaryBackedPeriod({
@@ -1547,6 +1548,7 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
         dailyByDate: summarySnapshots.dailyByDate,
         currentShift,
         currentProducts,
+        currentAddons,
         currentStaff,
       }),
       month: buildValidatedSummaryBackedPeriod({
@@ -1555,6 +1557,7 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
         dailyByDate: summarySnapshots.dailyByDate,
         currentShift,
         currentProducts,
+        currentAddons,
         currentStaff,
       }),
       year: buildValidatedSummaryBackedPeriod({
@@ -1563,6 +1566,7 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
         dailyByDate: summarySnapshots.dailyByDate,
         currentShift,
         currentProducts,
+        currentAddons,
         currentStaff,
       }),
     },
