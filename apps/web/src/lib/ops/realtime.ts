@@ -195,6 +195,8 @@ function ensureSource() {
       state: state.listeners.size ? 'reconnecting' : 'disconnected',
       lastErrorAt: Date.now(),
     });
+    disposeSource();
+    scheduleReconnect();
   });
 
   source.onerror = () => {

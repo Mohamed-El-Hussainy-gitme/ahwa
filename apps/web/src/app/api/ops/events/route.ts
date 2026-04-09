@@ -10,6 +10,9 @@ import type { OpsRealtimeEvent } from '@/lib/ops/types';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const SSE_HEARTBEAT_INTERVAL_MS = 15_000;
+const SSE_MAX_CONNECTION_LIFETIME_MS = 240_000;
+
 function lastEventCursorFromRequest(req: Request) {
   const directHeader = req.headers.get('last-event-id');
   if (directHeader && directHeader.trim()) {
@@ -42,7 +45,9 @@ export async function GET(req: Request) {
   let subscriptionCleanup: (() => void) | null = null;
   let heartbeat: ReturnType<typeof setInterval> | null = null;
   let closed = false;
+  let lifetimeTimer: ReturnType<typeof setTimeout> | null = null;
   const lastCursor = lastEventCursorFromRequest(req);
+  let currentCursor = lastCursor;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -55,6 +60,10 @@ export async function GET(req: Request) {
         if (heartbeat) {
           clearInterval(heartbeat);
           heartbeat = null;
+        }
+        if (lifetimeTimer) {
+          clearTimeout(lifetimeTimer);
+          lifetimeTimer = null;
         }
         if (subscriptionCleanup) {
           subscriptionCleanup();
@@ -79,11 +88,23 @@ export async function GET(req: Request) {
         if (event.cafeId !== cafeId) {
           return;
         }
+        currentCursor = event.cursor ?? event.id ?? currentCursor;
         safeEnqueue(`event: ops
 id: ${event.cursor ?? event.id}
 data: ${JSON.stringify(event)}
 
 `);
+      };
+      const gracefulReconnect = (reason: string) => {
+        const payload = JSON.stringify({ cafeId, ok: true, reason, cursor: currentCursor });
+        safeEnqueue(`event: reconnect
+data: ${payload}
+
+`);
+        stop();
+        try {
+          controller.close();
+        } catch {}
       };
 
       req.signal.addEventListener(
@@ -108,19 +129,13 @@ data: ${JSON.stringify({ cafeId, ok: true, cursor: lastCursor })}
             cursor: lastCursor,
             signal: abortController.signal,
             onError: () => {
-              safeEnqueue(`event: reconnect
-data: ${JSON.stringify({ cafeId, ok: false })}
-
-`);
+              safeEnqueue(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false, reason: 'subscription-error' })}\n\n`);
             },
           },
           send,
         );
       } catch {
-        safeEnqueue(`event: reconnect
-data: ${JSON.stringify({ cafeId, ok: false })}
-
-`);
+        safeEnqueue(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false, reason: 'subscribe-failed' })}\n\n`);
         stop();
         try {
           controller.close();
@@ -129,11 +144,12 @@ data: ${JSON.stringify({ cafeId, ok: false })}
       }
 
       heartbeat = setInterval(() => {
-        safeEnqueue(`event: ping
-data: ${Date.now()}
+        safeEnqueue(`event: ping\ndata: ${Date.now()}\n\n`);
+      }, SSE_HEARTBEAT_INTERVAL_MS);
 
-`);
-      }, 15_000);
+      lifetimeTimer = setTimeout(() => {
+        gracefulReconnect('max-connection-lifetime');
+      }, SSE_MAX_CONNECTION_LIFETIME_MS);
     },
     cancel() {
       if (closed) {
@@ -144,6 +160,10 @@ data: ${Date.now()}
       if (heartbeat) {
         clearInterval(heartbeat);
         heartbeat = null;
+      }
+      if (lifetimeTimer) {
+        clearTimeout(lifetimeTimer);
+        lifetimeTimer = null;
       }
       if (subscriptionCleanup) {
         subscriptionCleanup();
