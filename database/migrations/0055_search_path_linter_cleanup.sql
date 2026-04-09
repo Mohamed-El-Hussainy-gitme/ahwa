@@ -45,11 +45,13 @@ set search_path = pg_catalog
 as $$
 begin
   new.updated_at := pg_catalog.now();
+
   if new.status = 'closed' and old.status is distinct from 'closed' then
     new.closed_at := pg_catalog.now();
   elsif new.status <> 'closed' then
     new.closed_at := null;
   end if;
+
   return new;
 end;
 $$;

@@ -91,6 +91,7 @@ create or replace function public.control_load_units_for_tier(
 returns integer
 language plpgsql
 immutable
+set search_path = pg_catalog
 as $$
 declare
   v_tier text := lower(coalesce(nullif(btrim(p_cafe_load_tier), ''), 'small'));
@@ -102,6 +103,7 @@ begin
   elsif v_tier = 'enterprise' then
     return 15;
   end if;
+
   return 1;
 end;
 $$;

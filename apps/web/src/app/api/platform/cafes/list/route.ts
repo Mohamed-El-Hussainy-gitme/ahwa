@@ -1,5 +1,6 @@
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { listCafeDatabaseBindings } from '@/lib/control-plane/cafes';
+import { syncCafeRuntimeStatusesToControlPlane } from '@/lib/control-plane/runtime-status-sync';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 import { normalizeCafeListRow } from '@/lib/platform-data';
 import {
@@ -52,10 +53,17 @@ export async function GET() {
     assertPlatformEnv();
 
     const admin = controlPlaneAdmin();
-    const [{ data, error }, bindingRows] = await Promise.all([
-      admin.rpc('platform_list_cafes'),
-      listCafeDatabaseBindings(),
-    ]);
+    const bindingRows = await listCafeDatabaseBindings();
+
+    await syncCafeRuntimeStatusesToControlPlane(
+      bindingRows.map((row) => ({
+        cafeId: row.cafeId,
+        databaseKey: row.databaseKey,
+      })),
+      { source: 'api/platform/cafes/list', concurrency: 4 },
+    );
+
+    const { data, error } = await admin.rpc('platform_list_cafes');
 
     if (error) {
       throw error;

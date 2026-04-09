@@ -1,5 +1,6 @@
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { resolveCafeDatabaseBinding } from '@/lib/control-plane/cafes';
+import { syncCafeRuntimeStatusToControlPlane } from '@/lib/control-plane/runtime-status-sync';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 import {
   assertPlatformEnv,
@@ -50,13 +51,19 @@ export async function POST(request: Request) {
     assertPlatformEnv();
 
     const admin = controlPlaneAdmin();
-    const [{ data, error }, bindingRow] = await Promise.all([
-      admin.rpc('platform_get_cafe_detail', {
-        p_super_admin_user_id: session.superAdminUserId,
-        p_cafe_id: body.cafeId.trim(),
-      }),
-      resolveCafeDatabaseBinding(body.cafeId.trim()),
-    ]);
+    const bindingRow = await resolveCafeDatabaseBinding(body.cafeId.trim());
+
+    if (bindingRow?.databaseKey) {
+      await syncCafeRuntimeStatusToControlPlane(
+        { cafeId: body.cafeId.trim(), databaseKey: bindingRow.databaseKey },
+        { source: 'api/platform/cafes/detail' },
+      );
+    }
+
+    const { data, error } = await admin.rpc('platform_get_cafe_detail', {
+      p_super_admin_user_id: session.superAdminUserId,
+      p_cafe_id: body.cafeId.trim(),
+    });
 
     if (error) throw error;
 
