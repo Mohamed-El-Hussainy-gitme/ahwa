@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
-import { loadPublicMenu, PUBLIC_MENU_REVALIDATE_SECONDS } from '@/lib/public-ordering';
+import { loadPublicMenu } from '@/lib/public-ordering';
 
-export const revalidate = 60;
+export const revalidate = 0;
 
 export async function GET(_: Request, context: { params: Promise<{ slug: string }> }) {
   const { slug } = await context.params;
@@ -12,7 +12,7 @@ export async function GET(_: Request, context: { params: Promise<{ slug: string 
       { ok: true, ...payload },
       {
         headers: {
-          'Cache-Control': `public, s-maxage=${PUBLIC_MENU_REVALIDATE_SECONDS}, stale-while-revalidate=${PUBLIC_MENU_REVALIDATE_SECONDS * 5}`,
+          'Cache-Control': 'no-store, max-age=0, must-revalidate',
         },
       },
     );

@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       entityId: addonId,
       data: { addonName, stationCode, unitPrice, productIds, sortOrder },
     });
-    finalizeMenuMutation(ctx);
+    await finalizeMenuMutation(ctx);
     return ok({ addonId });
   } catch (error) {
     return jsonError(error, 400);

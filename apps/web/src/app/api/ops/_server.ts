@@ -45,8 +45,6 @@ type ComplaintsWorkspaceScope = {
   itemStationCodes?: readonly StationCode[] | null;
 };
 
-const MENU_WORKSPACE_CACHE_TTL_MS = 60_000;
-const ACTIVE_MENU_CACHE_TTL_MS = 30_000;
 const BILLING_SETTINGS_CACHE_TTL_MS = 15_000;
 const DEFERRED_SUMMARY_CACHE_TTL_MS = 10_000;
 const ORDER_NOTE_PRESETS_CACHE_TTL_MS = 15_000;
@@ -209,44 +207,40 @@ export async function listBillableRows(cafeId: string, databaseKey: string, shif
 }
 
 async function loadMenuWorkspaceCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products' | 'addons' | 'productAddonLinks'>> {
-  return readThroughOpsCache(buildOpsCacheKey('menu-workspace', cafeId, databaseKey), MENU_WORKSPACE_CACHE_TTL_MS, async () => {
-    const admin = adminOps(databaseKey);
-    const [
-      { data: sections, error: sectionsError },
-      { data: products, error: productsError },
-      { data: addons, error: addonsError },
-      { data: productAddonLinks, error: productAddonLinksError },
-    ] = await Promise.all([
-      admin.from('menu_sections').select('id, title, station_code, sort_order, is_active').eq('cafe_id', cafeId).order('sort_order', { ascending: true }),
-      admin.from('menu_products').select('id, section_id, product_name, station_code, unit_price, sort_order, is_active').eq('cafe_id', cafeId).order('section_id', { ascending: true }).order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
-      admin.from('menu_addons').select('id, addon_name, station_code, unit_price, sort_order, is_active').eq('cafe_id', cafeId).order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
-      admin.from('menu_product_addons').select('menu_product_id, menu_addon_id').eq('cafe_id', cafeId),
-    ]);
-    if (sectionsError) throw sectionsError;
-    if (productsError) throw productsError;
-    if (addonsError) throw addonsError;
-    if (productAddonLinksError) throw productAddonLinksError;
-    return {
-      sections: (sections ?? []).map((row: any) => ({ id: String(row.id), title: String(row.title), stationCode: normalizeStationCode(row.station_code), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies OpsSection),
-      products: (products ?? []).map((row: any) => ({ id: String(row.id), sectionId: String(row.section_id), name: String(row.product_name), stationCode: normalizeStationCode(row.station_code), unitPrice: Number(row.unit_price ?? 0), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies OpsProduct),
-      addons: (addons ?? []).map((row: any) => ({ id: String(row.id), name: String(row.addon_name), stationCode: normalizeStationCode(row.station_code), unitPrice: Number(row.unit_price ?? 0), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies MenuAddon),
-      productAddonLinks: (productAddonLinks ?? []).map((row: any) => ({ productId: String(row.menu_product_id), addonId: String(row.menu_addon_id) }) satisfies ProductAddonLink),
-    };
-  });
+  const admin = adminOps(databaseKey);
+  const [
+    { data: sections, error: sectionsError },
+    { data: products, error: productsError },
+    { data: addons, error: addonsError },
+    { data: productAddonLinks, error: productAddonLinksError },
+  ] = await Promise.all([
+    admin.from('menu_sections').select('id, title, station_code, sort_order, is_active').eq('cafe_id', cafeId).order('sort_order', { ascending: true }),
+    admin.from('menu_products').select('id, section_id, product_name, station_code, unit_price, sort_order, is_active').eq('cafe_id', cafeId).order('section_id', { ascending: true }).order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
+    admin.from('menu_addons').select('id, addon_name, station_code, unit_price, sort_order, is_active').eq('cafe_id', cafeId).order('sort_order', { ascending: true }).order('created_at', { ascending: true }),
+    admin.from('menu_product_addons').select('menu_product_id, menu_addon_id').eq('cafe_id', cafeId),
+  ]);
+  if (sectionsError) throw sectionsError;
+  if (productsError) throw productsError;
+  if (addonsError) throw addonsError;
+  if (productAddonLinksError) throw productAddonLinksError;
+  return {
+    sections: (sections ?? []).map((row: any) => ({ id: String(row.id), title: String(row.title), stationCode: normalizeStationCode(row.station_code), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies OpsSection),
+    products: (products ?? []).map((row: any) => ({ id: String(row.id), sectionId: String(row.section_id), name: String(row.product_name), stationCode: normalizeStationCode(row.station_code), unitPrice: Number(row.unit_price ?? 0), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies OpsProduct),
+    addons: (addons ?? []).map((row: any) => ({ id: String(row.id), name: String(row.addon_name), stationCode: normalizeStationCode(row.station_code), unitPrice: Number(row.unit_price ?? 0), sortOrder: Number(row.sort_order ?? 0), isActive: Boolean(row.is_active) }) satisfies MenuAddon),
+    productAddonLinks: (productAddonLinks ?? []).map((row: any) => ({ productId: String(row.menu_product_id), addonId: String(row.menu_addon_id) }) satisfies ProductAddonLink),
+  };
 }
 
 async function loadActiveMenuCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products' | 'addons' | 'productAddonLinks'>> {
-  return readThroughOpsCache(buildOpsCacheKey('active-menu', cafeId, databaseKey), ACTIVE_MENU_CACHE_TTL_MS, async () => {
-    const workspace = await loadMenuWorkspaceCatalog(cafeId, databaseKey);
-    const sections = workspace.sections.filter((row) => row.isActive);
-    const allowedSectionIds = new Set(sections.map((row) => row.id));
-    const products = workspace.products.filter((row) => row.isActive && allowedSectionIds.has(row.sectionId));
-    const productIds = new Set(products.map((row) => row.id));
-    const addons = workspace.addons.filter((row) => row.isActive);
-    const addonIds = new Set(addons.map((row) => row.id));
-    const productAddonLinks = workspace.productAddonLinks.filter((row) => productIds.has(row.productId) && addonIds.has(row.addonId));
-    return { sections, products, addons, productAddonLinks };
-  });
+  const workspace = await loadMenuWorkspaceCatalog(cafeId, databaseKey);
+  const sections = workspace.sections.filter((row) => row.isActive);
+  const allowedSectionIds = new Set(sections.map((row) => row.id));
+  const products = workspace.products.filter((row) => row.isActive && allowedSectionIds.has(row.sectionId));
+  const productIds = new Set(products.map((row) => row.id));
+  const addons = workspace.addons.filter((row) => row.isActive);
+  const addonIds = new Set(addons.map((row) => row.id));
+  const productAddonLinks = workspace.productAddonLinks.filter((row) => productIds.has(row.productId) && addonIds.has(row.addonId));
+  return { sections, products, addons, productAddonLinks };
 }
 
 export async function buildMenuWorkspace(cafeId: string, databaseKey: string): Promise<MenuWorkspace> {

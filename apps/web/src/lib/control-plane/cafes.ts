@@ -288,6 +288,32 @@ async function loadCafeBySlugFromControlPlane(slug: string): Promise<ResolvedCaf
   );
 }
 
+async function loadCafeByIdFromControlPlane(cafeId: string): Promise<ResolvedCafe | null> {
+  const normalizedCafeId = cafeId.trim();
+  if (!normalizedCafeId) return null;
+
+  const { data, error } = await controlPlaneAdmin()
+    .schema('ops')
+    .from('cafes')
+    .select('id, slug, display_name, is_active')
+    .eq('id', normalizedCafeId)
+    .maybeSingle<CafeRow>();
+
+  if (error) throw error;
+  return data ? parseCafeRow(data) : null;
+}
+
+export async function resolveCafeByIdFromControlPlane(cafeId: string): Promise<ResolvedCafe | null> {
+  try {
+    return await loadCafeByIdFromControlPlane(cafeId);
+  } catch (error) {
+    if (isControlSchemaPermissionError(error)) {
+      return null;
+    }
+    throw error;
+  }
+}
+
 async function listOperationalDatabases(): Promise<OperationalDatabaseOption[]> {
   const envFallback = operationalDatabasesFromEnv();
 

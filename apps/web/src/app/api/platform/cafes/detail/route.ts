@@ -92,7 +92,7 @@ export async function POST(request: Request) {
       );
       if (isRuntimeStatusReadModelStale(runtimeStatusUpdatedAt, DETAIL_RUNTIME_STATUS_MAX_AGE_MS)) {
         const origin = new URL(request.url).origin;
-        void scheduleCafeRuntimeStatusSync(
+        await scheduleCafeRuntimeStatusSync(
           { cafeId: body.cafeId.trim(), databaseKey: bindingRow.databaseKey },
           { requestOrigin: origin, source: 'api/platform/cafes/detail', concurrency: 1 },
         ).catch(() => undefined);

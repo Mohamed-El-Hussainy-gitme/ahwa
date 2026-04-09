@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     if (error) throw error;
 
     await enqueueOpsMutation(ctx, { type: 'menu.addon_toggled', entityId: addonId, data: { isActive: body.isActive } });
-    finalizeMenuMutation(ctx);
+    await finalizeMenuMutation(ctx);
     return ok({ ok: true });
   } catch (error) {
     return jsonError(error, 400);

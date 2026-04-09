@@ -23,7 +23,7 @@ export async function POST(request: Request) {
     if (String(current.section_id) !== sectionId) await renumberProductSortOrders(ctx.cafeId, String(current.section_id), ctx.databaseKey);
 
     await enqueueOpsMutation(ctx, { type: 'menu.product_updated', entityId: productId, data: { sectionId, productName, stationCode, unitPrice } });
-    finalizeMenuMutation(ctx);
+    await finalizeMenuMutation(ctx);
     return ok({ ok: true });
   } catch (error) {
     return jsonError(error, 400);

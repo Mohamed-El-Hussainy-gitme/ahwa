@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       if (error) throw error;
 
       await enqueueOpsMutation(ctx, { type: 'menu.addon_archived', entityId: addonId, data: { addonName: String(addon.addon_name ?? ''), usageCount } });
-      finalizeMenuMutation(ctx);
+      await finalizeMenuMutation(ctx);
       return ok({ ok: true, mode: 'archived' as const });
     }
 
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     await renumberAddonSortOrders(ctx.cafeId, ctx.databaseKey);
     await enqueueOpsMutation(ctx, { type: 'menu.addon_deleted', entityId: addonId, data: { addonName: String(addon.addon_name ?? '') } });
-    finalizeMenuMutation(ctx);
+    await finalizeMenuMutation(ctx);
     return ok({ ok: true, mode: 'deleted' as const });
   } catch (error) {
     return jsonError(error, 400);

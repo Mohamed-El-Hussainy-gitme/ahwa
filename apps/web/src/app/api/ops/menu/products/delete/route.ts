@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       const { error } = await adminOps(ctx.databaseKey).from('menu_products').update({ is_active: false }).eq('cafe_id', ctx.cafeId).eq('id', productId);
       if (error) throw error;
       await enqueueOpsMutation(ctx, { type: 'menu.product_archived', entityId: productId, data: { productName: String(product.product_name ?? ''), usageCount } });
-      finalizeMenuMutation(ctx);
+      await finalizeMenuMutation(ctx);
       return ok({ ok: true, mode: 'archived' as const });
     }
 
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
     if (error) throw error;
     await renumberProductSortOrders(ctx.cafeId, sectionId, ctx.databaseKey);
     await enqueueOpsMutation(ctx, { type: 'menu.product_deleted', entityId: productId, data: { productName: String(product.product_name ?? '') } });
-    finalizeMenuMutation(ctx);
+    await finalizeMenuMutation(ctx);
     return ok({ ok: true, mode: 'deleted' as const });
   } catch (error) {
     return jsonError(error, 400);

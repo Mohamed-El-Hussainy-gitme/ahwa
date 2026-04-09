@@ -53,6 +53,25 @@ async function staleWhileRevalidate(request, cacheName) {
   return cached || networkPromise || Response.error();
 }
 
+async function networkFirstMenu(request) {
+  const cache = await caches.open(MENU_CACHE);
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), 2500);
+
+  try {
+    const response = await fetch(request, { signal: controller.signal, cache: 'no-store' });
+    if (response && response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await cache.match(request);
+    return cached || Response.error();
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
 async function networkFirstPage(request) {
   const cache = await caches.open(PAGE_CACHE);
   try {
@@ -80,7 +99,7 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   if (isMenuRequest(url)) {
-    event.respondWith(staleWhileRevalidate(request, MENU_CACHE));
+    event.respondWith(networkFirstMenu(request));
     return;
   }
 

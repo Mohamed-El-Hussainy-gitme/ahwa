@@ -375,6 +375,13 @@ export default function PlatformPortfolioOverview({
 
   return (
     <div className="space-y-6">
+      <section className="flex items-center justify-between gap-3">
+        <div>
+          <div className="text-sm font-semibold text-indigo-600">النظرة العامة</div>
+          <h1 className="text-2xl font-bold text-slate-900">لوحة تشغيل المنصة</h1>
+        </div>
+      </section>
+
       {error ? (
         <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">{error}</div>
       ) : null}

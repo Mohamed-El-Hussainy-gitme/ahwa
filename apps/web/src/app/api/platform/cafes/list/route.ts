@@ -95,7 +95,7 @@ export async function GET(request: Request) {
 
     if (staleBindings.length > 0) {
       const origin = new URL(request.url).origin;
-      void scheduleCafeRuntimeStatusesSync(staleBindings, {
+      await scheduleCafeRuntimeStatusesSync(staleBindings, {
         requestOrigin: origin,
         source: 'api/platform/cafes/list',
         concurrency: 2,

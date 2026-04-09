@@ -292,6 +292,7 @@ export type RuntimeStatusBackgroundScheduleOptions = {
 
 const DEFAULT_SCHEDULE_DEDUPE_TTL_MS = 30_000;
 const DEFAULT_STALE_AFTER_MS = 60_000;
+const DIRECT_DISPATCH_TIMEOUT_MS = 1_500;
 
 function shouldSkipScheduleDueToTtl(binding: CafeRuntimeSyncBinding, ttlMs: number) {
   const cache = getScheduleCache();
@@ -382,17 +383,31 @@ export async function scheduleCafeRuntimeStatusesSync(
   }
 
   const target = new URL('/api/internal/platform/runtime-status/sync', `${baseUrl}/`).toString();
-  fetch(target, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${secret}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(body),
-    cache: 'no-store',
-  }).catch(() => undefined);
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), DIRECT_DISPATCH_TIMEOUT_MS);
 
-  return { queued: scheduled.length, skipped, mode: 'direct' };
+  try {
+    const response = await fetch(target, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${secret}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return { queued: 0, skipped: skipped + scheduled.length, mode: 'noop' };
+    }
+
+    return { queued: scheduled.length, skipped, mode: 'direct' };
+  } catch {
+    return { queued: 0, skipped: skipped + scheduled.length, mode: 'noop' };
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
 }
 
 export async function scheduleCafeRuntimeStatusSync(

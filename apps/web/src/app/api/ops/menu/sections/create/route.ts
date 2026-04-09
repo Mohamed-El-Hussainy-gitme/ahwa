@@ -25,7 +25,7 @@ export async function POST(request: Request) {
       data: { title, stationCode, sortOrder },
     });
 
-    finalizeMenuMutation(ctx);
+    await finalizeMenuMutation(ctx);
 
     return ok({ sectionId: String(data.id) });
   } catch (error) {

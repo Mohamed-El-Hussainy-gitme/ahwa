@@ -21,7 +21,7 @@ export async function POST(request: Request) {
     }
 
     await enqueueOpsMutation(ctx, { type: 'menu.products_reordered', data: { sectionId, productIds } });
-    finalizeMenuMutation(ctx);
+    await finalizeMenuMutation(ctx);
     return ok({ ok: true });
   } catch (error) {
     return jsonError(error, 400);

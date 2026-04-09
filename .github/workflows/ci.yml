@@ -28,6 +28,9 @@ jobs:
       - name: Verify release readiness
         run: npm run verify:release
 
+      - name: Verify runtime/public freshness
+        run: npm run verify:runtime-public-freshness
+
       - name: Build shared
         run: npm run build:shared
 

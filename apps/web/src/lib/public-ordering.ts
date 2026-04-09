@@ -1,9 +1,21 @@
-import { unstable_cache } from 'next/cache';
-import { resolveCafeBindingBySlug } from '@/lib/control-plane/cafes';
+import 'server-only';
+import { revalidateTag, unstable_cache } from 'next/cache';
+import { resolveCafeBindingBySlug, resolveCafeByIdFromControlPlane } from '@/lib/control-plane/cafes';
 import { adminOps, buildMenuWorkspace } from '@/app/api/ops/_server';
 import { requireOpenOpsShift } from '@/app/api/ops/_helpers';
 
 export const PUBLIC_MENU_REVALIDATE_SECONDS = 60;
+
+export function buildPublicMenuTag(slug: string) {
+  return `public-menu:${slug.trim().toLowerCase()}`;
+}
+
+export async function revalidatePublicMenuForCafeId(cafeId: string): Promise<void> {
+  const cafe = await resolveCafeByIdFromControlPlane(cafeId);
+  const slug = cafe?.slug?.trim();
+  if (!slug) return;
+  revalidateTag(buildPublicMenuTag(slug));
+}
 
 export type PublicCafeContext = {
   cafeId: string;
@@ -59,7 +71,7 @@ export async function loadPublicMenu(slug: string): Promise<PublicMenuPayload> {
     ['public-menu', slug],
     {
       revalidate: PUBLIC_MENU_REVALIDATE_SECONDS,
-      tags: [`public-menu:${slug}`],
+      tags: [buildPublicMenuTag(slug)],
     },
   );
 

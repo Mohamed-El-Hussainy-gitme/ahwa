@@ -1,6 +1,7 @@
 import { adminOps } from '@/app/api/ops/_server';
 import { kickOpsOutboxDispatch, type OpsActorContext } from '@/app/api/ops/_helpers';
 import { invalidateMenuWorkspaceCaches } from '@/app/api/ops/_cache';
+import { revalidatePublicMenuForCafeId } from '@/lib/public-ordering';
 
 export function normalizeStationCode(value: unknown) {
   if (value === 'shisha') return value;
@@ -175,7 +176,8 @@ export async function addonUsageCount(cafeId: string, addonId: string, databaseK
 }
 
 
-export function finalizeMenuMutation(ctx: Pick<OpsActorContext, 'cafeId' | 'databaseKey'>) {
+export async function finalizeMenuMutation(ctx: Pick<OpsActorContext, 'cafeId' | 'databaseKey'>) {
   invalidateMenuWorkspaceCaches(ctx.cafeId, ctx.databaseKey);
+  await revalidatePublicMenuForCafeId(ctx.cafeId);
   kickOpsOutboxDispatch(ctx);
 }

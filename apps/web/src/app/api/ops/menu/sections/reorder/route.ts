@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     }
 
     await enqueueOpsMutation(ctx, { type: 'menu.sections_reordered', data: { sectionIds } });
-    finalizeMenuMutation(ctx);
+    await finalizeMenuMutation(ctx);
     return ok({ ok: true });
   } catch (error) {
     return jsonError(error, 400);

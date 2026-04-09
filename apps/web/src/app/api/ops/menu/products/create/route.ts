@@ -43,7 +43,7 @@ export async function POST(request: Request) {
       data: { sectionId, productName, stationCode, unitPrice, sortOrder },
     });
 
-    finalizeMenuMutation(ctx);
+    await finalizeMenuMutation(ctx);
 
     return ok({ productId: String(data.id) });
   } catch (error) {
