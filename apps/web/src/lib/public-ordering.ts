@@ -14,7 +14,7 @@ export async function revalidatePublicMenuForCafeId(cafeId: string): Promise<voi
   const cafe = await resolveCafeByIdFromControlPlane(cafeId);
   const slug = cafe?.slug?.trim();
   if (!slug) return;
-  revalidateTag(buildPublicMenuTag(slug));
+  revalidateTag(buildPublicMenuTag(slug), 'max');
 }
 
 export type PublicCafeContext = {
