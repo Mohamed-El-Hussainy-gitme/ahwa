@@ -9,6 +9,7 @@ export type ApiErrorEnvelope = {
 type RequestCacheOptions = {
   ttlMs: number;
   key?: string;
+  forceRefresh?: boolean;
 };
 
 type ApiPostOptions = {
@@ -137,16 +138,21 @@ export function clearApiRequestCache(prefix?: string) {
 
 async function performPost<T>(path: string, body: unknown = {}, options?: ApiPostOptions): Promise<T> {
   const readCacheKey = options?.readCache ? buildReadCacheKey('POST', path, body, options.readCache) : null;
-  const cached = readCachedPayload<T>(readCacheKey);
-  if (cached !== null) {
-    return cached;
-  }
-
-  if (readCacheKey) {
-    const pending = pendingReadRequests.get(readCacheKey) as Promise<T> | undefined;
-    if (pending) {
-      return pending;
+  if (!options?.readCache?.forceRefresh) {
+    const cached = readCachedPayload<T>(readCacheKey);
+    if (cached !== null) {
+      return cached;
     }
+
+    if (readCacheKey) {
+      const pending = pendingReadRequests.get(readCacheKey) as Promise<T> | undefined;
+      if (pending) {
+        return pending;
+      }
+    }
+  } else if (readCacheKey) {
+    pendingReadRequests.delete(readCacheKey);
+    responseCache.delete(readCacheKey);
   }
 
   const execute = async () => {
@@ -207,16 +213,21 @@ export async function apiPost<T>(path: string, body: unknown = {}, options?: Api
 
 export async function apiGet<T>(path: string, options?: ApiGetOptions): Promise<T> {
   const readCacheKey = options?.readCache ? buildReadCacheKey('GET', path, null, options.readCache) : null;
-  const cached = readCachedPayload<T>(readCacheKey);
-  if (cached !== null) {
-    return cached;
-  }
-
-  if (readCacheKey) {
-    const pending = pendingReadRequests.get(readCacheKey) as Promise<T> | undefined;
-    if (pending) {
-      return pending;
+  if (!options?.readCache?.forceRefresh) {
+    const cached = readCachedPayload<T>(readCacheKey);
+    if (cached !== null) {
+      return cached;
     }
+
+    if (readCacheKey) {
+      const pending = pendingReadRequests.get(readCacheKey) as Promise<T> | undefined;
+      if (pending) {
+        return pending;
+      }
+    }
+  } else if (readCacheKey) {
+    pendingReadRequests.delete(readCacheKey);
+    responseCache.delete(readCacheKey);
   }
 
   const request = (async () => {

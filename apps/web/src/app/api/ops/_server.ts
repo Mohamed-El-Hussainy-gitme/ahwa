@@ -1,4 +1,5 @@
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
+import { buildOpsCacheKey, readThroughOpsCache } from '@/app/api/ops/_cache';
 import type {
   BillingExtrasSettings,
   BillingSession,
@@ -44,30 +45,11 @@ type ComplaintsWorkspaceScope = {
   itemStationCodes?: readonly StationCode[] | null;
 };
 
-type CacheEntry<T> = {
-  value: T;
-  expiresAt: number;
-};
-
-const opsMemoryCache = new Map<string, CacheEntry<unknown>>();
 const MENU_WORKSPACE_CACHE_TTL_MS = 60_000;
 const ACTIVE_MENU_CACHE_TTL_MS = 30_000;
 const BILLING_SETTINGS_CACHE_TTL_MS = 15_000;
 const DEFERRED_SUMMARY_CACHE_TTL_MS = 10_000;
 const ORDER_NOTE_PRESETS_CACHE_TTL_MS = 15_000;
-
-async function readThroughCache<T>(key: string, ttlMs: number, loader: () => Promise<T>): Promise<T> {
-  const now = Date.now();
-  const cached = opsMemoryCache.get(key) as CacheEntry<T> | undefined;
-  if (cached && cached.expiresAt > now) return cached.value;
-  const value = await loader();
-  opsMemoryCache.set(key, { value, expiresAt: now + ttlMs });
-  return value;
-}
-
-function cacheKey(prefix: string, cafeId: string, databaseKey: string) {
-  return `${prefix}:${databaseKey}:${cafeId}`;
-}
 
 export type BoundOperationalDatabaseContext = {
   cafeId: string;
@@ -155,7 +137,7 @@ async function loadOrderNotePresets(
   const stationCodes = (allowedStationCodes ?? []).filter(Boolean).sort();
   const scopedKey = stationCodes.length ? stationCodes.join(',') : 'all';
 
-  return readThroughCache(cacheKey(`order-note-presets:${scopedKey}`, cafeId, databaseKey), ORDER_NOTE_PRESETS_CACHE_TTL_MS, async () => {
+  return readThroughOpsCache(buildOpsCacheKey(`order-note-presets:${scopedKey}`, cafeId, databaseKey), ORDER_NOTE_PRESETS_CACHE_TTL_MS, async () => {
     let query = adminOps(databaseKey)
       .from('order_note_presets')
       .select('note_text, station_code, usage_count, last_used_at')
@@ -227,7 +209,7 @@ export async function listBillableRows(cafeId: string, databaseKey: string, shif
 }
 
 async function loadMenuWorkspaceCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products' | 'addons' | 'productAddonLinks'>> {
-  return readThroughCache(cacheKey('menu-workspace', cafeId, databaseKey), MENU_WORKSPACE_CACHE_TTL_MS, async () => {
+  return readThroughOpsCache(buildOpsCacheKey('menu-workspace', cafeId, databaseKey), MENU_WORKSPACE_CACHE_TTL_MS, async () => {
     const admin = adminOps(databaseKey);
     const [
       { data: sections, error: sectionsError },
@@ -254,7 +236,7 @@ async function loadMenuWorkspaceCatalog(cafeId: string, databaseKey: string): Pr
 }
 
 async function loadActiveMenuCatalog(cafeId: string, databaseKey: string): Promise<Pick<MenuWorkspace, 'sections' | 'products' | 'addons' | 'productAddonLinks'>> {
-  return readThroughCache(cacheKey('active-menu', cafeId, databaseKey), ACTIVE_MENU_CACHE_TTL_MS, async () => {
+  return readThroughOpsCache(buildOpsCacheKey('active-menu', cafeId, databaseKey), ACTIVE_MENU_CACHE_TTL_MS, async () => {
     const workspace = await loadMenuWorkspaceCatalog(cafeId, databaseKey);
     const sections = workspace.sections.filter((row) => row.isActive);
     const allowedSectionIds = new Set(sections.map((row) => row.id));
@@ -278,7 +260,7 @@ export async function buildMenuWorkspace(cafeId: string, databaseKey: string): P
 
 
 export async function loadBillingSettings(cafeId: string, databaseKey: string): Promise<BillingExtrasSettings> {
-  return readThroughCache(cacheKey('billing-settings', cafeId, databaseKey), BILLING_SETTINGS_CACHE_TTL_MS, async () => {
+  return readThroughOpsCache(buildOpsCacheKey('billing-settings', cafeId, databaseKey), BILLING_SETTINGS_CACHE_TTL_MS, async () => {
     const { data, error } = await adminOps(databaseKey)
       .from('cafe_billing_settings')
       .select('tax_enabled, tax_rate, service_enabled, service_rate')
@@ -557,7 +539,7 @@ export async function ensureRuntimeContract(scope: RuntimeContractScope, databas
 }
 
 async function loadDeferredCustomerSummaryRows(cafeId: string, databaseKey: string): Promise<DeferredCustomerSummaryRow[]> {
-  return readThroughCache(cacheKey('deferred-summary', cafeId, databaseKey), DEFERRED_SUMMARY_CACHE_TTL_MS, async () => {
+  return readThroughOpsCache(buildOpsCacheKey('deferred-summary', cafeId, databaseKey), DEFERRED_SUMMARY_CACHE_TTL_MS, async () => {
     const { data, error } = await adminOps(databaseKey)
       .from('deferred_customer_balances')
       .select('debtor_name, entry_count, debt_total, repayment_total, balance, last_entry_at, last_debt_at, last_repayment_at, last_entry_kind')

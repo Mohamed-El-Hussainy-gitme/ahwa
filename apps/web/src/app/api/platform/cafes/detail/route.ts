@@ -1,6 +1,6 @@
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { resolveCafeDatabaseBinding } from '@/lib/control-plane/cafes';
-import { syncCafeRuntimeStatusToControlPlane } from '@/lib/control-plane/runtime-status-sync';
+import { isRuntimeStatusReadModelStale, scheduleCafeRuntimeStatusSync } from '@/lib/control-plane/runtime-status-sync';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 import {
   assertPlatformEnv,
@@ -39,6 +39,14 @@ function toDatabaseBinding(value: unknown): DatabaseBindingPayload | null {
   };
 }
 
+const DETAIL_RUNTIME_STATUS_MAX_AGE_MS = 60_000;
+
+function readRuntimeStatusUpdatedAt(value: unknown) {
+  if (!value || typeof value !== 'object') return null;
+  const row = value as { runtime_status_updated_at?: string | null };
+  return typeof row.runtime_status_updated_at === 'string' ? row.runtime_status_updated_at : null;
+}
+
 export async function POST(request: Request) {
   try {
     const session = await requirePlatformAdmin();
@@ -52,13 +60,6 @@ export async function POST(request: Request) {
 
     const admin = controlPlaneAdmin();
     const bindingRow = await resolveCafeDatabaseBinding(body.cafeId.trim());
-
-    if (bindingRow?.databaseKey) {
-      await syncCafeRuntimeStatusToControlPlane(
-        { cafeId: body.cafeId.trim(), databaseKey: bindingRow.databaseKey },
-        { source: 'api/platform/cafes/detail' },
-      );
-    }
 
     const { data, error } = await admin.rpc('platform_get_cafe_detail', {
       p_super_admin_user_id: session.superAdminUserId,
@@ -84,6 +85,19 @@ export async function POST(request: Request) {
             binding_status: toBindingStatus(binding?.database_key),
           }
         : data;
+
+    if (bindingRow?.databaseKey) {
+      const runtimeStatusUpdatedAt = readRuntimeStatusUpdatedAt(
+        data && typeof data === 'object' ? (data as Record<string, unknown>).database_binding : null,
+      );
+      if (isRuntimeStatusReadModelStale(runtimeStatusUpdatedAt, DETAIL_RUNTIME_STATUS_MAX_AGE_MS)) {
+        const origin = new URL(request.url).origin;
+        void scheduleCafeRuntimeStatusSync(
+          { cafeId: body.cafeId.trim(), databaseKey: bindingRow.databaseKey },
+          { requestOrigin: origin, source: 'api/platform/cafes/detail', concurrency: 1 },
+        ).catch(() => undefined);
+      }
+    }
 
     return platformOk({ data: enriched ?? null });
   } catch (error) {

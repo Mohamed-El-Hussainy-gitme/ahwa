@@ -1,6 +1,6 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { enqueueOpsMutation, jsonError, kickOpsOutboxDispatch, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
-import { addonUsageCount, loadAddon, renumberAddonSortOrders } from '@/app/api/ops/menu/_utils';
+import { enqueueOpsMutation, jsonError, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { finalizeMenuMutation, addonUsageCount, loadAddon, renumberAddonSortOrders } from '@/app/api/ops/menu/_utils';
 
 export async function POST(request: Request) {
   try {
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
       if (error) throw error;
 
       await enqueueOpsMutation(ctx, { type: 'menu.addon_archived', entityId: addonId, data: { addonName: String(addon.addon_name ?? ''), usageCount } });
-      kickOpsOutboxDispatch(ctx);
+      finalizeMenuMutation(ctx);
       return ok({ ok: true, mode: 'archived' as const });
     }
 
@@ -43,7 +43,7 @@ export async function POST(request: Request) {
 
     await renumberAddonSortOrders(ctx.cafeId, ctx.databaseKey);
     await enqueueOpsMutation(ctx, { type: 'menu.addon_deleted', entityId: addonId, data: { addonName: String(addon.addon_name ?? '') } });
-    kickOpsOutboxDispatch(ctx);
+    finalizeMenuMutation(ctx);
     return ok({ ok: true, mode: 'deleted' as const });
   } catch (error) {
     return jsonError(error, 400);

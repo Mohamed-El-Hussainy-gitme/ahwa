@@ -82,8 +82,8 @@ export default function OrdersPage() {
   const composerInputRef = useRef<HTMLInputElement | null>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  const liveLoader = useCallback(() => opsClient.waiterLiveWorkspace(), []);
-  const catalogLoader = useCallback(() => opsClient.waiterCatalogWorkspace(), []);
+  const liveLoader = useCallback((context?: { forceFresh?: boolean }) => opsClient.waiterLiveWorkspace({ forceRefresh: context?.forceFresh }), []);
+  const catalogLoader = useCallback((context?: { forceFresh?: boolean }) => opsClient.waiterCatalogWorkspace({ forceRefresh: context?.forceFresh }), []);
   const { data: liveData, setData: setLiveData, error: liveError } = useOpsWorkspace<WaiterLiveWorkspace>(liveLoader, {
     enabled: Boolean(shift),
     cacheKey: 'workspace:orders:live',

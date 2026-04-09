@@ -1,6 +1,7 @@
 import 'server-only';
 
 import { controlPlaneAdmin } from '@/lib/control-plane/admin';
+import { enqueueInternalRequestWithQStash, isQStashConfigured } from '@/lib/platform/qstash';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
@@ -49,6 +50,8 @@ type SyncOptions = {
 declare global {
   // eslint-disable-next-line no-var
   var __ahwaControlRuntimeSyncCache__: Map<string, number> | undefined;
+  // eslint-disable-next-line no-var
+  var __ahwaControlRuntimeSyncScheduleCache__: Map<string, number> | undefined;
 }
 
 const DEFAULT_TTL_MS = 15_000;
@@ -61,6 +64,14 @@ function getSyncCache() {
   }
 
   return globalThis.__ahwaControlRuntimeSyncCache__;
+}
+
+function getScheduleCache() {
+  if (!globalThis.__ahwaControlRuntimeSyncScheduleCache__) {
+    globalThis.__ahwaControlRuntimeSyncScheduleCache__ = new Map<string, number>();
+  }
+
+  return globalThis.__ahwaControlRuntimeSyncScheduleCache__;
 }
 
 function syncCacheKey(binding: CafeRuntimeSyncBinding) {
@@ -267,4 +278,126 @@ export async function syncCafeRuntimeStatusesToControlPlane(
   }
 
   return results;
+}
+
+export type RuntimeStatusBackgroundScheduleOptions = {
+  requestOrigin?: string | null;
+  source?: string;
+  dedupeTtlMs?: number;
+  ttlMs?: number;
+  timeoutMs?: number;
+  concurrency?: number;
+  force?: boolean;
+};
+
+const DEFAULT_SCHEDULE_DEDUPE_TTL_MS = 30_000;
+const DEFAULT_STALE_AFTER_MS = 60_000;
+
+function shouldSkipScheduleDueToTtl(binding: CafeRuntimeSyncBinding, ttlMs: number) {
+  const cache = getScheduleCache();
+  const key = syncCacheKey(binding);
+  const lastRunAt = cache.get(key) ?? 0;
+  const now = Date.now();
+
+  if (now - lastRunAt < ttlMs) {
+    return true;
+  }
+
+  cache.set(key, now);
+  return false;
+}
+
+function resolveInternalBaseUrl(requestOrigin?: string | null) {
+  const origin = typeof requestOrigin === 'string' ? requestOrigin.trim() : '';
+  if (origin) return origin.replace(/\/$/, '');
+
+  const envBase = String(process.env.NEXT_PUBLIC_APP_URL ?? '').trim();
+  return envBase.replace(/\/$/, '');
+}
+
+export function isRuntimeStatusReadModelStale(updatedAt: string | null | undefined, maxAgeMs = DEFAULT_STALE_AFTER_MS) {
+  const normalized = typeof updatedAt === 'string' ? updatedAt.trim() : '';
+  if (!normalized) return true;
+
+  const parsed = Date.parse(normalized);
+  if (!Number.isFinite(parsed)) return true;
+
+  return Date.now() - parsed > maxAgeMs;
+}
+
+export async function scheduleCafeRuntimeStatusesSync(
+  bindingInputs: CafeRuntimeSyncBinding[],
+  options: RuntimeStatusBackgroundScheduleOptions = {},
+): Promise<{ queued: number; skipped: number; mode: 'qstash' | 'direct' | 'noop' }> {
+  const source = options.source?.trim() || 'control-runtime-sync-scheduler';
+  const dedupeTtlMs = options.dedupeTtlMs ?? DEFAULT_SCHEDULE_DEDUPE_TTL_MS;
+  const bindings = bindingInputs
+    .map((binding) => normalizeBinding(binding))
+    .filter((binding): binding is CafeRuntimeSyncBinding => Boolean(binding))
+    .filter((binding) => isOperationalDatabaseConfigured(binding.databaseKey));
+
+  if (bindings.length === 0) {
+    return { queued: 0, skipped: 0, mode: 'noop' };
+  }
+
+  const scheduled: CafeRuntimeSyncBinding[] = [];
+  let skipped = 0;
+  for (const binding of bindings) {
+    if (!options.force && shouldSkipScheduleDueToTtl(binding, dedupeTtlMs)) {
+      skipped += 1;
+      continue;
+    }
+    scheduled.push(binding);
+  }
+
+  if (scheduled.length === 0) {
+    return { queued: 0, skipped, mode: 'noop' };
+  }
+
+  const body = {
+    bindings: scheduled,
+    source,
+    ttlMs: options.ttlMs,
+    timeoutMs: options.timeoutMs,
+    concurrency: options.concurrency,
+    force: options.force === true,
+  };
+
+  if (isQStashConfigured()) {
+    await enqueueInternalRequestWithQStash({
+      path: '/api/internal/platform/runtime-status/sync',
+      method: 'POST',
+      body,
+      retries: 2,
+      timeoutSeconds: 20,
+      dedupeKey: `runtime-sync:${scheduled.map((binding) => syncCacheKey(binding)).sort().join('|')}`,
+    });
+    return { queued: scheduled.length, skipped, mode: 'qstash' };
+  }
+
+  const baseUrl = resolveInternalBaseUrl(options.requestOrigin);
+  const secret = String(process.env.CRON_SECRET ?? '').trim();
+  if (!baseUrl || !secret) {
+    return { queued: 0, skipped: skipped + scheduled.length, mode: 'noop' };
+  }
+
+  const target = new URL('/api/internal/platform/runtime-status/sync', `${baseUrl}/`).toString();
+  fetch(target, {
+    method: 'POST',
+    headers: {
+      authorization: `Bearer ${secret}`,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  }).catch(() => undefined);
+
+  return { queued: scheduled.length, skipped, mode: 'direct' };
+}
+
+export async function scheduleCafeRuntimeStatusSync(
+  bindingInput: CafeRuntimeSyncBinding,
+  options: RuntimeStatusBackgroundScheduleOptions = {},
+) {
+  return scheduleCafeRuntimeStatusesSync([bindingInput], options);
 }

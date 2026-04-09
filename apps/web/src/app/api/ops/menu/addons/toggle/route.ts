@@ -1,6 +1,6 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { enqueueOpsMutation, jsonError, kickOpsOutboxDispatch, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
-import { loadAddon } from '@/app/api/ops/menu/_utils';
+import { enqueueOpsMutation, jsonError, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { finalizeMenuMutation, loadAddon } from '@/app/api/ops/menu/_utils';
 
 export async function POST(request: Request) {
   try {
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     if (error) throw error;
 
     await enqueueOpsMutation(ctx, { type: 'menu.addon_toggled', entityId: addonId, data: { isActive: body.isActive } });
-    kickOpsOutboxDispatch(ctx);
+    finalizeMenuMutation(ctx);
     return ok({ ok: true });
   } catch (error) {
     return jsonError(error, 400);

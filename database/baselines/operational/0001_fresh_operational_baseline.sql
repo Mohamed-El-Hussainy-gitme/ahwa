@@ -16602,12 +16602,12 @@ begin
   where ss.cafe_id = v_cafe_id
     and ss.closed_at is null;
 
-  select count(distinct ss.staff_user_id)::integer
+  select count(distinct ss.opened_by_staff_id)::integer
     into v_active_staff_count
   from ops.service_sessions ss
   where ss.cafe_id = v_cafe_id
     and ss.closed_at is null
-    and ss.staff_user_id is not null;
+    and ss.opened_by_staff_id is not null;
 
   v_usage_state := case
     when v_has_open_shift then 'active_now'

@@ -16,6 +16,10 @@ type WorkspaceOptions = {
 };
 
 type ReloadMode = 'manual' | 'background';
+type WorkspaceLoadContext = {
+  mode: ReloadMode;
+  forceFresh: boolean;
+};
 
 const DEFAULT_STALE_TIME_MS = 30_000;
 const DEFAULT_REALTIME_DEBOUNCE_MS = 180;
@@ -34,7 +38,7 @@ function isStale(lastLoadedAt: number | null, staleTimeMs: number, hasError: boo
   return Date.now() - lastLoadedAt >= staleTimeMs;
 }
 
-export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceOptions = {}) {
+export function useOpsWorkspace<T>(loader: (context?: WorkspaceLoadContext) => Promise<T>, options: WorkspaceOptions = {}) {
   const {
     enabled = true,
     shouldReloadOnEvent,
@@ -90,7 +94,7 @@ export function useOpsWorkspace<T>(loader: () => Promise<T>, options: WorkspaceO
 
       const request = (async () => {
         try {
-          const next = await loader();
+          const next = await loader({ mode, forceFresh: mode === 'background' });
           const loadedAt = Date.now();
           setData(next);
           setError(null);

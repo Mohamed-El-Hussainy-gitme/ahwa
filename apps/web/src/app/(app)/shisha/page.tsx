@@ -51,9 +51,9 @@ export default function ShishaPage() {
   const [draft, setDraft] = useState<Record<string, number>>({});
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
 
-  const stationLoader = useCallback(() => opsClient.stationWorkspace('shisha'), []);
-  const waiterLiveLoader = useCallback(() => opsClient.waiterLiveWorkspace(), []);
-  const waiterCatalogLoader = useCallback(() => opsClient.waiterCatalogWorkspace(), []);
+  const stationLoader = useCallback((context?: { forceFresh?: boolean }) => opsClient.stationWorkspace('shisha', { forceRefresh: context?.forceFresh }), []);
+  const waiterLiveLoader = useCallback((context?: { forceFresh?: boolean }) => opsClient.waiterLiveWorkspace({ forceRefresh: context?.forceFresh }), []);
+  const waiterCatalogLoader = useCallback((context?: { forceFresh?: boolean }) => opsClient.waiterCatalogWorkspace({ forceRefresh: context?.forceFresh }), []);
 
   const { data: stationData, setData: setStationData, error: stationError } = useOpsWorkspace<StationWorkspace>(
     stationLoader,

@@ -1,6 +1,6 @@
 import { adminOps } from '@/app/api/ops/_server';
-import { enqueueOpsMutation, jsonError, kickOpsOutboxDispatch, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
-import { loadSection, renumberSectionSortOrders, sectionUsageCount } from '@/app/api/ops/menu/_utils';
+import { enqueueOpsMutation, jsonError, ok, requireOwnerRole, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { finalizeMenuMutation, loadSection, renumberSectionSortOrders, sectionUsageCount } from '@/app/api/ops/menu/_utils';
 
 export async function POST(request: Request) {
   try {
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       const { error: productsError } = await adminOps(ctx.databaseKey).from('menu_products').update({ is_active: false }).eq('cafe_id', ctx.cafeId).eq('section_id', sectionId);
       if (productsError) throw productsError;
       await enqueueOpsMutation(ctx, { type: 'menu.section_archived', entityId: sectionId, data: { title: String(section.title ?? ''), usageCount } });
-      kickOpsOutboxDispatch(ctx);
+      finalizeMenuMutation(ctx);
       return ok({ ok: true, mode: 'archived' as const });
     }
 
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
     if (deleteError) throw deleteError;
     await renumberSectionSortOrders(ctx.cafeId, ctx.databaseKey);
     await enqueueOpsMutation(ctx, { type: 'menu.section_deleted', entityId: sectionId, data: { title: String(section.title ?? '') } });
-    kickOpsOutboxDispatch(ctx);
+    finalizeMenuMutation(ctx);
     return ok({ ok: true, mode: 'deleted' as const });
   } catch (error) {
     return jsonError(error, 400);

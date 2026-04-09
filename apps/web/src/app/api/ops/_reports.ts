@@ -771,7 +771,10 @@ async function loadSnapshotAggregates(cafeId: string, shiftRows: ShiftRow[], dat
   return { shiftRowsById, productsByShift, addonsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
 }
 
-async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps: ActorMaps, databaseKey: string): Promise<AggregateMaps> {
+type LiveAggregateOptions = { includeAddons?: boolean };
+
+async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps: ActorMaps, databaseKey: string, options: LiveAggregateOptions = {}): Promise<AggregateMaps> {
+  const includeAddons = options.includeAddons ?? true;
   const shiftRowsById = new Map<string, ReportShiftRow>();
   const productsByShift = new Map<string, Map<string, ProductReportRow>>();
   const addonsByShift = new Map<string, Map<string, AddonReportRow>>();
@@ -830,11 +833,13 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
       .select('shift_id, event_code, quantity, by_staff_id, by_owner_id')
       .eq('cafe_id', cafeId)
       .in('shift_id', shiftIds),
-    adminOps(databaseKey)
-      .from('order_item_addons')
-      .select('menu_addon_id, addon_name_snapshot, station_code, unit_price, quantity, order_items!inner(shift_id, qty_delivered, qty_waived)')
-      .eq('cafe_id', cafeId)
-      .in('order_items.shift_id', shiftIds),
+    includeAddons
+      ? adminOps(databaseKey)
+          .from('order_item_addons')
+          .select('menu_addon_id, addon_name_snapshot, station_code, unit_price, quantity, order_items!inner(shift_id, qty_delivered, qty_waived)')
+          .eq('cafe_id', cafeId)
+          .in('order_items.shift_id', shiftIds)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (itemError) throw itemError;
@@ -1044,6 +1049,64 @@ async function loadLiveAggregates(cafeId: string, shifts: ShiftRow[], actorMaps:
   }
 
   return { shiftRowsById, productsByShift, addonsByShift, staffByShift, complaintsByShift, itemIssuesByShift };
+}
+
+async function loadLiveAddonAggregates(cafeId: string, shifts: ShiftRow[], databaseKey: string): Promise<Map<string, Map<string, AddonReportRow>>> {
+  const addonsByShift = new Map<string, Map<string, AddonReportRow>>();
+  if (!shifts.length) return addonsByShift;
+
+  const shiftIds = shifts.map((row) => row.id);
+  const { data, error } = await adminOps(databaseKey)
+    .from('order_item_addons')
+    .select('menu_addon_id, addon_name_snapshot, station_code, unit_price, quantity, order_items!inner(shift_id, qty_delivered, qty_waived)')
+    .eq('cafe_id', cafeId)
+    .in('order_items.shift_id', shiftIds);
+
+  if (error) throw error;
+
+  for (const row of (data ?? []) as OrderItemAddonRow[]) {
+    const orderItemRef = firstRelation(row.order_items);
+    const shiftId = toStringValue(orderItemRef?.shift_id);
+    if (!shiftId) continue;
+    const addonId = row.menu_addon_id ? String(row.menu_addon_id) : `snapshot:${String(row.addon_name_snapshot ?? '')}`;
+    const quantity = Math.max(toNumber(row.quantity), 0);
+    const deliveredQty = Math.max(toNumber(orderItemRef?.qty_delivered), 0);
+    const waivedQty = Math.min(deliveredQty, Math.max(toNumber(orderItemRef?.qty_waived), 0));
+    if (!quantity || !deliveredQty) continue;
+    const netUsageCount = Math.max(deliveredQty - waivedQty, 0) * quantity;
+    if (netUsageCount <= 0) continue;
+    const unitPrice = toNumber(row.unit_price);
+    const shiftAddons = addonsByShift.get(shiftId) ?? new Map<string, AddonReportRow>();
+    const addon = shiftAddons.get(addonId) ?? createAddonRow(addonId, String(row.addon_name_snapshot ?? ''), normalizeStationCode(row.station_code));
+    addon.usageCount += netUsageCount;
+    addon.linkedOrderItems += 1;
+    addon.grossSales += roundMoney(deliveredQty * quantity * unitPrice);
+    addon.netSales += roundMoney(netUsageCount * unitPrice);
+    shiftAddons.set(addonId, addon);
+    addonsByShift.set(shiftId, shiftAddons);
+  }
+
+  return addonsByShift;
+}
+
+function mergeAggregateMaps(base: AggregateMaps, overlay: AggregateMaps): AggregateMaps {
+  return {
+    shiftRowsById: new Map([...base.shiftRowsById.entries(), ...overlay.shiftRowsById.entries()]),
+    productsByShift: new Map([...base.productsByShift.entries(), ...overlay.productsByShift.entries()]),
+    addonsByShift: new Map([...base.addonsByShift.entries(), ...overlay.addonsByShift.entries()]),
+    staffByShift: new Map([...base.staffByShift.entries(), ...overlay.staffByShift.entries()]),
+    complaintsByShift: new Map([...base.complaintsByShift.entries(), ...overlay.complaintsByShift.entries()]),
+    itemIssuesByShift: new Map([...base.itemIssuesByShift.entries(), ...overlay.itemIssuesByShift.entries()]),
+  };
+}
+
+function resolveHistoricalAggregatePlan(shifts: ShiftRow[], snapshotAggregates: AggregateMaps): {
+  reportableShifts: ShiftRow[];
+  liveCoreShifts: ShiftRow[];
+} {
+  const reportableShifts = shifts.filter((shift) => Boolean(shift.business_date));
+  const liveCoreShifts = reportableShifts.filter((shift) => shift.status !== 'closed' || !snapshotAggregates.shiftRowsById.has(shift.id));
+  return { reportableShifts, liveCoreShifts };
 }
 
 
@@ -1432,10 +1495,9 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
     year: { key: 'year' as const, label: 'السنة', startDate: startOfYear(referenceDate), endDate: referenceDate },
   };
 
-  const [actorMaps, deferredCustomers, summarySnapshots, shiftsResponse] = await Promise.all([
+  const [actorMaps, deferredCustomers, shiftsResponse] = await Promise.all([
     loadActorMaps(cafeId, databaseKey),
     buildDeferredCustomersWorkspace(cafeId, databaseKey),
-    loadSummarySnapshots(cafeId, ranges, databaseKey),
     adminOps(databaseKey)
       .from('shifts')
       .select('id, shift_kind, status, opened_at, closed_at, business_date')
@@ -1487,41 +1549,51 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
     };
   }
 
-  const liveAggregates = await loadLiveAggregates(cafeId, shifts, actorMaps, databaseKey);
+  const snapshotAggregates = await loadSnapshotAggregates(cafeId, shifts, databaseKey);
+  const { reportableShifts, liveCoreShifts } = resolveHistoricalAggregatePlan(shifts, snapshotAggregates);
+  const [liveCoreAggregates, liveAddonAggregates] = await Promise.all([
+    loadLiveAggregates(cafeId, liveCoreShifts, actorMaps, databaseKey, { includeAddons: false }),
+    loadLiveAddonAggregates(cafeId, reportableShifts, databaseKey),
+  ]);
 
-  const combinedShiftRowsById = new Map<string, ReportShiftRow>(liveAggregates.shiftRowsById);
-  const combinedProductsByShift = new Map<string, Map<string, ProductReportRow>>(liveAggregates.productsByShift);
-  const combinedAddonsByShift = new Map<string, Map<string, AddonReportRow>>(liveAggregates.addonsByShift);
-  const combinedStaffByShift = new Map<string, Map<string, StaffPerformanceRow>>(liveAggregates.staffByShift);
-  const combinedComplaintsByShift = new Map<string, ReportComplaintEntry[]>(liveAggregates.complaintsByShift);
-  const combinedItemIssuesByShift = new Map<string, ReportItemIssueEntry[]>(liveAggregates.itemIssuesByShift);
+  const combinedAggregates = mergeAggregateMaps(
+    mergeAggregateMaps(snapshotAggregates, liveCoreAggregates),
+    {
+      shiftRowsById: new Map(),
+      productsByShift: new Map(),
+      addonsByShift: liveAddonAggregates,
+      staffByShift: new Map(),
+      complaintsByShift: new Map(),
+      itemIssuesByShift: new Map(),
+    },
+  );
 
-  const shiftRows = shifts
-    .map((row) => combinedShiftRowsById.get(row.id))
+  const shiftRows = reportableShifts
+    .map((row) => combinedAggregates.shiftRowsById.get(row.id))
     .filter(Boolean) as ReportShiftRow[];
 
   const currentShift = sortShifts(shiftRows.filter((row) => row.status === 'open'))[0] ?? null;
   const currentProducts = currentShift
-    ? sortProducts(Array.from(combinedProductsByShift.get(currentShift.shiftId)?.values() ?? []))
+    ? sortProducts(Array.from(combinedAggregates.productsByShift.get(currentShift.shiftId)?.values() ?? []))
     : [];
   const currentAddons = currentShift
-    ? sortAddons(Array.from(combinedAddonsByShift.get(currentShift.shiftId)?.values() ?? []))
+    ? sortAddons(Array.from(combinedAggregates.addonsByShift.get(currentShift.shiftId)?.values() ?? []))
     : [];
   const currentStaff = currentShift
-    ? sortStaff(Array.from(combinedStaffByShift.get(currentShift.shiftId)?.values() ?? []))
+    ? sortStaff(Array.from(combinedAggregates.staffByShift.get(currentShift.shiftId)?.values() ?? []))
     : [];
   const currentComplaints = currentShift
-    ? sortComplaintEntries(combinedComplaintsByShift.get(currentShift.shiftId) ?? []).slice(0, 50)
+    ? sortComplaintEntries(combinedAggregates.complaintsByShift.get(currentShift.shiftId) ?? []).slice(0, 50)
     : [];
   const currentItemIssues = currentShift
-    ? sortComplaintEntries(combinedItemIssuesByShift.get(currentShift.shiftId) ?? []).slice(0, 50)
+    ? sortComplaintEntries(combinedAggregates.itemIssuesByShift.get(currentShift.shiftId) ?? []).slice(0, 50)
     : [];
 
-  const detailPeriods = {
-    day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedProductsByShift, addonsByShift: combinedAddonsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
-    week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedProductsByShift, addonsByShift: combinedAddonsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
-    month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedProductsByShift, addonsByShift: combinedAddonsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
-    year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedProductsByShift, addonsByShift: combinedAddonsByShift, staffByShift: combinedStaffByShift, complaintsByShift: combinedComplaintsByShift, itemIssuesByShift: combinedItemIssuesByShift }),
+  const periods = {
+    day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift }),
+    week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift }),
+    month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift }),
+    year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift }),
   };
 
   return {
@@ -1532,44 +1604,7 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
     currentStaff,
     currentComplaints,
     currentItemIssues,
-    periods: {
-      day: buildValidatedSummaryBackedPeriod({
-        detail: detailPeriods.day,
-        summaryLike: summarySnapshots.dailyByDate.get(ranges.day.startDate) ?? null,
-        dailyByDate: summarySnapshots.dailyByDate,
-        currentShift,
-        currentProducts,
-        currentAddons,
-        currentStaff,
-      }),
-      week: buildValidatedSummaryBackedPeriod({
-        detail: detailPeriods.week,
-        summaryLike: summarySnapshots.weeklyByStart.get(ranges.week.startDate) ?? null,
-        dailyByDate: summarySnapshots.dailyByDate,
-        currentShift,
-        currentProducts,
-        currentAddons,
-        currentStaff,
-      }),
-      month: buildValidatedSummaryBackedPeriod({
-        detail: detailPeriods.month,
-        summaryLike: summarySnapshots.monthlyByStart.get(ranges.month.startDate) ?? null,
-        dailyByDate: summarySnapshots.dailyByDate,
-        currentShift,
-        currentProducts,
-        currentAddons,
-        currentStaff,
-      }),
-      year: buildValidatedSummaryBackedPeriod({
-        detail: detailPeriods.year,
-        summaryLike: summarySnapshots.yearlyByStart.get(ranges.year.startDate) ?? null,
-        dailyByDate: summarySnapshots.dailyByDate,
-        currentShift,
-        currentProducts,
-        currentAddons,
-        currentStaff,
-      }),
-    },
+    periods,
     deferredCustomers: deferredCustomers as DeferredCustomerSummary[],
   };
 }

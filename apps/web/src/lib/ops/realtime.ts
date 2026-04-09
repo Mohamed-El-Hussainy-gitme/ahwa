@@ -16,6 +16,7 @@ export type RealtimeSnapshot = {
 };
 
 const HEALTHY_CONNECTION_IDLE_WINDOW_MS = 45_000;
+const VISIBILITY_DISCONNECT_GRACE_MS = 20_000;
 
 const state = {
   source: null as EventSource | null,
@@ -30,6 +31,9 @@ const state = {
   reconnectTimer: null as number | null,
   reconnectAttempts: 0,
   visibilityHandlerAttached: false,
+  onlineHandlerAttached: false,
+  hiddenDisconnectTimer: null as number | null,
+  lastCursor: null as string | null,
 };
 
 function isDocumentVisible() {
@@ -59,6 +63,13 @@ function clearReconnectTimer() {
   }
 }
 
+function clearHiddenDisconnectTimer() {
+  if (state.hiddenDisconnectTimer) {
+    clearTimeout(state.hiddenDisconnectTimer);
+    state.hiddenDisconnectTimer = null;
+  }
+}
+
 function detachVisibilityHandler() {
   if (typeof document === 'undefined' || !state.visibilityHandlerAttached) {
     return;
@@ -73,6 +84,40 @@ function attachVisibilityHandler() {
   }
   document.addEventListener('visibilitychange', handleVisibilityChange);
   state.visibilityHandlerAttached = true;
+}
+
+function handleOnline() {
+  if (!state.listeners.size) {
+    return;
+  }
+  clearReconnectTimer();
+  clearHiddenDisconnectTimer();
+  ensureSource();
+}
+
+function handleOffline() {
+  clearReconnectTimer();
+  clearHiddenDisconnectTimer();
+  disposeSource();
+  setSnapshot({ state: state.listeners.size ? 'reconnecting' : 'disconnected', lastErrorAt: Date.now() });
+}
+
+function detachOnlineHandler() {
+  if (typeof window === 'undefined' || !state.onlineHandlerAttached) {
+    return;
+  }
+  window.removeEventListener('online', handleOnline);
+  window.removeEventListener('offline', handleOffline);
+  state.onlineHandlerAttached = false;
+}
+
+function attachOnlineHandler() {
+  if (typeof window === 'undefined' || state.onlineHandlerAttached) {
+    return;
+  }
+  window.addEventListener('online', handleOnline);
+  window.addEventListener('offline', handleOffline);
+  state.onlineHandlerAttached = true;
 }
 
 function disposeSource() {
@@ -99,14 +144,20 @@ function scheduleReconnect() {
 }
 
 function ensureSource() {
-  if (state.source || typeof window === 'undefined' || !state.listeners.size || !isDocumentVisible()) {
+  if (state.source || typeof window === 'undefined' || !state.listeners.size || !isDocumentVisible() || navigator.onLine === false) {
     return;
   }
 
   clearReconnectTimer();
+  clearHiddenDisconnectTimer();
   setSnapshot({ state: state.snapshot.lastConnectAt ? 'reconnecting' : 'connecting' });
 
-  const source = new EventSource('/api/ops/events', { withCredentials: true });
+  const url = new URL('/api/ops/events', window.location.origin);
+  if (state.lastCursor) {
+    url.searchParams.set('cursor', state.lastCursor);
+  }
+
+  const source = new EventSource(url.toString(), { withCredentials: true });
 
   source.onopen = () => {
     state.reconnectAttempts = 0;
@@ -129,6 +180,7 @@ function ensureSource() {
   source.addEventListener('ops', ((event: MessageEvent<string>) => {
     try {
       const payload = JSON.parse(event.data) as OpsRealtimeEvent;
+      state.lastCursor = payload.cursor ?? payload.id ?? state.lastCursor;
       markRealtimeActivity();
       for (const listener of state.listeners) {
         listener(payload);
@@ -159,18 +211,28 @@ function ensureSource() {
 
 function handleVisibilityChange() {
   if (isDocumentVisible()) {
+    clearHiddenDisconnectTimer();
     ensureSource();
     return;
   }
 
   clearReconnectTimer();
-  disposeSource();
-  setSnapshot({ state: state.listeners.size ? 'idle' : 'disconnected' });
+  clearHiddenDisconnectTimer();
+  state.hiddenDisconnectTimer = window.setTimeout(() => {
+    state.hiddenDisconnectTimer = null;
+    if (isDocumentVisible()) {
+      ensureSource();
+      return;
+    }
+    disposeSource();
+    setSnapshot({ state: state.listeners.size ? 'idle' : 'disconnected' });
+  }, VISIBILITY_DISCONNECT_GRACE_MS);
 }
 
 export function subscribeOpsRealtime(listener: Listener) {
   state.listeners.add(listener);
   attachVisibilityHandler();
+  attachOnlineHandler();
   ensureSource();
 
   return () => {
@@ -178,8 +240,10 @@ export function subscribeOpsRealtime(listener: Listener) {
 
     if (!state.listeners.size) {
       clearReconnectTimer();
+      clearHiddenDisconnectTimer();
       disposeSource();
       detachVisibilityHandler();
+      detachOnlineHandler();
       setSnapshot({ state: 'disconnected' });
     }
   };

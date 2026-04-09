@@ -26,6 +26,14 @@ import { invalidateOpsWorkspaces } from './invalidation';
 const post = apiPost;
 const get = apiGet;
 
+type ReadCacheOverride = {
+  forceRefresh?: boolean;
+};
+
+function withReadCache<T extends { ttlMs: number; key?: string }>(cache: T, override?: ReadCacheOverride) {
+  return { ...cache, forceRefresh: Boolean(override?.forceRefresh) };
+}
+
 const READ_CACHE_TTL_MS = {
   waiter: 3_000,
   waiterCatalog: 180_000,
@@ -58,23 +66,23 @@ async function mutate<T>(request: Promise<T>, options: { invalidate?: boolean } 
 }
 
 export const opsClient = {
-  waiterWorkspace: () => post<WaiterWorkspace>('/api/ops/workspaces/waiter', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.waiter, key: 'ops:waiter' } }),
-  waiterCatalogWorkspace: () => post<WaiterCatalogWorkspace>('/api/ops/workspaces/waiter-catalog', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.waiterCatalog, key: 'ops:waiter-catalog' } }),
-  waiterLiveWorkspace: () => post<WaiterLiveWorkspace>('/api/ops/workspaces/waiter-live', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.waiterLive, key: 'ops:waiter-live' } }),
-  readyItems: () => post<ReadyItem[]>('/api/ops/delivery/ready-list', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.readyItems, key: 'ops:ready-items' } }),
-  dashboardWorkspace: () => post<DashboardWorkspace>('/api/ops/workspaces/dashboard', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.dashboard, key: 'ops:dashboard' } }),
-  navSummary: () => post<OpsNavSummary>('/api/ops/workspaces/nav-summary', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.navSummary, key: 'ops:nav-summary' } }),
-  stationWorkspace: (stationCode: StationCode) =>
-    post<StationWorkspace>('/api/ops/workspaces/station', { stationCode }, { readCache: { ttlMs: READ_CACHE_TTL_MS.station, key: `ops:station:${stationCode}` } }),
-  billingWorkspace: () => post<BillingWorkspace>('/api/ops/workspaces/billing', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.billing, key: 'ops:billing' } }),
-  complaintsWorkspace: () => post<ComplaintsWorkspace>('/api/ops/workspaces/complaints', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.complaints, key: 'ops:complaints' } }),
-  menuWorkspace: () => post<MenuWorkspace>('/api/ops/workspaces/menu', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.menu, key: 'ops:menu' } }),
+  waiterWorkspace: (options?: ReadCacheOverride) => post<WaiterWorkspace>('/api/ops/workspaces/waiter', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.waiter, key: 'ops:waiter' }, options) }),
+  waiterCatalogWorkspace: (options?: ReadCacheOverride) => post<WaiterCatalogWorkspace>('/api/ops/workspaces/waiter-catalog', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.waiterCatalog, key: 'ops:waiter-catalog' }, options) }),
+  waiterLiveWorkspace: (options?: ReadCacheOverride) => post<WaiterLiveWorkspace>('/api/ops/workspaces/waiter-live', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.waiterLive, key: 'ops:waiter-live' }, options) }),
+  readyItems: (options?: ReadCacheOverride) => post<ReadyItem[]>('/api/ops/delivery/ready-list', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.readyItems, key: 'ops:ready-items' }, options) }),
+  dashboardWorkspace: (options?: ReadCacheOverride) => post<DashboardWorkspace>('/api/ops/workspaces/dashboard', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.dashboard, key: 'ops:dashboard' }, options) }),
+  navSummary: (options?: ReadCacheOverride) => post<OpsNavSummary>('/api/ops/workspaces/nav-summary', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.navSummary, key: 'ops:nav-summary' }, options) }),
+  stationWorkspace: (stationCode: StationCode, options?: ReadCacheOverride) =>
+    post<StationWorkspace>('/api/ops/workspaces/station', { stationCode }, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.station, key: `ops:station:${stationCode}` }, options) }),
+  billingWorkspace: (options?: ReadCacheOverride) => post<BillingWorkspace>('/api/ops/workspaces/billing', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.billing, key: 'ops:billing' }, options) }),
+  complaintsWorkspace: (options?: ReadCacheOverride) => post<ComplaintsWorkspace>('/api/ops/workspaces/complaints', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.complaints, key: 'ops:complaints' }, options) }),
+  menuWorkspace: (options?: ReadCacheOverride) => post<MenuWorkspace>('/api/ops/workspaces/menu', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.menu, key: 'ops:menu' }, options) }),
   billingReceipt: (input: { paymentId?: string | null; sessionId?: string | null; allocations?: BillingAllocationInput[]; debtorName?: string | null }) => get<BillingReceipt>(buildBillingReceiptApiUrl(input), { readCache: { ttlMs: READ_CACHE_TTL_MS.receipt } }),
-  reportsWorkspace: () => post<ReportsWorkspace>('/api/ops/workspaces/reports', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.reports, key: 'ops:reports' } }),
-  deferredCustomersWorkspace: () => post<{ items: DeferredCustomerSummary[] }>('/api/ops/workspaces/deferred-customers', {}, { readCache: { ttlMs: READ_CACHE_TTL_MS.deferredCustomers, key: 'ops:deferred-customers' } }),
-  deferredCustomerLedger: (debtorName: string) => post<DeferredCustomerLedgerWorkspace>('/api/ops/workspaces/deferred-customer-ledger', { debtorName }, { readCache: { ttlMs: READ_CACHE_TTL_MS.deferredLedger, key: `ops:deferred-ledger:${debtorName.trim()}` } }),
+  reportsWorkspace: (options?: ReadCacheOverride) => post<ReportsWorkspace>('/api/ops/workspaces/reports', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.reports, key: 'ops:reports' }, options) }),
+  deferredCustomersWorkspace: (options?: ReadCacheOverride) => post<{ items: DeferredCustomerSummary[] }>('/api/ops/workspaces/deferred-customers', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.deferredCustomers, key: 'ops:deferred-customers' }, options) }),
+  deferredCustomerLedger: (debtorName: string, options?: ReadCacheOverride) => post<DeferredCustomerLedgerWorkspace>('/api/ops/workspaces/deferred-customer-ledger', { debtorName }, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.deferredLedger, key: `ops:deferred-ledger:${debtorName.trim()}` }, options) }),
 
-  ownerOnboardingGuide: () => get<OwnerOnboardingGuide>('/api/owner/onboarding/guide', { readCache: { ttlMs: READ_CACHE_TTL_MS.onboardingGuide, key: 'owner:onboarding-guide' } }),
+  ownerOnboardingGuide: (options?: ReadCacheOverride) => get<OwnerOnboardingGuide>('/api/owner/onboarding/guide', { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.onboardingGuide, key: 'owner:onboarding-guide' }, options) }),
   saveBillingSettings: (input: BillingExtrasSettings) => mutate(post<{ ok: true; settings: BillingExtrasSettings }>('/api/owner/billing-settings', input), { invalidate: true }),
   openOrResumeSession: (label?: string) => mutate(post<{ sessionId: string; label: string }>('/api/ops/sessions/open-or-resume', { label })),
   openAndCreateOrder: (input: { label?: string; notes?: string; items: Array<{ productId: string; quantity: number; notes?: string; addonIds?: string[] }>; }) => mutate(post<{ ok: true; orderId: string; sessionId: string; label: string }>('/api/ops/orders/open-and-create', input)),
