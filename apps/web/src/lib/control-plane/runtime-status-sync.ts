@@ -24,6 +24,11 @@ type RuntimeSnapshot = {
   notes?: unknown;
 };
 
+type RpcResponse<T> = {
+  data: T | null;
+  error: { message?: string } | null;
+};
+
 type SyncResult = {
   cafeId: string;
   databaseKey: string;
@@ -94,7 +99,7 @@ function normalizeSnapshot(value: unknown): RuntimeSnapshot | null {
   return value as RuntimeSnapshot;
 }
 
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+async function withTimeout<T>(promise: PromiseLike<T>, timeoutMs: number, label: string): Promise<T> {
   let timeoutHandle: NodeJS.Timeout | null = null;
 
   const timeoutPromise = new Promise<never>((_, reject) => {
@@ -104,7 +109,7 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
   });
 
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    return await Promise.race([Promise.resolve(promise), timeoutPromise]);
   } finally {
     if (timeoutHandle) clearTimeout(timeoutHandle);
   }
@@ -112,19 +117,20 @@ async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: str
 
 async function fetchRuntimeSnapshot(binding: CafeRuntimeSyncBinding, timeoutMs: number): Promise<RuntimeSnapshot | null> {
   const admin = supabaseAdminForDatabase(binding.databaseKey);
-  const { data, error } = await withTimeout(
+
+  const response = (await withTimeout(
     admin.rpc('ops_get_cafe_runtime_status_snapshot', {
       p_cafe_id: binding.cafeId,
     }),
     timeoutMs,
     'OPS_RUNTIME_STATUS_SNAPSHOT',
-  );
+  )) as RpcResponse<unknown>;
 
-  if (error) {
-    throw error;
+  if (response.error) {
+    throw new Error(response.error.message || 'OPS_RUNTIME_STATUS_SNAPSHOT_FAILED');
   }
 
-  return normalizeSnapshot(data);
+  return normalizeSnapshot(response.data);
 }
 
 async function upsertRuntimeSnapshot(
@@ -134,7 +140,8 @@ async function upsertRuntimeSnapshot(
   source: string,
 ): Promise<void> {
   const admin = controlPlaneAdmin();
-  const { error } = await withTimeout(
+
+  const response = (await withTimeout(
     admin.rpc('control_upsert_cafe_runtime_status_read_model', {
       p_cafe_id: binding.cafeId,
       p_database_key: binding.databaseKey,
@@ -156,10 +163,10 @@ async function upsertRuntimeSnapshot(
     }),
     timeoutMs,
     'CONTROL_RUNTIME_STATUS_UPSERT',
-  );
+  )) as RpcResponse<unknown>;
 
-  if (error) {
-    throw error;
+  if (response.error) {
+    throw new Error(response.error.message || 'CONTROL_RUNTIME_STATUS_UPSERT_FAILED');
   }
 }
 
@@ -183,21 +190,44 @@ export async function syncCafeRuntimeStatusToControlPlane(
   const source = options.source?.trim() || 'control-runtime-sync';
 
   if (!isOperationalDatabaseConfigured(binding.databaseKey)) {
-    return { cafeId: binding.cafeId, databaseKey: binding.databaseKey, ok: false, skipped: true, reason: 'database_not_configured' };
+    return {
+      cafeId: binding.cafeId,
+      databaseKey: binding.databaseKey,
+      ok: false,
+      skipped: true,
+      reason: 'database_not_configured',
+    };
   }
 
   if (!options.force && shouldSkipDueToTtl(binding, ttlMs)) {
-    return { cafeId: binding.cafeId, databaseKey: binding.databaseKey, ok: true, skipped: true, reason: 'ttl_not_expired' };
+    return {
+      cafeId: binding.cafeId,
+      databaseKey: binding.databaseKey,
+      ok: true,
+      skipped: true,
+      reason: 'ttl_not_expired',
+    };
   }
 
   try {
     const snapshot = await fetchRuntimeSnapshot(binding, timeoutMs);
     if (!snapshot) {
-      return { cafeId: binding.cafeId, databaseKey: binding.databaseKey, ok: false, skipped: true, reason: 'empty_snapshot' };
+      return {
+        cafeId: binding.cafeId,
+        databaseKey: binding.databaseKey,
+        ok: false,
+        skipped: true,
+        reason: 'empty_snapshot',
+      };
     }
 
     await upsertRuntimeSnapshot(binding, snapshot, timeoutMs, source);
-    return { cafeId: binding.cafeId, databaseKey: binding.databaseKey, ok: true };
+
+    return {
+      cafeId: binding.cafeId,
+      databaseKey: binding.databaseKey,
+      ok: true,
+    };
   } catch (error) {
     return {
       cafeId: binding.cafeId,
@@ -213,6 +243,7 @@ export async function syncCafeRuntimeStatusesToControlPlane(
   options: SyncOptions = {},
 ): Promise<SyncResult[]> {
   const deduped = new Map<string, CafeRuntimeSyncBinding>();
+
   for (const item of bindingsInput) {
     const binding = normalizeBinding(item);
     if (!binding) continue;
@@ -220,15 +251,19 @@ export async function syncCafeRuntimeStatusesToControlPlane(
   }
 
   const bindings = Array.from(deduped.values());
-  if (!bindings.length) return [];
+  if (bindings.length === 0) {
+    return [];
+  }
 
   const concurrency = Math.max(1, options.concurrency ?? DEFAULT_CONCURRENCY);
   const results: SyncResult[] = [];
 
   for (let index = 0; index < bindings.length; index += concurrency) {
-    const batch = bindings.slice(index, index + concurrency);
-    const settled = await Promise.all(batch.map((binding) => syncCafeRuntimeStatusToControlPlane(binding, options)));
-    results.push(...settled);
+    const chunk = bindings.slice(index, index + concurrency);
+    const chunkResults = await Promise.all(
+      chunk.map((binding) => syncCafeRuntimeStatusToControlPlane(binding, options)),
+    );
+    results.push(...chunkResults);
   }
 
   return results;
