@@ -16,6 +16,7 @@ export async function POST(request: Request) {
       cafeDisplayName?: string;
       ownerFullName?: string;
       ownerPhone?: string;
+      ownerLabel?: 'owner' | 'partner' | 'branch_manager';
       ownerPassword?: string;
       subscriptionStartsAt?: string;
       subscriptionEndsAt?: string;
@@ -34,7 +35,7 @@ export async function POST(request: Request) {
       !body.ownerFullName?.trim() ||
       !body.ownerPhone?.trim()
     ) {
-      return platformFail(400, 'INVALID_INPUT', 'Cafe and owner fields are required.');
+      return platformFail(400, 'INVALID_INPUT', 'Cafe and primary contact fields are required.');
     }
 
     const cafeLoadTier = typeof body.cafeLoadTier === 'string' ? body.cafeLoadTier : 'small';
@@ -54,6 +55,7 @@ export async function POST(request: Request) {
       cafeDisplayName: body.cafeDisplayName.trim(),
       ownerFullName: body.ownerFullName.trim(),
       ownerPhone: body.ownerPhone.trim(),
+      ownerLabel: body.ownerLabel === 'partner' || body.ownerLabel === 'branch_manager' ? body.ownerLabel : 'owner',
       ownerPassword: body.ownerPassword ?? '',
       subscriptionStartsAt: body.subscriptionStartsAt?.trim() || null,
       subscriptionEndsAt: body.subscriptionEndsAt?.trim() || null,

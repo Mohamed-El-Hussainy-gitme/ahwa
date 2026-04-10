@@ -16,7 +16,7 @@ export async function POST(request: Request) {
       ownerUserId?: string;
       fullName?: string;
       phone?: string;
-      ownerLabel?: 'owner' | 'partner';
+      ownerLabel?: 'owner' | 'partner' | 'branch_manager';
     };
 
     if (!body.cafeId?.trim() || !body.ownerUserId?.trim()) {
@@ -25,7 +25,7 @@ export async function POST(request: Request) {
 
     const fullName = body.fullName?.trim();
     const phone = body.phone?.trim();
-    const ownerLabel = body.ownerLabel === 'owner' || body.ownerLabel === 'partner'
+    const ownerLabel = body.ownerLabel === 'owner' || body.ownerLabel === 'partner' || body.ownerLabel === 'branch_manager'
       ? body.ownerLabel
       : null;
 

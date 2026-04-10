@@ -25,7 +25,7 @@ type CafeOwnerRow = {
   id: string;
   full_name: string;
   phone: string;
-  owner_label: 'owner' | 'partner';
+  owner_label: 'owner' | 'partner' | 'branch_manager';
   is_active: boolean;
 };
 
@@ -68,7 +68,7 @@ function isCafeOwnerRow(value: unknown): value is CafeOwnerRow {
     typeof value.id === 'string' &&
     typeof value.full_name === 'string' &&
     typeof value.phone === 'string' &&
-    (value.owner_label === 'owner' || value.owner_label === 'partner') &&
+    (value.owner_label === 'owner' || value.owner_label === 'partner' || value.owner_label === 'branch_manager') &&
     typeof value.is_active === 'boolean'
   );
 }

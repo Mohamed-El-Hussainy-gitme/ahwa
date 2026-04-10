@@ -15,14 +15,14 @@ export async function POST(request: Request) {
       cafeId?: string;
       fullName?: string;
       phone?: string;
-      ownerLabel?: 'owner' | 'partner';
+      ownerLabel?: 'owner' | 'partner' | 'branch_manager';
     };
 
     if (!body.cafeId?.trim() || !body.fullName?.trim() || !body.phone?.trim()) {
       return platformFail(400, 'INVALID_INPUT', 'Cafe, name, and phone are required.');
     }
 
-    const ownerLabel = body.ownerLabel === 'owner' ? 'owner' : 'partner';
+    const ownerLabel = body.ownerLabel === 'owner' || body.ownerLabel === 'branch_manager' ? body.ownerLabel : 'partner';
 
     assertPlatformEnv();
 

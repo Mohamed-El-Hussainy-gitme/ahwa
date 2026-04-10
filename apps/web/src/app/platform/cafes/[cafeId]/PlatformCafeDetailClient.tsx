@@ -7,7 +7,7 @@ import {
   isPlatformApiOk,
 } from '@/lib/platform-auth/api';
 
-type OwnerLabel = 'owner' | 'partner';
+type OwnerLabel = 'owner' | 'partner' | 'branch_manager';
 type SubscriptionStatus = 'trial' | 'active' | 'expired' | 'suspended';
 type PaymentState = 'paid_current' | 'trial_or_free' | 'overdue' | 'suspended';
 type UsageState = 'active_now' | 'active_today' | 'active_recently' | 'inactive';
@@ -171,7 +171,14 @@ function subscriptionBadgeClass(status: SubscriptionStatus) {
 }
 
 function ownerLabelText(label: OwnerLabel) {
-  return label === 'owner' ? 'مالك' : 'شريك';
+  switch (label) {
+    case 'owner':
+      return 'مالك';
+    case 'branch_manager':
+      return 'مدير فرع';
+    default:
+      return 'شريك';
+  }
 }
 
 function statusBadge(active: boolean) {
@@ -261,9 +268,9 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [invite, setInvite] = useState<PasswordSetupInvite | null>(null);
-  const [createOwner, setCreateOwner] = useState({ fullName: '', phone: '', ownerLabel: 'partner' as OwnerLabel });
+  const [createOwner, setCreateOwner] = useState({ fullName: '', phone: '', ownerLabel: 'branch_manager' as OwnerLabel });
   const [selectedOwnerId, setSelectedOwnerId] = useState('');
-  const [editOwner, setEditOwner] = useState({ ownerUserId: '', fullName: '', phone: '', ownerLabel: 'partner' as OwnerLabel });
+  const [editOwner, setEditOwner] = useState({ ownerUserId: '', fullName: '', phone: '', ownerLabel: 'branch_manager' as OwnerLabel });
   const [resetPassword, setResetPassword] = useState({ ownerUserId: '' });
   const [subscriptionForm, setSubscriptionForm] = useState({ startsAt: toDateInputValue(today), endsAt: toDateInputValue(new Date(today.getTime() + 1000 * 60 * 60 * 24 * 365)), graceDays: '0', status: 'active' as SubscriptionStatus, amountPaid: '', isComplimentary: false, notes: '' });
   const [supportItems, setSupportItems] = useState<SupportItem[]>([]);
@@ -315,7 +322,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
     setSelectedOwnerId((current) => {
       const nextId = data.cafe.owners.some((owner) => owner.id === current) ? current : firstOwner;
       const selected = data.cafe.owners.find((owner) => owner.id === nextId);
-      setEditOwner(selected ? { ownerUserId: selected.id, fullName: selected.full_name, phone: selected.phone, ownerLabel: selected.owner_label } : { ownerUserId: '', fullName: '', phone: '', ownerLabel: 'partner' });
+      setEditOwner(selected ? { ownerUserId: selected.id, fullName: selected.full_name, phone: selected.phone, ownerLabel: selected.owner_label } : { ownerUserId: '', fullName: '', phone: '', ownerLabel: 'branch_manager' });
       setResetPassword({ ownerUserId: selected?.id ?? '' });
       return nextId;
     });
@@ -371,7 +378,7 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
         state: 'setup_pending',
       });
       setNotice('تم إنشاء الحساب وإصدار كود تفعيل كلمة المرور.');
-      setCreateOwner({ fullName: '', phone: '', ownerLabel: 'partner' });
+      setCreateOwner({ fullName: '', phone: '', ownerLabel: 'branch_manager' });
       await load();
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : 'CREATE_OWNER_FAILED');
@@ -568,16 +575,17 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
           </SectionFrame>
 
           <div className="space-y-6">
-            <SectionFrame title="إضافة مالك أو شريك">
+            <SectionFrame title="إضافة مالك أو شريك أو مدير فرع">
               <div className="grid gap-3 md:grid-cols-2">
-                <select className="rounded-2xl border border-slate-200 px-4 py-3" value={createOwner.ownerLabel} onChange={(e) => setCreateOwner((v) => ({ ...v, ownerLabel: e.target.value === 'owner' ? 'owner' : 'partner' }))}>
+                <select className="rounded-2xl border border-slate-200 px-4 py-3" value={createOwner.ownerLabel} onChange={(e) => setCreateOwner((v) => ({ ...v, ownerLabel: e.target.value === 'owner' || e.target.value === 'branch_manager' ? e.target.value : 'partner' }))}>
+                  <option value="branch_manager">مدير فرع</option>
                   <option value="partner">شريك</option>
                   <option value="owner">مالك</option>
                 </select>
                 <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="الاسم" value={createOwner.fullName} onChange={(e) => setCreateOwner((v) => ({ ...v, fullName: e.target.value }))} />
                 <input className="rounded-2xl border border-slate-200 px-4 py-3" placeholder="رقم الهاتف" value={createOwner.phone} onChange={(e) => setCreateOwner((v) => ({ ...v, phone: e.target.value }))} />
                 <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 md:col-span-2">
-                  لن تُدخل كلمة المرور من لوحة المنصة. بعد إنشاء الحساب سيصدر كود لمرة واحدة يختار المالك أو الشريك من خلاله كلمة المرور بنفسه.
+                  لن تُدخل كلمة المرور من لوحة المنصة. بعد إنشاء الحساب سيصدر كود لمرة واحدة يختار من خلاله المستخدم كلمة المرور بنفسه سواء كان مالكًا أو شريكًا أو مدير فرع.
                 </div>
               </div>
               <div className="mt-4">
@@ -589,7 +597,8 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
               {selectedOwner ? (
                 <div className="space-y-6">
                   <div className="grid gap-3 md:grid-cols-2">
-                    <select className="rounded-2xl border border-slate-200 px-4 py-3" value={editOwner.ownerLabel} onChange={(e) => setEditOwner((v) => ({ ...v, ownerLabel: e.target.value === 'owner' ? 'owner' : 'partner' }))}>
+                    <select className="rounded-2xl border border-slate-200 px-4 py-3" value={editOwner.ownerLabel} onChange={(e) => setEditOwner((v) => ({ ...v, ownerLabel: e.target.value === 'owner' || e.target.value === 'branch_manager' ? e.target.value : 'partner' }))}>
+                      <option value="branch_manager">مدير فرع</option>
                       <option value="partner">شريك</option>
                       <option value="owner">مالك</option>
                     </select>

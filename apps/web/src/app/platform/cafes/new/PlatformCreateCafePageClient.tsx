@@ -21,9 +21,23 @@ type CreateCafeResponse = {
   };
 };
 
+type OwnerLabel = 'owner' | 'partner' | 'branch_manager';
+
+function ownerLabelText(label: OwnerLabel) {
+  switch (label) {
+    case 'branch_manager':
+      return 'مدير فرع';
+    case 'partner':
+      return 'شريك';
+    default:
+      return 'مالك';
+  }
+}
+
 type PasswordSetupInvite = {
   cafeSlug: string;
   ownerPhone: string;
+  ownerLabel: OwnerLabel;
   code: string;
   expiresAt: string | null;
 };
@@ -42,6 +56,7 @@ type FormState = {
   cafeDisplayName: string;
   ownerFullName: string;
   ownerPhone: string;
+  ownerLabel: OwnerLabel;
   startsAt: string;
   endsAt: string;
   graceDays: string;
@@ -168,6 +183,7 @@ export default function PlatformCreateCafePageClient() {
     cafeDisplayName: '',
     ownerFullName: '',
     ownerPhone: '',
+    ownerLabel: 'branch_manager',
     startsAt: defaults.startsAt,
     endsAt: defaults.endsAt,
     graceDays: defaults.graceDays,
@@ -275,6 +291,7 @@ export default function PlatformCreateCafePageClient() {
           cafeDisplayName: form.cafeDisplayName,
           ownerFullName: form.ownerFullName,
           ownerPhone: form.ownerPhone,
+          ownerLabel: form.ownerLabel,
           subscriptionStartsAt: fromDateInputValue(form.startsAt),
           subscriptionEndsAt: fromDateInputValue(form.endsAt),
           subscriptionGraceDays: Number(form.graceDays || 0),
@@ -298,6 +315,7 @@ export default function PlatformCreateCafePageClient() {
         setInvite({
           cafeSlug: form.cafeSlug,
           ownerPhone: form.ownerPhone,
+          ownerLabel: form.ownerLabel,
           code: setupCode,
           expiresAt: setupExpiresAt ?? null,
         });
@@ -307,6 +325,7 @@ export default function PlatformCreateCafePageClient() {
         cafeDisplayName: '',
         ownerFullName: '',
         ownerPhone: '',
+        ownerLabel: 'branch_manager',
         startsAt: defaults.startsAt,
         endsAt: defaults.endsAt,
         graceDays: defaults.graceDays,
@@ -339,8 +358,13 @@ export default function PlatformCreateCafePageClient() {
         <div className="mt-5 grid gap-4 md:grid-cols-2">
           <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="slug القهوة" value={form.cafeSlug} onChange={(e) => setForm((v) => ({ ...v, cafeSlug: e.target.value }))} />
           <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم القهوة" value={form.cafeDisplayName} onChange={(e) => setForm((v) => ({ ...v, cafeDisplayName: e.target.value }))} />
-          <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم المالك" value={form.ownerFullName} onChange={(e) => setForm((v) => ({ ...v, ownerFullName: e.target.value }))} />
-          <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="رقم هاتف المالك" value={form.ownerPhone} onChange={(e) => setForm((v) => ({ ...v, ownerPhone: e.target.value }))} />
+          <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم جهة الاتصال الأولى" value={form.ownerFullName} onChange={(e) => setForm((v) => ({ ...v, ownerFullName: e.target.value }))} />
+          <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="رقم هاتف جهة الاتصال الأولى" value={form.ownerPhone} onChange={(e) => setForm((v) => ({ ...v, ownerPhone: e.target.value }))} />
+          <select className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={form.ownerLabel} onChange={(e) => setForm((v) => ({ ...v, ownerLabel: e.target.value as OwnerLabel }))}>
+            <option value="branch_manager">مدير فرع</option>
+            <option value="owner">مالك</option>
+            <option value="partner">شريك</option>
+          </select>
           <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800 md:col-span-2">
             إصدار القهوة الجديدة يعتمد على مستوى الحمل المتوقع، ثم يرشّح الشارد الأنسب تلقائيًا. يمكنك التعديل يدويًا عند الحاجة.
           </div>
@@ -408,13 +432,16 @@ export default function PlatformCreateCafePageClient() {
         {success ? <div className="mt-4 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-700">{success}</div> : null}
         {invite ? (
           <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            <div className="font-semibold">كود تفعيل كلمة المرور للمالك</div>
+            <div className="font-semibold">كود تفعيل كلمة المرور للحساب الأول</div>
             <div className="mt-2">القهوة: <strong>{invite.cafeSlug}</strong></div>
+            <div>الدور: <strong>{ownerLabelText(invite.ownerLabel)}</strong></div>
             <div>الهاتف: <strong>{invite.ownerPhone}</strong></div>
             <div className="mt-3 rounded-2xl border border-amber-300 bg-white px-4 py-3 text-center text-lg font-bold tracking-[0.3em]">{invite.code}</div>
             <div className="mt-2 text-xs text-amber-800">الصلاحية حتى {formatDateTime(invite.expiresAt)}.</div>
           </div>
         ) : null}
+
+        <div className="mt-4 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">سيتم إصدار كود تفعيل لمرة واحدة، ويقوم {ownerLabelText(form.ownerLabel)} بتحديد كلمة المرور بنفسه بعد استلام الكود.</div>
 
         <div className="mt-5 flex flex-wrap gap-2">
           <button disabled={busy || loadingDatabases || databaseOptions.length === 0 || !form.databaseKey} onClick={() => void submitCreateCafe()} className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white disabled:opacity-60">

@@ -10,6 +10,7 @@ export type CreateCafeWithOwnerInput = {
   cafeDisplayName: string;
   ownerFullName: string;
   ownerPhone: string;
+  ownerLabel: 'owner' | 'partner' | 'branch_manager';
   ownerPassword?: string;
   subscriptionStartsAt: string | null;
   subscriptionEndsAt: string | null;
@@ -39,6 +40,7 @@ type PasswordSetupInvite = {
 
 type RpcCreateOwnerResponse = {
   owner_user_id?: string | null;
+  owner_label?: string | null;
   password_setup_code?: string | null;
   password_setup_expires_at?: string | null;
   password_state?: string | null;
@@ -46,6 +48,7 @@ type RpcCreateOwnerResponse = {
 
 type RpcCreateCafeResponse = {
   ok?: boolean | null;
+  owner_label?: string | null;
   cafe_id?: string | null;
   owner_user_id?: string | null;
   subscription_id?: string | null;
@@ -114,6 +117,7 @@ async function createCafeWithOwnerViaRpc(
     p_owner_full_name: input.ownerFullName,
     p_owner_phone: input.ownerPhone,
     p_owner_password: input.ownerPassword ?? '',
+    p_owner_label: input.ownerLabel,
     p_subscription_starts_at: input.subscriptionStartsAt,
     p_subscription_ends_at: input.subscriptionEndsAt,
     p_subscription_grace_days: input.subscriptionGraceDays,
@@ -269,7 +273,7 @@ async function createOwner(
     p_full_name: input.ownerFullName,
     p_phone: input.ownerPhone,
     p_password: input.ownerPassword ?? '',
-    p_owner_label: 'owner',
+    p_owner_label: input.ownerLabel,
   });
 
   if (error) throw error;
@@ -328,7 +332,7 @@ async function writeCafeAuditEvent(
   const payload = {
     owner_user_id: ownerUserId,
     owner_phone: input.ownerPhone,
-    owner_label: 'owner',
+    owner_label: input.ownerLabel,
     database_key: input.databaseKey,
     cafe_load_tier: input.cafeLoadTier,
     load_units: input.cafeLoadTier === 'enterprise' ? 15 : input.cafeLoadTier === 'heavy' ? 8 : input.cafeLoadTier === 'medium' ? 3 : 1,
@@ -371,6 +375,7 @@ function normalizeInput(input: CreateCafeWithOwnerInput): CreateCafeWithOwnerInp
     cafeDisplayName: normalizeText(input.cafeDisplayName),
     ownerFullName: normalizeText(input.ownerFullName),
     ownerPhone: normalizeText(input.ownerPhone),
+    ownerLabel: input.ownerLabel === 'partner' || input.ownerLabel === 'branch_manager' ? input.ownerLabel : 'owner',
     ownerPassword: normalizeText(input.ownerPassword),
     subscriptionStartsAt: input.subscriptionStartsAt ? normalizeText(input.subscriptionStartsAt) : null,
     subscriptionEndsAt: input.subscriptionEndsAt ? normalizeText(input.subscriptionEndsAt) : null,
