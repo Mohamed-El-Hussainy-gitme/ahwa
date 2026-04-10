@@ -268,9 +268,21 @@ function buildQuickMetrics(input: {
 
     if (role === 'american_waiter') {
       return [
-        { key: 'pending-count', label: 'الانتظار', value: totalPending, href: totalPending > 0 ? '/kitchen#queue-panel' : '/dashboard', tone: countTone(totalPending, 'pending') },
+        {
+          key: 'pending-count',
+          label: 'الانتظار',
+          value: totalPending,
+          href: totalPending > 0 ? '/kitchen#queue-panel' : '/dashboard',
+          tone: countTone(totalPending, 'pending'),
+        },
         sessionMetric,
-        { key: 'billing', label: 'للحساب', value: summary.billableQty, href: '/billing', tone: countTone(summary.billableQty, 'billing') },
+        {
+          key: 'billing',
+          label: 'للحساب',
+          value: summary.billableQty,
+          href: '/billing',
+          tone: countTone(summary.billableQty, 'billing'),
+        },
       ];
     }
 
@@ -323,7 +335,6 @@ export function MobileShell({
   topRight?: React.ReactNode;
   backHref?: string;
   stickyFooter?: React.ReactNode;
-  shellWidth?: 'default' | 'wide';
 }) {
   const pathname = usePathname();
   const session = useSession();
@@ -346,16 +357,15 @@ export function MobileShell({
     const stickyFooterHeight = stickyFooter ? stickyFooterBox.height + 12 : 0;
     return bottomNavHeight + stickyFooterHeight + 20;
   }, [bottomNavBox.height, stickyFooter, stickyFooterBox.height]);
+
   const stickyFooterOffset = useMemo(() => {
     const bottomNavHeight = bottomNavBox.height || 82;
     return bottomNavHeight + 8;
   }, [bottomNavBox.height]);
 
-  const shellMaxWidthClass = shellWidth === 'wide' ? 'max-w-[1100px]' : 'max-w-md';
-
   return (
     <div className="min-h-dvh bg-[linear-gradient(180deg,#f4efe7_0%,#eadcc8_100%)] px-0 md:px-4">
-      <div className={`mx-auto flex min-h-dvh ${shellMaxWidthClass} flex-col bg-[#fffaf4] md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)]`}>
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-[#fffaf4] md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)]">
         <header className="sticky top-0 z-10 border-b border-[#eadfce] bg-[linear-gradient(180deg,rgba(255,250,244,0.98)_0%,rgba(249,241,231,0.96)_100%)] px-4 py-3 backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -441,14 +451,14 @@ export function MobileShell({
 
         {stickyFooter ? (
           <div className="fixed left-0 right-0 z-20 px-3 pb-3" style={{ bottom: `${stickyFooterOffset}px` }}>
-            <div ref={stickyFooterBox.ref} className={`mx-auto ${shellMaxWidthClass}`}>
+            <div ref={stickyFooterBox.ref} className="mx-auto max-w-md">
               {stickyFooter}
             </div>
           </div>
         ) : null}
 
         <div ref={bottomNavBox.ref} className="fixed bottom-0 left-0 right-0 z-20">
-          <div className={`mx-auto ${shellMaxWidthClass} px-2 pb-[env(safe-area-inset-bottom)] pt-2`}>
+          <div className="mx-auto max-w-md px-2 pb-[env(safe-area-inset-bottom)] pt-2">
             <div className="rounded-t-[26px] border border-b-0 border-[#ddcfbf] bg-[linear-gradient(180deg,rgba(255,250,244,0.96)_0%,rgba(248,238,226,0.98)_100%)] px-2 py-2 shadow-[0_-16px_32px_rgba(30,23,18,0.08)] backdrop-blur">
               <BottomNav />
             </div>

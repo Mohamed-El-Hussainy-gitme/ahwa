@@ -30,12 +30,15 @@ function formatMoney(value: number) {
 function salesHint(totals: ReportTotals) {
   return totals.extrasTotal > 0 ? `+${formatMoney(totals.extrasTotal)} ج ضريبة + خدمة` : undefined;
 }
+
 function shiftKindLabel(kind: string) {
   return kind === 'morning' ? 'صباحي' : kind === 'evening' ? 'مسائي' : kind;
 }
+
 function periodLabel(key: PeriodReport['key']) {
   return key === 'day' ? 'اليوم' : key === 'week' ? 'الأسبوع' : key === 'month' ? 'الشهر' : 'السنة';
 }
+
 function complaintKindLabel(kind: ReportComplaintEntry['complaintKind'] | ReportItemIssueEntry['issueKind']) {
   switch (kind) {
     case 'quality_issue':
@@ -50,6 +53,7 @@ function complaintKindLabel(kind: ReportComplaintEntry['complaintKind'] | Report
       return 'أخرى';
   }
 }
+
 function itemIssueActionLabel(kind: ReportItemIssueEntry['actionKind']) {
   switch (kind) {
     case 'note':
@@ -64,6 +68,7 @@ function itemIssueActionLabel(kind: ReportItemIssueEntry['actionKind']) {
       return kind;
   }
 }
+
 function formatIssueTime(value: string) {
   return new Date(value).toLocaleString('ar-EG', {
     hour: '2-digit',
@@ -78,11 +83,13 @@ function sortProducts(items: ProductReportRow[]) {
     (a, b) => (b.netSales - a.netSales) || (b.qtyDelivered - a.qtyDelivered) || a.productName.localeCompare(b.productName, 'ar'),
   );
 }
+
 function sortAddons(items: AddonReportRow[]) {
   return [...items].sort(
     (a, b) => (b.netSales - a.netSales) || (b.usageCount - a.usageCount) || a.addonName.localeCompare(b.addonName, 'ar'),
   );
 }
+
 function sortStaff(items: StaffPerformanceRow[]) {
   return [...items].sort(
     (a, b) => (b.paymentTotal - a.paymentTotal) || (b.deliveredQty - a.deliveredQty) || a.actorLabel.localeCompare(b.actorLabel, 'ar'),
@@ -108,14 +115,10 @@ function MetricCard({
         : 'border-[#decdb9] bg-[#f8f1e7]';
 
   return (
-    <div className={`min-w-0 overflow-hidden rounded-2xl border px-3 py-3 text-center ${toneClass}`}>
-      <div className="min-w-0 break-words text-[11px] text-[#8a7763] [overflow-wrap:anywhere]">{label}</div>
-      <div className="mt-1 min-w-0 break-words text-lg font-bold text-[#1e1712] [overflow-wrap:anywhere]">{value}</div>
-      {hint ? (
-        <div className="mt-1 min-w-0 break-words text-[11px] text-[#8a7763] [overflow-wrap:anywhere]">
-          {hint}
-        </div>
-      ) : null}
+    <div className={`rounded-2xl border px-3 py-3 text-center ${toneClass}`}>
+      <div className="text-[11px] text-[#8a7763]">{label}</div>
+      <div className="mt-1 text-lg font-bold text-[#1e1712]">{value}</div>
+      {hint ? <div className="mt-1 text-[11px] text-[#8a7763]">{hint}</div> : null}
     </div>
   );
 }
@@ -132,11 +135,11 @@ function TotalsHero({
   leadStatus?: string;
 }) {
   return (
-    <div className="ahwa-card min-w-0 overflow-hidden p-4">
-      <div className="flex min-w-0 items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="min-w-0 break-words text-lg font-bold [overflow-wrap:anywhere]">{title}</div>
-          <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">{subtitle}</div>
+    <div className="ahwa-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="truncate text-lg font-bold">{title}</div>
+          <div className="mt-1 break-words text-xs text-[#8a7763]">{subtitle}</div>
         </div>
         {leadStatus ? <div className="ahwa-pill-neutral shrink-0">{leadStatus}</div> : null}
       </div>
@@ -149,21 +152,9 @@ function TotalsHero({
       </div>
 
       <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-5">
-        <MetricCard
-          label="الجلسات"
-          value={String(totals.totalSessions)}
-          hint={`مفتوحة ${totals.openSessions} • مغلقة ${totals.closedSessions}`}
-        />
-        <MetricCard
-          label="البنود المسلّمة"
-          value={String(totals.deliveredQty)}
-          hint={`بديل مجاني ${totals.replacementDeliveredQty}`}
-        />
-        <MetricCard
-          label="الجاهز"
-          value={String(totals.readyQty)}
-          hint={`المدفوع ${totals.paidQty} • الآجل ${totals.deferredQty}`}
-        />
+        <MetricCard label="الجلسات" value={String(totals.totalSessions)} hint={`مفتوحة ${totals.openSessions} • مغلقة ${totals.closedSessions}`} />
+        <MetricCard label="البنود المسلّمة" value={String(totals.deliveredQty)} hint={`بديل مجاني ${totals.replacementDeliveredQty}`} />
+        <MetricCard label="الجاهز" value={String(totals.readyQty)} hint={`المدفوع ${totals.paidQty} • الآجل ${totals.deferredQty}`} />
         <MetricCard
           label="إعادة مجانية"
           value={String(totals.remadeQty)}
@@ -196,11 +187,11 @@ function InsightStrip({
   ];
 
   return (
-    <div className="ahwa-card min-w-0 overflow-hidden p-3">
+    <div className="ahwa-card p-3">
       <div className="mb-2 text-sm font-semibold">قراءة سريعة</div>
-      <div className="flex min-w-0 flex-wrap gap-2">
+      <div className="flex flex-wrap gap-2">
         {chips.map((chip) => (
-          <div key={chip} className="ahwa-pill-neutral min-w-0 max-w-full break-words px-3 py-2 [overflow-wrap:anywhere]">
+          <div key={chip} className="ahwa-pill-neutral max-w-full break-words px-3 py-2 [overflow-wrap:anywhere]">
             {chip}
           </div>
         ))}
@@ -236,7 +227,7 @@ function DetailTabs({ value, onChange }: { value: DetailTab; onChange: (value: D
 }
 
 function EmptyState({ text }: { text: string }) {
-  return <div className="ahwa-card-dashed min-w-0 overflow-hidden p-4 text-sm text-[#8a7763]">{text}</div>;
+  return <div className="ahwa-card-dashed p-4 text-sm text-[#8a7763]">{text}</div>;
 }
 
 function ProductList({ items }: { items: ProductReportRow[] }) {
@@ -246,8 +237,8 @@ function ProductList({ items }: { items: ProductReportRow[] }) {
   return (
     <div className="space-y-2">
       {ranked.map((row, index) => (
-        <div key={row.productId} className="ahwa-card min-w-0 overflow-hidden p-3">
-          <div className="flex min-w-0 items-center justify-between gap-3">
+        <div key={row.productId} className="ahwa-card p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0 flex-1 text-right">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="shrink-0 rounded-full border bg-[#f8f1e7] px-2 py-1 text-[11px] font-semibold text-[#746353]">
@@ -255,10 +246,10 @@ function ProductList({ items }: { items: ProductReportRow[] }) {
                 </span>
                 <div className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{row.productName}</div>
               </div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 {row.stationCode} • مسلّم {row.qtyDelivered} • بديل مجاني {row.qtyReplacementDelivered}
               </div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 إعادة مجانية {row.qtyRemade} • إلغاء {row.qtyCancelled} • إسقاط {row.qtyWaived}
               </div>
             </div>
@@ -280,8 +271,8 @@ function AddonList({ items }: { items: AddonReportRow[] }) {
   return (
     <div className="space-y-2">
       {ranked.map((row, index) => (
-        <div key={row.addonId} className="ahwa-card min-w-0 overflow-hidden p-3">
-          <div className="flex min-w-0 items-center justify-between gap-3">
+        <div key={row.addonId} className="ahwa-card p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0 flex-1 text-right">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="shrink-0 rounded-full border bg-[#f8f1e7] px-2 py-1 text-[11px] font-semibold text-[#746353]">
@@ -289,7 +280,7 @@ function AddonList({ items }: { items: AddonReportRow[] }) {
                 </span>
                 <div className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{row.addonName}</div>
               </div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 {row.stationCode} • الاستخدام {row.usageCount} • البنود المرتبطة {row.linkedOrderItems}
               </div>
             </div>
@@ -311,8 +302,8 @@ function StaffList({ items }: { items: StaffPerformanceRow[] }) {
   return (
     <div className="space-y-2">
       {ranked.map((row, index) => (
-        <div key={row.actorKey} className="ahwa-card min-w-0 overflow-hidden p-3">
-          <div className="flex min-w-0 items-center justify-between gap-3">
+        <div key={row.actorKey} className="ahwa-card p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0 flex-1 text-right">
               <div className="flex min-w-0 items-center gap-2">
                 <span className="shrink-0 rounded-full border bg-[#f8f1e7] px-2 py-1 text-[11px] font-semibold text-[#746353]">
@@ -320,10 +311,10 @@ function StaffList({ items }: { items: StaffPerformanceRow[] }) {
                 </span>
                 <div className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{row.actorLabel}</div>
               </div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 تسليم {row.deliveredQty} • بدائل مجانية {row.replacementDeliveredQty} • تجهيز {row.readyQty}
               </div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 إعادة مجانية {row.remadeQty} • إلغاء {row.cancelledQty} • شكاوى {row.complaintCount} • ملاحظات أصناف {row.itemIssueCount}
               </div>
             </div>
@@ -346,12 +337,12 @@ function ShiftList({ items }: { items: ReportShiftRow[] }) {
   return (
     <div className="space-y-2">
       {items.map((row) => (
-        <div key={row.shiftId} className="ahwa-card min-w-0 overflow-hidden p-3">
-          <div className="flex min-w-0 items-center justify-between gap-3">
+        <div key={row.shiftId} className="ahwa-card p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0 flex-1 text-right">
-              <div className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{shiftKindLabel(row.kind)}</div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">{row.businessDate ?? ''}</div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="font-semibold">{shiftKindLabel(row.kind)}</div>
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">{row.businessDate ?? ''}</div>
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 {row.status === 'open' ? 'مفتوحة' : 'مقفولة'} • جلسات {row.totalSessions} • شكاوى {row.complaintTotal} • ملاحظات أصناف {row.itemIssueTotal}
               </div>
             </div>
@@ -372,11 +363,11 @@ function DayBreakdown({ period }: { period: PeriodReport }) {
   return (
     <div className="space-y-2">
       {period.days.map((row) => (
-        <div key={row.businessDate} className="ahwa-card min-w-0 overflow-hidden p-3">
-          <div className="flex min-w-0 items-center justify-between gap-3">
+        <div key={row.businessDate} className="ahwa-card p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0 flex-1 text-right">
-              <div className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{row.businessDate}</div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="font-semibold">{row.businessDate}</div>
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 ورديات {row.shiftCount} • جلسات {row.totalSessions} • شكاوى {row.complaintTotal} • ملاحظات أصناف {row.itemIssueTotal}
               </div>
             </div>
@@ -400,14 +391,14 @@ function DeferredList({ items }: { items: DeferredCustomerSummary[] }) {
   return (
     <div className="space-y-2">
       {ranked.map((row) => (
-        <div key={row.id} className="ahwa-card min-w-0 overflow-hidden p-3">
-          <div className="flex min-w-0 items-center justify-between gap-3">
+        <div key={row.id} className="ahwa-card p-3">
+          <div className="flex min-w-0 items-start justify-between gap-3">
             <div className="min-w-0 flex-1 text-right">
               <div className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{row.debtorName}</div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 دين {formatMoney(row.debtTotal)} • سداد {formatMoney(row.repaymentTotal)}
               </div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 آخر حركة: {row.lastEntryAt ? formatIssueTime(row.lastEntryAt) : '—'}
               </div>
             </div>
@@ -428,19 +419,19 @@ function ComplaintTimeline({ items }: { items: ReportComplaintEntry[] }) {
   return (
     <div className="space-y-2">
       {items.map((row) => (
-        <div key={row.id} className="ahwa-card min-w-0 overflow-hidden p-3">
-          <div className="flex min-w-0 items-start justify-between gap-3">
+        <div key={row.id} className="ahwa-card p-3">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 text-right">
               <div className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{row.sessionLabel}</div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 {complaintKindLabel(row.complaintKind)} • {row.businessDate ?? '--'} • {shiftKindLabel(row.shiftKind)}
               </div>
               {row.notes ? (
-                <div className="mt-2 min-w-0 whitespace-pre-wrap break-words rounded-xl bg-[#f8f1e7] p-2 text-sm text-[#5e4d3f] [overflow-wrap:anywhere]">
+                <div className="mt-2 whitespace-pre-wrap break-words rounded-xl bg-[#f8f1e7] p-2 text-sm text-[#5e4d3f] [overflow-wrap:anywhere]">
                   {row.notes}
                 </div>
               ) : null}
-              <div className="mt-2 min-w-0 break-words text-[11px] text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-2 break-words text-[11px] text-[#8a7763] [overflow-wrap:anywhere]">
                 {row.createdByLabel ?? 'غير محدد'} • {formatIssueTime(row.createdAt)}
               </div>
             </div>
@@ -460,21 +451,21 @@ function ItemIssueTimeline({ items }: { items: ReportItemIssueEntry[] }) {
   return (
     <div className="space-y-2">
       {items.map((row) => (
-        <div key={row.id} className="ahwa-card min-w-0 overflow-hidden p-3">
-          <div className="flex min-w-0 items-start justify-between gap-3">
+        <div key={row.id} className="ahwa-card p-3">
+          <div className="flex items-start justify-between gap-3">
             <div className="min-w-0 flex-1 text-right">
               <div className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">
                 {row.sessionLabel} • {row.productName}
               </div>
-              <div className="mt-1 min-w-0 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 {itemIssueActionLabel(row.actionKind)} • {complaintKindLabel(row.issueKind)} • {row.businessDate ?? '--'} • {shiftKindLabel(row.shiftKind)}
               </div>
               {row.notes ? (
-                <div className="mt-2 min-w-0 whitespace-pre-wrap break-words rounded-xl bg-[#f8f1e7] p-2 text-sm text-[#5e4d3f] [overflow-wrap:anywhere]">
+                <div className="mt-2 whitespace-pre-wrap break-words rounded-xl bg-[#f8f1e7] p-2 text-sm text-[#5e4d3f] [overflow-wrap:anywhere]">
                   {row.notes}
                 </div>
               ) : null}
-              <div className="mt-2 min-w-0 break-words text-[11px] text-[#8a7763] [overflow-wrap:anywhere]">
+              <div className="mt-2 break-words text-[11px] text-[#8a7763] [overflow-wrap:anywhere]">
                 {row.createdByLabel ?? 'غير محدد'} • {formatIssueTime(row.createdAt)}
               </div>
             </div>
@@ -511,39 +502,39 @@ function OverviewPanel({
   return (
     <div className="space-y-3">
       {period ? (
-        <div className="ahwa-card min-w-0 overflow-hidden p-3">
+        <div className="ahwa-card p-3">
           <div className="font-semibold">التجميع اليومي</div>
-          <div className="mt-3 min-w-0">
+          <div className="mt-3">
             <DayBreakdown period={period} />
           </div>
         </div>
       ) : null}
 
       {period ? (
-        <div className="ahwa-card min-w-0 overflow-hidden p-3">
+        <div className="ahwa-card p-3">
           <div className="font-semibold">تفصيل الورديات</div>
-          <div className="mt-3 min-w-0">
+          <div className="mt-3">
             <ShiftList items={period.shifts} />
           </div>
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
-        <div className="ahwa-card min-w-0 overflow-hidden p-3">
+      <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+        <div className="ahwa-card p-3">
           <div className="font-semibold">أعلى المنتجات</div>
-          <div className="mt-3 min-w-0">
+          <div className="mt-3">
             <ProductList items={topProducts} />
           </div>
         </div>
-        <div className="ahwa-card min-w-0 overflow-hidden p-3">
+        <div className="ahwa-card p-3">
           <div className="font-semibold">أعلى الإضافات</div>
-          <div className="mt-3 min-w-0">
+          <div className="mt-3">
             <AddonList items={topAddons} />
           </div>
         </div>
-        <div className="ahwa-card min-w-0 overflow-hidden p-3">
+        <div className="ahwa-card p-3 xl:col-span-2 2xl:col-span-1">
           <div className="font-semibold">أعلى العاملين</div>
-          <div className="mt-3 min-w-0">
+          <div className="mt-3">
             <StaffList items={topStaff} />
           </div>
         </div>
@@ -628,12 +619,12 @@ export default function ReportsPage() {
   const periodTopStaff = selectedPeriod?.staff.length ? (sortStaff(selectedPeriod.staff)[0] ?? null) : null;
 
   return (
-    <MobileShell title="التقارير" backHref="/dashboard" shellWidth="wide">
+    <MobileShell title="التقارير" backHref="/dashboard">
       {error ? <div className="mb-3 ahwa-alert-danger p-3 text-sm">{error}</div> : null}
 
       <div className="rounded-3xl border bg-[#fffdf9] p-3 shadow-sm">
         <div className="flex min-w-0 items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0">
             <div className="font-semibold">التقارير</div>
             <div className="mt-1 text-xs text-[#8a7763]">مرجع التقرير: {data?.referenceDate ?? '--'}</div>
           </div>
@@ -700,21 +691,19 @@ export default function ReportsPage() {
 
           <DetailTabs value={detailTab} onChange={setDetailTab} />
 
-          {detailTab === 'overview' ? (
-            <OverviewPanel currentShift={currentShift} products={currentProducts} addons={currentAddons} staff={currentStaff} />
-          ) : null}
+          {detailTab === 'overview' ? <OverviewPanel currentShift={currentShift} products={currentProducts} addons={currentAddons} staff={currentStaff} /> : null}
 
           {detailTab === 'products' ? (
             <div className="space-y-3">
-              <div className="ahwa-card min-w-0 overflow-hidden p-3">
+              <div className="ahwa-card p-3">
                 <div className="font-semibold">كل المنتجات</div>
-                <div className="mt-3 min-w-0">
+                <div className="mt-3">
                   <ProductList items={currentProducts} />
                 </div>
               </div>
-              <div className="ahwa-card min-w-0 overflow-hidden p-3">
+              <div className="ahwa-card p-3">
                 <div className="font-semibold">كل الإضافات</div>
-                <div className="mt-3 min-w-0">
+                <div className="mt-3">
                   <AddonList items={currentAddons} />
                 </div>
               </div>
@@ -722,9 +711,9 @@ export default function ReportsPage() {
           ) : null}
 
           {detailTab === 'staff' ? (
-            <div className="ahwa-card min-w-0 overflow-hidden p-3">
+            <div className="ahwa-card p-3">
               <div className="font-semibold">كل العاملين</div>
-              <div className="mt-3 min-w-0">
+              <div className="mt-3">
                 <StaffList items={currentStaff} />
               </div>
             </div>
@@ -732,15 +721,15 @@ export default function ReportsPage() {
 
           {detailTab === 'issues' ? (
             <div className="space-y-3">
-              <div className="ahwa-card min-w-0 overflow-hidden p-3">
+              <div className="ahwa-card p-3">
                 <div className="font-semibold">الشكاوى العامة</div>
-                <div className="mt-3 min-w-0">
+                <div className="mt-3">
                   <ComplaintTimeline items={currentComplaints} />
                 </div>
               </div>
-              <div className="ahwa-card min-w-0 overflow-hidden p-3">
+              <div className="ahwa-card p-3">
                 <div className="font-semibold">ملاحظات وإجراءات الأصناف</div>
-                <div className="mt-3 min-w-0">
+                <div className="mt-3">
                   <ItemIssueTimeline items={currentItemIssues} />
                 </div>
               </div>
@@ -761,21 +750,19 @@ export default function ReportsPage() {
 
           <DetailTabs value={detailTab} onChange={setDetailTab} />
 
-          {detailTab === 'overview' ? (
-            <OverviewPanel period={selectedPeriod} products={selectedPeriod.products} addons={selectedPeriod.addons} staff={selectedPeriod.staff} />
-          ) : null}
+          {detailTab === 'overview' ? <OverviewPanel period={selectedPeriod} products={selectedPeriod.products} addons={selectedPeriod.addons} staff={selectedPeriod.staff} /> : null}
 
           {detailTab === 'products' ? (
             <div className="space-y-3">
-              <div className="ahwa-card min-w-0 overflow-hidden p-3">
+              <div className="ahwa-card p-3">
                 <div className="font-semibold">كل المنتجات في {periodLabel(selectedPeriod.key)}</div>
-                <div className="mt-3 min-w-0">
+                <div className="mt-3">
                   <ProductList items={selectedPeriod.products} />
                 </div>
               </div>
-              <div className="ahwa-card min-w-0 overflow-hidden p-3">
+              <div className="ahwa-card p-3">
                 <div className="font-semibold">كل الإضافات في {periodLabel(selectedPeriod.key)}</div>
-                <div className="mt-3 min-w-0">
+                <div className="mt-3">
                   <AddonList items={selectedPeriod.addons} />
                 </div>
               </div>
@@ -783,9 +770,9 @@ export default function ReportsPage() {
           ) : null}
 
           {detailTab === 'staff' ? (
-            <div className="ahwa-card min-w-0 overflow-hidden p-3">
+            <div className="ahwa-card p-3">
               <div className="font-semibold">كل العاملين في {periodLabel(selectedPeriod.key)}</div>
-              <div className="mt-3 min-w-0">
+              <div className="mt-3">
                 <StaffList items={selectedPeriod.staff} />
               </div>
             </div>
@@ -793,15 +780,15 @@ export default function ReportsPage() {
 
           {detailTab === 'issues' ? (
             <div className="space-y-3">
-              <div className="ahwa-card min-w-0 overflow-hidden p-3">
+              <div className="ahwa-card p-3">
                 <div className="font-semibold">الشكاوى العامة في {periodLabel(selectedPeriod.key)}</div>
-                <div className="mt-3 min-w-0">
+                <div className="mt-3">
                   <ComplaintTimeline items={selectedPeriod.complaints} />
                 </div>
               </div>
-              <div className="ahwa-card min-w-0 overflow-hidden p-3">
+              <div className="ahwa-card p-3">
                 <div className="font-semibold">ملاحظات وإجراءات الأصناف في {periodLabel(selectedPeriod.key)}</div>
-                <div className="mt-3 min-w-0">
+                <div className="mt-3">
                   <ItemIssueTimeline items={selectedPeriod.itemIssues} />
                 </div>
               </div>
@@ -812,13 +799,13 @@ export default function ReportsPage() {
 
       {safeTab === 'deferred' ? (
         <section className="mt-3 space-y-3">
-          <div className="ahwa-card min-w-0 overflow-hidden p-4">
+          <div className="ahwa-card p-4">
             <div className="text-lg font-bold">الآجل</div>
             <div className="mt-1 text-xs text-[#8a7763]">قراءة سريعة لأرصدة العملاء الحالية مرتبة من الأعلى للأقل.</div>
           </div>
-          <div className="ahwa-card min-w-0 overflow-hidden p-3">
+          <div className="ahwa-card p-3">
             <div className="font-semibold">أرصدة الآجل</div>
-            <div className="mt-3 min-w-0">
+            <div className="mt-3">
               <DeferredList items={deferredCustomers} />
             </div>
           </div>
