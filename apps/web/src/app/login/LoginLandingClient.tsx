@@ -6,6 +6,7 @@ import { normalizeCafeSlug } from '@/lib/cafes/slug';
 import LoginClient from '@/app/c/[slug]/login/LoginClient';
 import BrandLogo from '@/ui/brand/BrandLogo';
 import { AppIcon } from '@/ui/icons/AppIcon';
+import { submitOnEnter } from '@/lib/forms/submitOnEnter';
 
 export default function LoginLandingClient() {
   const router = useRouter();
@@ -153,6 +154,8 @@ export default function LoginLandingClient() {
               placeholder="fishawy"
               value={slug}
               onChange={(event) => setSlug(event.target.value)}
+              onKeyDown={(event) => submitOnEnter(event, () => void go())}
+              enterKeyHint="go"
             />
             <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-[#9b6b2e]">
               <AppIcon name="building" className="h-4 w-4" />

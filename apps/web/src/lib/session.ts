@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { BaseRole } from "@/lib/authz/policy";
+import { RUNTIME_LAST_PATH_STORAGE_KEY, RUNTIME_RESUME_STORAGE_KEY } from "@/lib/runtime/resume";
 
 export type SessionUser = {
   id: string; // canonical runtime actor id (owner_user.id or staff_member.id)
@@ -32,6 +33,10 @@ export const useSession = create<SessionState>()(
         try {
           await fetch("/api/auth/logout", { method: "POST" });
         } catch {}
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem(RUNTIME_RESUME_STORAGE_KEY);
+          localStorage.removeItem(RUNTIME_LAST_PATH_STORAGE_KEY);
+        }
         set({ user: null });
       },
       setOwnerViewRole: (ownerViewRole) => set({ ownerViewRole }),

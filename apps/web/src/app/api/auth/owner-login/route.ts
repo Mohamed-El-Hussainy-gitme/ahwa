@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
 import { cafeSlugEquals, normalizeCafeSlug } from '@/lib/cafes/slug';
-import { buildRuntimeSession, encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
+import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
@@ -68,7 +68,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'CAFE_SLUG_MISMATCH' }, { status: 409 });
   }
 
-  const token = encodeRuntimeSession(buildRuntimeSession({
+  const token = encodeRuntimeSession({
     sessionVersion: 2,
     databaseKey: binding.databaseKey,
     tenantId: binding.id,
@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
     actorStaffId: null,
     shiftId: null,
     shiftRole: null,
-  }));
+  });
 
   const response = NextResponse.json({
     ok: true,

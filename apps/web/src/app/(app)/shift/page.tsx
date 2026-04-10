@@ -6,6 +6,7 @@ import { useAuthz } from '@/lib/authz';
 import { AccessDenied } from '@/ui/AccessState';
 import { apiPost } from '@/lib/http/client';
 import { extractApiErrorMessage } from '@/lib/api/errors';
+import { submitOnEnter } from '@/lib/forms/submitOnEnter';
 import { RecoveryPanel } from '@/ui/ops/RecoveryPanel';
 import {
   opsAccentButton,
@@ -602,6 +603,8 @@ export default function ShiftPage() {
               className="mt-1 min-h-24 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] p-3 text-right text-[#1e1712] outline-none placeholder:text-[#a08a75]"
               value={openNotes}
               onChange={(event) => setOpenNotes(event.target.value)}
+              onKeyDown={(event) => submitOnEnter(event, openShift, { allowTextarea: true })}
+              enterKeyHint="go"
               placeholder="ملاحظات اختيارية مع بداية الوردية"
             />
           </div>

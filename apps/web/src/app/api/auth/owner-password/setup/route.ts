@@ -5,7 +5,7 @@ import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { mirrorOwnerToOperationalDatabase } from '@/lib/control-plane/runtime-provisioning';
 import { normalizeCafeSlug } from '@/lib/cafes/slug';
 import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
-import { buildRuntimeSession, encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
+import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 
 const Input = z.object({
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const token = encodeRuntimeSession(buildRuntimeSession({
+  const token = encodeRuntimeSession({
     sessionVersion: 2,
     databaseKey: binding.databaseKey,
     tenantId: binding.id,
@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     actorStaffId: null,
     shiftId: null,
     shiftRole: null,
-  }));
+  });
 
   const response = NextResponse.json({
     ok: true,

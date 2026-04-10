@@ -3,6 +3,7 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { normalizeCafeSlug } from '@/lib/cafes/slug';
+import { submitOnEnter } from '@/lib/forms/submitOnEnter';
 import BrandLogo from '@/ui/brand/BrandLogo';
 import { AppIcon } from '@/ui/icons/AppIcon';
 
@@ -11,6 +12,7 @@ export default function OwnerLoginClient() {
   const searchParams = useSearchParams();
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [resolvedSlug, setResolvedSlug] = useState('');
@@ -39,7 +41,7 @@ export default function OwnerLoginClient() {
 
   async function onSubmit() {
     setErr(null);
-    if (!phone.trim() || !password.trim()) return;
+    if (busy || !phone.trim() || !password.trim()) return;
     setBusy(true);
     try {
       const res = await fetch('/api/auth/owner-login', {
@@ -57,6 +59,7 @@ export default function OwnerLoginClient() {
         localStorage.setItem('ahwa.lastCafeSlug', resolvedSlug);
       }
       router.replace(resolveSafeNext());
+      router.refresh();
     } finally {
       setBusy(false);
     }
@@ -83,7 +86,13 @@ export default function OwnerLoginClient() {
           ) : null}
         </div>
 
-        <div className="px-6 py-5">
+        <form
+          className="px-6 py-5"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onSubmit();
+          }}
+        >
           <div className="space-y-3">
             <div>
               <label className="mb-2 block text-right text-sm font-semibold text-[#4e4034]">رقم الجوال</label>
@@ -94,7 +103,10 @@ export default function OwnerLoginClient() {
                   placeholder="01XXXXXXXXX"
                   value={phone}
                   onChange={(event) => setPhone(event.target.value)}
+                  onKeyDown={(event) => submitOnEnter(event, () => void onSubmit())}
                   inputMode="tel"
+                  autoComplete="tel"
+                  enterKeyHint="next"
                 />
                 <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-[#9b6b2e]">
                   <AppIcon name="phone" className="h-4 w-4" />
@@ -106,12 +118,23 @@ export default function OwnerLoginClient() {
               <label className="mb-2 block text-right text-sm font-semibold text-[#4e4034]">كلمة المرور</label>
               <div className="relative">
                 <input
-                  className="w-full rounded-[20px] border border-[#d9cabb] bg-white px-4 py-3.5 pr-11 text-right text-[#1e1712] outline-none placeholder:text-[#9d8b79]"
+                  className="w-full rounded-[20px] border border-[#d9cabb] bg-white px-4 py-3.5 pl-11 pr-11 text-right text-[#1e1712] outline-none placeholder:text-[#9d8b79]"
                   placeholder="كلمة المرور"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
-                  type="password"
+                  onKeyDown={(event) => submitOnEnter(event, () => void onSubmit())}
+                  type={showPassword ? 'text' : 'password'}
+                  autoComplete="current-password"
+                  enterKeyHint="go"
                 />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((current) => !current)}
+                  className="absolute inset-y-0 left-3 inline-flex items-center justify-center rounded-full px-2 text-[#8a7763]"
+                  aria-label={showPassword ? 'إخفاء كلمة المرور' : 'إظهار كلمة المرور'}
+                >
+                  <AppIcon name={showPassword ? 'eyeOff' : 'eye'} className="h-5 w-5" />
+                </button>
                 <div className="pointer-events-none absolute inset-y-0 right-4 flex items-center text-[#9b6b2e]">
                   <AppIcon name="lock" className="h-4 w-4" />
                 </div>
@@ -119,7 +142,7 @@ export default function OwnerLoginClient() {
             </div>
 
             <button
-              onClick={onSubmit}
+              type="submit"
               disabled={busy}
               className="inline-flex w-full items-center justify-center gap-2 rounded-[20px] bg-[#1e1712] px-4 py-3.5 text-sm font-semibold text-white shadow-[0_16px_30px_rgba(30,23,18,0.18)] transition hover:translate-y-[-1px] disabled:opacity-60"
             >
@@ -150,7 +173,7 @@ export default function OwnerLoginClient() {
               </div>
             ) : null}
           </div>
-        </div>
+        </form>
       </div>
     </div>
   );

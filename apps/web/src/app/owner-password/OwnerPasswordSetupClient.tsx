@@ -3,7 +3,9 @@
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { normalizeCafeSlug } from '@/lib/cafes/slug';
+import { submitOnEnter } from '@/lib/forms/submitOnEnter';
 import BrandLogo from '@/ui/brand/BrandLogo';
+import { AppIcon } from '@/ui/icons/AppIcon';
 
 function errorMessage(error: string | null) {
   switch (error) {
@@ -36,6 +38,8 @@ export default function OwnerPasswordSetupClient() {
   const [setupCode, setSetupCode] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resolvedSlug, setResolvedSlug] = useState('');
@@ -55,6 +59,7 @@ export default function OwnerPasswordSetupClient() {
 
   async function onSubmit() {
     setError(null);
+    if (busy) return;
     if (!resolvedSlug || !phone.trim() || !setupCode.trim() || !newPassword || !confirmPassword) {
       setError('INVALID_INPUT');
       return;
@@ -94,6 +99,7 @@ export default function OwnerPasswordSetupClient() {
         localStorage.setItem('ahwa.lastCafeSlug', resolvedSlug);
       }
       router.replace('/dashboard');
+      router.refresh();
     } finally {
       setBusy(false);
     }
@@ -116,13 +122,29 @@ export default function OwnerPasswordSetupClient() {
           {resolvedSlug ? <div className="mt-1 text-xs text-[#6b5a4c]">القهوة: <span className="font-semibold text-[#1e1712]">{resolvedSlug}</span></div> : null}
         </div>
 
-        <div className="mt-4 space-y-2">
-          <input dir="ltr" className="w-full rounded-2xl border border-[#d9cabb] bg-white px-4 py-3 text-left text-[#1e1712] outline-none placeholder:text-[#9d8b79]" placeholder="رقم الموبايل" value={phone} onChange={(e) => setPhone(e.target.value)} inputMode="tel" />
-          <input dir="ltr" className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-left uppercase" placeholder="كود التفعيل / إعادة التعيين" value={setupCode} onChange={(e) => setSetupCode(e.target.value.toUpperCase())} autoCapitalize="characters" />
-          <input className="w-full rounded-2xl border border-[#d9cabb] bg-white px-4 py-3 text-right text-[#1e1712] outline-none placeholder:text-[#9d8b79]" placeholder="كلمة المرور الجديدة" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} type="password" />
-          <input className="w-full rounded-2xl border border-[#d9cabb] bg-white px-4 py-3 text-right text-[#1e1712] outline-none placeholder:text-[#9d8b79]" placeholder="تأكيد كلمة المرور الجديدة" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} type="password" />
+        <form
+          className="mt-4 space-y-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void onSubmit();
+          }}
+        >
+          <input dir="ltr" className="w-full rounded-2xl border border-[#d9cabb] bg-white px-4 py-3 text-left text-[#1e1712] outline-none placeholder:text-[#9d8b79]" placeholder="رقم الموبايل" value={phone} onChange={(e) => setPhone(e.target.value)} onKeyDown={(event) => submitOnEnter(event, () => void onSubmit())} inputMode="tel" autoComplete="tel" enterKeyHint="next" />
+          <input dir="ltr" className="w-full rounded-2xl border border-neutral-200 bg-white px-3 py-3 text-left uppercase" placeholder="كود التفعيل / إعادة التعيين" value={setupCode} onChange={(e) => setSetupCode(e.target.value.toUpperCase())} onKeyDown={(event) => submitOnEnter(event, () => void onSubmit())} autoCapitalize="characters" enterKeyHint="next" />
+          <div className="relative">
+            <input className="w-full rounded-2xl border border-[#d9cabb] bg-white px-4 py-3 pl-11 text-right text-[#1e1712] outline-none placeholder:text-[#9d8b79]" placeholder="كلمة المرور الجديدة" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} onKeyDown={(event) => submitOnEnter(event, () => void onSubmit())} type={showNewPassword ? 'text' : 'password'} autoComplete="new-password" enterKeyHint="next" />
+            <button type="button" onClick={() => setShowNewPassword((current) => !current)} className="absolute inset-y-0 left-3 inline-flex items-center justify-center rounded-full px-2 text-[#8a7763]" aria-label={showNewPassword ? 'إخفاء كلمة المرور الجديدة' : 'إظهار كلمة المرور الجديدة'}>
+              <AppIcon name={showNewPassword ? 'eyeOff' : 'eye'} className="h-5 w-5" />
+            </button>
+          </div>
+          <div className="relative">
+            <input className="w-full rounded-2xl border border-[#d9cabb] bg-white px-4 py-3 pl-11 text-right text-[#1e1712] outline-none placeholder:text-[#9d8b79]" placeholder="تأكيد كلمة المرور الجديدة" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} onKeyDown={(event) => submitOnEnter(event, () => void onSubmit())} type={showConfirmPassword ? 'text' : 'password'} autoComplete="new-password" enterKeyHint="go" />
+            <button type="button" onClick={() => setShowConfirmPassword((current) => !current)} className="absolute inset-y-0 left-3 inline-flex items-center justify-center rounded-full px-2 text-[#8a7763]" aria-label={showConfirmPassword ? 'إخفاء تأكيد كلمة المرور' : 'إظهار تأكيد كلمة المرور'}>
+              <AppIcon name={showConfirmPassword ? 'eyeOff' : 'eye'} className="h-5 w-5" />
+            </button>
+          </div>
 
-          <button onClick={onSubmit} disabled={busy} className="w-full rounded-2xl bg-[#1e1712] px-4 py-3 font-semibold text-white disabled:opacity-60">
+          <button type="submit" disabled={busy} className="w-full rounded-2xl bg-[#1e1712] px-4 py-3 font-semibold text-white disabled:opacity-60">
             {busy ? '...' : 'حفظ والدخول'}
           </button>
 
@@ -131,7 +153,7 @@ export default function OwnerPasswordSetupClient() {
           <button type="button" onClick={() => router.push(resolvedSlug ? `/owner-login?slug=${encodeURIComponent(resolvedSlug)}` : '/owner-login')} className="w-full rounded-2xl border border-[#d9cabb] bg-[#f7efe4] px-4 py-3 text-sm font-medium text-[#6b5a4c]">
             الرجوع إلى دخول المالك
           </button>
-        </div>
+        </form>
       </div>
     </div>
   );
