@@ -329,14 +329,12 @@ export function MobileShell({
   topRight,
   backHref,
   stickyFooter,
-  desktopMode = 'mobile',
 }: {
   title: string;
   children: React.ReactNode;
   topRight?: React.ReactNode;
   backHref?: string;
   stickyFooter?: React.ReactNode;
-  desktopMode?: 'mobile' | 'wide';
 }) {
   const pathname = usePathname();
   const session = useSession();
@@ -360,8 +358,6 @@ export function MobileShell({
     return bottomNavHeight + stickyFooterHeight + 20;
   }, [bottomNavBox.height, stickyFooter, stickyFooterBox.height]);
 
-  const shellMaxWidthClass = desktopMode === 'wide' ? 'max-w-[min(1440px,calc(100vw-3rem))]' : 'max-w-md';
-
   const stickyFooterOffset = useMemo(() => {
     const bottomNavHeight = bottomNavBox.height || 82;
     return bottomNavHeight + 8;
@@ -369,7 +365,7 @@ export function MobileShell({
 
   return (
     <div className="min-h-dvh bg-[linear-gradient(180deg,#f4efe7_0%,#eadcc8_100%)] px-0 md:px-4">
-      <div className={`mx-auto flex min-h-dvh ${shellMaxWidthClass} flex-col bg-[#fffaf4] md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)]`}>
+      <div className="mx-auto flex min-h-dvh max-w-md flex-col bg-[#fffaf4] md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)]">
         <header className="sticky top-0 z-10 border-b border-[#eadfce] bg-[linear-gradient(180deg,rgba(255,250,244,0.98)_0%,rgba(249,241,231,0.96)_100%)] px-4 py-3 backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
@@ -455,14 +451,14 @@ export function MobileShell({
 
         {stickyFooter ? (
           <div className="fixed left-0 right-0 z-20 px-3 pb-3" style={{ bottom: `${stickyFooterOffset}px` }}>
-            <div ref={stickyFooterBox.ref} className={`mx-auto w-full ${shellMaxWidthClass}`}>
+            <div ref={stickyFooterBox.ref} className="mx-auto max-w-md">
               {stickyFooter}
             </div>
           </div>
         ) : null}
 
         <div ref={bottomNavBox.ref} className="fixed bottom-0 left-0 right-0 z-20">
-          <div className={`mx-auto w-full ${shellMaxWidthClass} px-2 pb-[env(safe-area-inset-bottom)] pt-2`}>
+          <div className="mx-auto max-w-md px-2 pb-[env(safe-area-inset-bottom)] pt-2">
             <div className="rounded-t-[26px] border border-b-0 border-[#ddcfbf] bg-[linear-gradient(180deg,rgba(255,250,244,0.96)_0%,rgba(248,238,226,0.98)_100%)] px-2 py-2 shadow-[0_-16px_32px_rgba(30,23,18,0.08)] backdrop-blur">
               <BottomNav />
             </div>

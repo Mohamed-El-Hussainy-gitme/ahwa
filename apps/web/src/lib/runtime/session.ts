@@ -1,6 +1,7 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 
 export const RUNTIME_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
+export const RUNTIME_SESSION_IDLE_TIMEOUT_MS = 6 * 60 * 60 * 1000;
 
 export type RuntimeShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 export type RuntimeAccountKind = 'owner' | 'employee';
@@ -28,6 +29,8 @@ export type RuntimeSessionPayload = {
   actorOwnerId?: string | null;
   actorStaffId?: string | null;
   supportAccess?: RuntimeSupportAccessPayload | null;
+  issuedAt?: number;
+  lastActivityAt?: number;
 };
 
 export type BoundRuntimeSessionPayload = RuntimeSessionPayload & {
@@ -49,6 +52,39 @@ function normalizeDatabaseKey(value: unknown): string | null {
   if (typeof value !== 'string') return null;
   const normalized = value.trim();
   return normalized ? normalized : null;
+}
+
+function normalizeTimestamp(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined;
+  if (value <= 0) return undefined;
+  return Math.trunc(value);
+}
+
+export function buildRuntimeSession<T extends Omit<RuntimeSessionPayload, 'issuedAt' | 'lastActivityAt'>>(session: T): RuntimeSessionPayload {
+  const now = Date.now();
+  return {
+    ...session,
+    issuedAt: now,
+    lastActivityAt: now,
+  };
+}
+
+export function isRuntimeSessionIdleExpired(
+  session: Pick<RuntimeSessionPayload, 'issuedAt' | 'lastActivityAt'> | null | undefined,
+  now = Date.now(),
+): boolean {
+  if (!session) return true;
+  const lastActivityAt = normalizeTimestamp(session.lastActivityAt) ?? normalizeTimestamp(session.issuedAt);
+  if (!lastActivityAt) return false;
+  return now - lastActivityAt > RUNTIME_SESSION_IDLE_TIMEOUT_MS;
+}
+
+export function touchRuntimeSession(session: RuntimeSessionPayload, now = Date.now()): RuntimeSessionPayload {
+  return {
+    ...session,
+    issuedAt: normalizeTimestamp(session.issuedAt) ?? now,
+    lastActivityAt: now,
+  };
 }
 
 export function isBoundRuntimeSession(session: RuntimeSessionPayload | null | undefined): session is BoundRuntimeSessionPayload {
@@ -93,8 +129,10 @@ export function decodeRuntimeSession(raw: string | null | undefined): RuntimeSes
 
     const databaseKey = normalizeDatabaseKey(parsed.databaseKey);
     const sessionVersion: RuntimeSessionVersion = parsed.sessionVersion === 2 && databaseKey ? 2 : 1;
+    const issuedAt = normalizeTimestamp(parsed.issuedAt);
+    const lastActivityAt = normalizeTimestamp(parsed.lastActivityAt);
 
-    return {
+    const session: RuntimeSessionPayload = {
       sessionVersion,
       databaseKey,
       tenantId: parsed.tenantId,
@@ -130,7 +168,15 @@ export function decodeRuntimeSession(raw: string | null | undefined): RuntimeSes
               expiresAt: typeof parsed.supportAccess.expiresAt === 'string' ? parsed.supportAccess.expiresAt : null,
             }
           : null,
+      issuedAt,
+      lastActivityAt,
     };
+
+    if (isRuntimeSessionIdleExpired(session)) {
+      return null;
+    }
+
+    return session;
   } catch {
     return null;
   }

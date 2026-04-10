@@ -144,14 +144,14 @@ function TotalsHero({
         {leadStatus ? <div className="ahwa-pill-neutral shrink-0">{leadStatus}</div> : null}
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mt-4 grid grid-cols-2 gap-2 md:grid-cols-4">
         <MetricCard label="إجمالي البيع" value={`${formatMoney(totals.netSales)} ج`} tone="success" hint={salesHint(totals)} />
         <MetricCard label="الكاش" value={`${formatMoney(totals.cashSales)} ج`} />
         <MetricCard label="الآجل المرحل" value={`${formatMoney(totals.deferredSales)} ج`} />
         <MetricCard label="سداد الآجل" value={`${formatMoney(totals.repaymentTotal)} ج`} />
       </div>
 
-      <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="mt-2 grid grid-cols-2 gap-2 md:grid-cols-5">
         <MetricCard label="الجلسات" value={String(totals.totalSessions)} hint={`مفتوحة ${totals.openSessions} • مغلقة ${totals.closedSessions}`} />
         <MetricCard label="البنود المسلّمة" value={String(totals.deliveredQty)} hint={`بديل مجاني ${totals.replacementDeliveredQty}`} />
         <MetricCard label="الجاهز" value={String(totals.readyQty)} hint={`المدفوع ${totals.paidQty} • الآجل ${totals.deferredQty}`} />
@@ -209,13 +209,13 @@ function DetailTabs({ value, onChange }: { value: DetailTab; onChange: (value: D
   ];
 
   return (
-    <div className="grid grid-cols-2 gap-2 rounded-2xl border bg-[#fffdf9] p-2 shadow-sm md:grid-cols-4">
+    <div className="grid grid-cols-4 gap-2 rounded-2xl border bg-[#fffdf9] p-2 shadow-sm">
       {items.map((item) => (
         <button
           key={item.key}
           onClick={() => onChange(item.key)}
           className={[
-            'rounded-2xl px-2 py-2 text-xs font-semibold transition whitespace-normal break-words [overflow-wrap:anywhere]',
+            'rounded-2xl px-2 py-2 text-xs font-semibold transition',
             value === item.key ? 'bg-[#1e1712] text-white' : 'bg-[#f8f1e7] text-[#5e4d3f]',
           ].join(' ')}
         >
@@ -619,7 +619,7 @@ export default function ReportsPage() {
   const periodTopStaff = selectedPeriod?.staff.length ? (sortStaff(selectedPeriod.staff)[0] ?? null) : null;
 
   return (
-    <MobileShell title="التقارير" backHref="/dashboard" desktopMode="wide">
+    <MobileShell title="التقارير" backHref="/dashboard">
       {error ? <div className="mb-3 ahwa-alert-danger p-3 text-sm">{error}</div> : null}
 
       <div className="rounded-3xl border bg-[#fffdf9] p-3 shadow-sm">
@@ -668,7 +668,7 @@ export default function ReportsPage() {
                 if (item.key === 'deferred') setDetailTab('overview');
               }}
               className={[
-                'rounded-2xl border px-2 py-2 text-xs font-semibold whitespace-normal break-words [overflow-wrap:anywhere]',
+                'rounded-2xl border px-2 py-2 text-xs font-semibold',
                 safeTab === item.key ? 'border-neutral-900 bg-[#1e1712] text-white' : 'bg-[#f8f1e7]',
               ].join(' ')}
             >

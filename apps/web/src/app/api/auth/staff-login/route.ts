@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
 import { cafeSlugEquals, normalizeCafeSlug } from '@/lib/cafes/slug';
 import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
-import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
+import { buildRuntimeSession, encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 
@@ -91,7 +91,7 @@ export async function POST(req: NextRequest) {
     return fail(401, 'LOGIN_FAILED');
   }
 
-  const token = encodeRuntimeSession({
+  const token = encodeRuntimeSession(buildRuntimeSession({
     sessionVersion: 2,
     databaseKey: binding.databaseKey,
     tenantId: binding.id,
@@ -103,7 +103,7 @@ export async function POST(req: NextRequest) {
     shiftRole: String(row.shift_role) as 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter',
     actorOwnerId: null,
     actorStaffId: String(row.staff_member_id),
-  });
+  }));
 
   const response = NextResponse.json({
     ok: true,
