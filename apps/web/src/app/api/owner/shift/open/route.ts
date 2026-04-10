@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { publishOpsEvent } from '@/lib/ops/events';
-import { requireManagementAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
 import { openShiftWithAssignments } from '@/lib/ops/owner-admin';
 
 const ShiftKind = z.enum(['morning', 'evening']);
@@ -12,7 +12,7 @@ const Input = z.object({
     .array(
       z.object({
         userId: z.string().uuid(),
-        role: z.enum(['supervisor', 'waiter', 'american_waiter', 'barista', 'shisha']),
+        role: z.enum(['supervisor', 'waiter', 'barista', 'shisha']),
         actorType: z.enum(['staff', 'owner']).optional(),
       }),
     )
@@ -32,7 +32,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ctx = requireManagementAccess(await requireOpsActorContext());
+    const ctx = requireOwnerRole(await requireOpsActorContext());
 
     const hasForeignOwnerAssignment = parsed.data.assignments.some(
       (item) => item.actorType === 'owner' && item.userId !== ctx.actorOwnerId,

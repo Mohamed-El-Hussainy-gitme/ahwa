@@ -11,11 +11,12 @@ export type SessionUser = {
   cafeSlug?: string;
   name: string;
   baseRole: BaseRole;
+  ownerLabel?: 'owner' | 'partner' | 'branch_manager';
 };
 
 type SessionState = {
   user: SessionUser | null;
-  ownerViewRole: "supervisor" | "waiter" | "american_waiter" | "barista" | "shisha";
+  ownerViewRole: "supervisor" | "waiter" | "barista" | "shisha" | "american_waiter";
   setUser: (u: SessionUser | null) => void;
   logout: () => Promise<void>;
   setOwnerViewRole: (r: SessionState["ownerViewRole"]) => void;

@@ -1,5 +1,5 @@
 export type PlatformSubscriptionStatus = 'trial' | 'active' | 'expired' | 'suspended';
-export type PlatformCafeOwnerLabel = 'owner' | 'partner';
+export type PlatformCafeOwnerLabel = 'owner' | 'partner' | 'branch_manager';
 export type PlatformBindingStatus = 'bound' | 'unbound' | 'invalid';
 export type PlatformCafeLoadTier = 'small' | 'medium' | 'heavy' | 'enterprise';
 export type PlatformDatabaseCapacityState = 'healthy' | 'warning' | 'critical' | 'hot' | 'full' | 'draining' | 'inactive';

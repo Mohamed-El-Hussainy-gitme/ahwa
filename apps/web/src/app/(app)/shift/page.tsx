@@ -20,7 +20,7 @@ import {
 } from '@/ui/ops/premiumStyles';
 
 type ShiftKind = 'morning' | 'evening';
-type ShiftRole = 'supervisor' | 'waiter' | 'american_waiter' | 'barista' | 'shisha';
+type ShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 type ShiftStatus = 'open' | 'closing' | 'closed' | 'draft' | 'cancelled';
 
 type StaffEmploymentStatus = 'active' | 'inactive' | 'left';
@@ -145,12 +145,12 @@ function roleLabel(role: ShiftRole) {
       return 'مشرف التشغيل';
     case 'waiter':
       return 'مضيف الصالة';
-    case 'american_waiter':
-      return 'أميركان ويتر';
     case 'barista':
       return 'الباريستا';
     case 'shisha':
       return 'مختص الشيشة';
+    case 'american_waiter':
+      return 'أميركان ويتر';
   }
 }
 
@@ -252,7 +252,7 @@ export default function ShiftPage() {
   const snapshotView = useMemo(() => normalizeSnapshot(selectedSnapshot), [selectedSnapshot]);
 
   const canViewShift = can.viewShift;
-  const canManageShift = can.owner || can.branchManager;
+  const canManageShift = can.owner;
 
   const load = useCallback(async () => {
     setMessage(null);
@@ -354,22 +354,16 @@ export default function ShiftPage() {
     }
   }
 
-  async function updateShiftAssignments() {
+  async function updateAssignments() {
     if (!shift) return;
     const actorTypeById = new Map(actors.map((item) => [item.id, item.actorType] as const));
     const payloadAssignments = Object.entries(assignments)
       .filter(([, role]) => !!role)
-      .map(([userId, role]) => ({
-        userId,
-        role: role as ShiftRole,
-        actorType: actorTypeById.get(userId) ?? 'staff',
-      }));
-
+      .map(([userId, role]) => ({ userId, role: role as ShiftRole, actorType: actorTypeById.get(userId) ?? 'staff' }));
     if (payloadAssignments.filter((item) => item.role === 'supervisor').length !== 1) {
-      setMessage('يجب بقاء مشرف واحد فقط داخل الوردية.');
+      setMessage('يجب تحديد مشرف واحد فقط داخل الوردية.');
       return;
     }
-
     setBusy(true);
     setMessage(null);
     try {
@@ -384,7 +378,7 @@ export default function ShiftPage() {
         return;
       }
       await load();
-      setMessage(typeof json?.message === 'string' ? json.message : 'تم تحديث فريق الوردية.');
+      setMessage('تم تحديث فريق الوردية الحالي.');
     } finally {
       setBusy(false);
     }
@@ -512,38 +506,6 @@ export default function ShiftPage() {
 
             {canManageShift ? (
               <>
-                <div className={[opsInset, 'mt-4 p-3'].join(' ')}>
-                  <div className="mb-2 text-right text-sm font-semibold text-[#1e1712]">تعديل فريق الوردية أثناء التشغيل</div>
-                  <div className="space-y-2">
-                    {activeAssignableActors.map((item) => {
-                      const currentRole = assignments[item.id] ?? '';
-                      return (
-                        <div key={`live-${item.id}`} className={[opsInset, 'flex items-center gap-2 p-2'].join(' ')}>
-                          <select
-                            className={[opsSelect, 'w-1/2'].join(' ')}
-                            value={currentRole}
-                            onChange={(event) => setRole(item.id, event.target.value as ShiftRole | '')}
-                          >
-                            <option value="">بدون دور</option>
-                            <option value="supervisor">مشرف التشغيل</option>
-                            <option value="waiter">مضيف الصالة</option>
-                            <option value="american_waiter">أميركان ويتر</option>
-                            <option value="barista">الباريستا</option>
-                            <option value="shisha">مختص الشيشة</option>
-                          </select>
-                          <div className="flex-1 text-right">
-                            <div className="text-sm font-semibold text-[#1e1712]">{item.fullName ?? item.id}</div>
-                            <div className="text-[11px] text-[#8b7866]">{currentRole ? `الدور الحالي: ${roleLabel(currentRole as ShiftRole)}` : 'خارج الوردية الحالية'}</div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <button disabled={busy} onClick={updateShiftAssignments} className={[opsAccentButton, 'mt-3 w-full'].join(' ')}>
-                    {busy ? '...' : 'حفظ تعديل التعيينات'}
-                  </button>
-                </div>
-
                 <div className="mt-4">
                   <label className="block text-right text-xs font-semibold text-[#7d6a59]">ملاحظات الإغلاق</label>
                   <textarea
@@ -624,7 +586,6 @@ export default function ShiftPage() {
                       <option value="">بدون دور</option>
                       <option value="supervisor">مشرف التشغيل</option>
                       <option value="waiter">مضيف الصالة</option>
-                      <option value="american_waiter">أميركان ويتر</option>
                       <option value="barista">الباريستا</option>
                       <option value="shisha">مختص الشيشة</option>
                     </select>

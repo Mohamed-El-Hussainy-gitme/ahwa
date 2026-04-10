@@ -1,5 +1,5 @@
 export type BaseRole = "owner" | "staff";
-export type ShiftRole = "supervisor" | "waiter" | "barista" | "shisha";
+export type ShiftRole = "supervisor" | "waiter" | "barista" | "shisha" | "american_waiter";
 
 export type UserProfile = {
   id: string;

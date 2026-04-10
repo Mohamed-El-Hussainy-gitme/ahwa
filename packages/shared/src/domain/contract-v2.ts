@@ -1,6 +1,6 @@
 export type AccountKind = 'owner' | 'employee';
 
-export type ShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
+export type ShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 
 export type DeviceStatus = 'pending' | 'active' | 'revoked' | 'blocked';
 export type DeviceMode = 'shared_runtime' | 'station_only' | 'owner_private';

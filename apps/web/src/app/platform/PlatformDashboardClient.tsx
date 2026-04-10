@@ -162,7 +162,6 @@ type CreateCafeFormState = {
   cafeDisplayName: string;
   ownerFullName: string;
   ownerPhone: string;
-  ownerLabel: 'owner' | 'partner' | 'branch_manager';
   startsAt: string;
   endsAt: string;
   graceDays: string;
@@ -176,7 +175,6 @@ type CreateCafeFormState = {
 type PasswordSetupInvite = {
   cafeSlug: string;
   ownerPhone: string;
-  ownerLabel: 'owner' | 'partner' | 'branch_manager';
   code: string;
   expiresAt: string | null;
 };
@@ -355,14 +353,7 @@ function paymentStateText(subscription: CafeSubscriptionRow | null | undefined) 
 }
 
 function ownerLabelText(label: 'owner' | 'partner' | 'branch_manager') {
-  switch (label) {
-    case 'owner':
-      return 'مالك';
-    case 'branch_manager':
-      return 'مدير فرع';
-    default:
-      return 'شريك';
-  }
+  return label === 'owner' ? 'مالك' : label === 'branch_manager' ? 'مدير فرع' : 'شريك';
 }
 
 function applyPreset(days: number, complimentary: boolean, status: SubscriptionStatus): Pick<CreateCafeFormState, 'startsAt' | 'endsAt' | 'graceDays' | 'status' | 'amountPaid' | 'isComplimentary'> {
@@ -955,7 +946,6 @@ export default function PlatformDashboardClient({ session }: { session: Platform
     cafeDisplayName: '',
     ownerFullName: '',
     ownerPhone: '',
-    ownerLabel: 'branch_manager',
     ...applyPreset(30, true, 'trial'),
     notes: '',
     databaseKey: '',
@@ -1063,7 +1053,6 @@ export default function PlatformDashboardClient({ session }: { session: Platform
           cafeDisplayName: createCafe.cafeDisplayName,
           ownerFullName: createCafe.ownerFullName,
           ownerPhone: createCafe.ownerPhone,
-          ownerLabel: createCafe.ownerLabel,
           subscriptionStartsAt: fromDateInputValue(createCafe.startsAt),
           subscriptionEndsAt: fromDateInputValue(createCafe.endsAt),
           subscriptionGraceDays: Number(createCafe.graceDays || '0'),
@@ -1083,7 +1072,6 @@ export default function PlatformDashboardClient({ session }: { session: Platform
         setCreateCafeInvite({
           cafeSlug: createCafe.cafeSlug,
           ownerPhone: createCafe.ownerPhone,
-          ownerLabel: createCafe.ownerLabel,
           code: setupCode,
           expiresAt: setupExpiresAt ?? null,
         });
@@ -1093,7 +1081,6 @@ export default function PlatformDashboardClient({ session }: { session: Platform
         cafeDisplayName: '',
         ownerFullName: '',
         ownerPhone: '',
-        ownerLabel: 'branch_manager',
         ...applyPreset(30, true, 'trial'),
         notes: '',
         databaseKey: databaseOptions[0]?.database_key ?? '',
@@ -1366,14 +1353,9 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                     <div className="mt-4 grid gap-3">
                       <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="slug القهوة" value={createCafe.cafeSlug} onChange={(e) => setCreateCafe((v) => ({ ...v, cafeSlug: e.target.value }))} />
                       <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم القهوة" value={createCafe.cafeDisplayName} onChange={(e) => setCreateCafe((v) => ({ ...v, cafeDisplayName: e.target.value }))} />
-                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم جهة الاتصال الأولى" value={createCafe.ownerFullName} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerFullName: e.target.value }))} />
-                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="رقم هاتف جهة الاتصال الأولى" value={createCafe.ownerPhone} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerPhone: e.target.value }))} />
-                      <select className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={createCafe.ownerLabel} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerLabel: e.target.value as CreateCafeFormState['ownerLabel'] }))}>
-                        <option value="branch_manager">مدير فرع</option>
-                        <option value="owner">مالك</option>
-                        <option value="partner">شريك</option>
-                      </select>
-                      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">لن تُدخل كلمة المرور من لوحة المنصة. سيتم إصدار كود تفعيل لمرة واحدة، ويقوم {ownerLabelText(createCafe.ownerLabel)} بتحديد كلمة المرور بنفسه.</div>
+                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="اسم المالك" value={createCafe.ownerFullName} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerFullName: e.target.value }))} />
+                      <input className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" placeholder="رقم هاتف المالك" value={createCafe.ownerPhone} onChange={(e) => setCreateCafe((v) => ({ ...v, ownerPhone: e.target.value }))} />
+                      <div className="rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3 text-sm text-sky-800">لن تُدخل كلمة المرور من لوحة المنصة. سيتم إصدار كود تفعيل لمرة واحدة، والمالك هو من سيحدد كلمة المرور بنفسه.</div>
                       <div className="grid gap-3 md:grid-cols-2">
                         <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={createCafe.startsAt} onChange={(e) => setCreateCafe((v) => ({ ...v, startsAt: e.target.value }))} />
                         <input type="date" className="rounded-2xl border border-slate-200 px-4 py-3 text-sm" value={createCafe.endsAt} onChange={(e) => setCreateCafe((v) => ({ ...v, endsAt: e.target.value }))} />
@@ -1401,9 +1383,8 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                       </select>
                       {createCafeInvite ? (
                         <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-                          <div className="font-semibold">كود تفعيل كلمة المرور للحساب الأول</div>
+                          <div className="font-semibold">كود تفعيل كلمة المرور للمالك</div>
                           <div className="mt-2">القهوة: <strong>{createCafeInvite.cafeSlug}</strong></div>
-                          <div>الدور: <strong>{ownerLabelText(createCafeInvite.ownerLabel)}</strong></div>
                           <div>الهاتف: <strong>{createCafeInvite.ownerPhone}</strong></div>
                           <div className="mt-3 rounded-2xl border border-amber-300 bg-white px-4 py-3 text-center text-lg font-bold tracking-[0.3em]">{createCafeInvite.code}</div>
                           <div className="mt-2 text-xs text-amber-800">الصلاحية حتى {formatDateTime(createCafeInvite.expiresAt)}.</div>

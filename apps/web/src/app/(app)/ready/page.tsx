@@ -15,7 +15,7 @@ import { opsBadge, opsGhostButton, opsMetricCard, opsSurface } from '@/ui/ops/pr
 
 export default function ReadyPage() {
   const { can, shift, effectiveRole } = useAuthz();
-  const canAccess = effectiveRole === 'waiter' || effectiveRole === 'american_waiter' || effectiveRole === 'supervisor';
+  const canAccess = effectiveRole === 'waiter' || effectiveRole === 'supervisor';
   const [readySelection, setReadySelection] = useState<Record<string, number>>({});
   const [localError, setLocalError] = useState<string | null>(null);
 

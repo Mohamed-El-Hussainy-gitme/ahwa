@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
-import { requireOpsActorContext, requireManagementAccess } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
 import { createStaffMember, listStaffMembers } from '@/lib/ops/owner-admin';
 import { publishOpsEvent } from '@/lib/ops/events';
 
@@ -18,7 +18,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ctx = requireManagementAccess(await requireOpsActorContext());
+    const ctx = requireOwnerRole(await requireOpsActorContext());
 
     const staffId = await createStaffMember({
       cafeId: ctx.cafeId,

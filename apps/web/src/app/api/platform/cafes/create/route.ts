@@ -35,7 +35,7 @@ export async function POST(request: Request) {
       !body.ownerFullName?.trim() ||
       !body.ownerPhone?.trim()
     ) {
-      return platformFail(400, 'INVALID_INPUT', 'Cafe and primary contact fields are required.');
+      return platformFail(400, 'INVALID_INPUT', 'Cafe and owner fields are required.');
     }
 
     const cafeLoadTier = typeof body.cafeLoadTier === 'string' ? body.cafeLoadTier : 'small';

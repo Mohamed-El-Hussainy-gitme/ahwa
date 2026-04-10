@@ -10,7 +10,7 @@ import { useOpsChrome } from '@/lib/ops/chrome';
 import { AppIcon } from '@/ui/icons/AppIcon';
 import BrandLogo from '@/ui/brand/BrandLogo';
 
-type RoleView = 'owner' | 'branch_manager' | 'supervisor' | 'waiter' | 'american_waiter' | 'barista' | 'shisha' | 'unassigned';
+type RoleView = 'owner' | 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter' | 'unassigned';
 type SyncState = ReturnType<typeof useOpsChrome>['sync']['state'];
 
 type QuickMetric = {
@@ -174,7 +174,7 @@ function buildQuickMetrics(input: {
   }
 
   if (pathname === '/orders') {
-    if (role === 'waiter' || role === 'american_waiter' || role === 'supervisor') {
+    if (role === 'waiter' || role === 'supervisor' || role === 'american_waiter') {
       return [sessionMetric];
     }
 
@@ -198,7 +198,7 @@ function buildQuickMetrics(input: {
   }
 
   if (pathname === '/ready') {
-    if (role === 'waiter' || role === 'american_waiter' || role === 'supervisor') {
+    if (role === 'waiter' || role === 'supervisor' || role === 'american_waiter') {
       return [
         {
           key: 'ready-age',
@@ -262,11 +262,19 @@ function buildQuickMetrics(input: {
       ];
     }
 
-    if (role === 'waiter' || role === 'american_waiter') {
+    if (role === 'waiter') {
       return [sessionMetric];
     }
 
-    if (role === 'owner' || role === 'branch_manager' || role === 'supervisor' || role === 'american_waiter') {
+    if (role === 'american_waiter') {
+      return [
+        { key: 'pending-count', label: 'الانتظار', value: totalPending, href: totalPending > 0 ? '/kitchen#queue-panel' : '/dashboard', tone: countTone(totalPending, 'pending') },
+        sessionMetric,
+        { key: 'billing', label: 'للحساب', value: summary.billableQty, href: '/billing', tone: countTone(summary.billableQty, 'billing') },
+      ];
+    }
+
+    if (role === 'owner' || role === 'supervisor') {
       return [
         {
           key: 'pending-count',
@@ -324,7 +332,7 @@ export function MobileShell({
   const stickyFooterBox = useElementHeight<HTMLDivElement>();
   const bottomNavBox = useElementHeight<HTMLDivElement>();
 
-  const role: RoleView = can.owner ? 'owner' : can.branchManager ? 'branch_manager' : effectiveRole ?? 'unassigned';
+  const role: RoleView = can.owner ? 'owner' : effectiveRole ?? 'unassigned';
   const quickMetrics = buildQuickMetrics({
     pathname,
     role,

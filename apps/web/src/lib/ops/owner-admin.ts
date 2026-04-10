@@ -1,7 +1,6 @@
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
-export type ShiftRole = 'supervisor' | 'waiter' | 'american_waiter' | 'barista' | 'shisha';
-export type OwnerLabel = 'owner' | 'partner' | 'branch_manager';
+export type ShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 
 type CafeDatabaseScope = {
   cafeId: string;
@@ -10,24 +9,6 @@ type CafeDatabaseScope = {
 
 function ops(databaseKey: string) {
   return supabaseAdminForDatabase(databaseKey).schema('ops');
-}
-
-function toAssignmentPayload(assignments: Array<{ userId: string; role: ShiftRole; actorType?: 'staff' | 'owner' }>) {
-  return assignments.map((assignment) =>
-    assignment.actorType === 'owner'
-      ? {
-          role: assignment.role,
-          actorType: 'owner',
-          userId: assignment.userId,
-          owner_user_id: assignment.userId,
-        }
-      : {
-          role: assignment.role,
-          actorType: 'staff',
-          userId: assignment.userId,
-          staff_member_id: assignment.userId,
-        },
-  );
 }
 
 export function currentCairoDate(): string {
@@ -64,44 +45,6 @@ export async function listStaffMembers(scope: CafeDatabaseScope, includeInactive
   }));
 }
 
-export async function listOwnerAccounts(scope: CafeDatabaseScope) {
-  const { data, error } = await ops(scope.databaseKey)
-    .from('owner_users')
-    .select('id, full_name, phone, owner_label, is_active, created_at')
-    .eq('cafe_id', scope.cafeId)
-    .order('created_at', { ascending: false });
-
-  if (error) throw error;
-
-  return (data ?? []).map((item) => ({
-    id: String(item.id),
-    fullName: item.full_name ? String(item.full_name) : null,
-    phone: item.phone ? String(item.phone) : null,
-    ownerLabel: (item.owner_label === 'partner' || item.owner_label === 'branch_manager' ? item.owner_label : 'owner') as OwnerLabel,
-    isActive: !!item.is_active,
-    createdAt: String(item.created_at),
-  }));
-}
-
-export async function createManagementAccount(input: CafeDatabaseScope & {
-  createdByOwnerId: string;
-  fullName: string;
-  phone: string;
-  password: string;
-  ownerLabel: Extract<OwnerLabel, 'partner' | 'branch_manager'>;
-}) {
-  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_create_management_account', {
-    p_cafe_id: input.cafeId,
-    p_created_by_owner_id: input.createdByOwnerId,
-    p_full_name: input.fullName,
-    p_phone: input.phone,
-    p_password: input.password,
-    p_owner_label: input.ownerLabel,
-  });
-  if (rpc.error) throw rpc.error;
-  return rpc.data;
-}
-
 export async function createStaffMember(input: CafeDatabaseScope & {
   fullName: string;
   pin: string;
@@ -117,6 +60,15 @@ export async function createStaffMember(input: CafeDatabaseScope & {
   const staffId = String((rpc.data as { staff_member_id?: string } | null)?.staff_member_id ?? '');
   if (!staffId) throw new Error('STAFF_CREATE_FAILED');
   return staffId;
+}
+
+export async function setStaffMemberActive(input: CafeDatabaseScope & { staffMemberId: string; isActive: boolean }) {
+  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_set_staff_member_active', {
+    p_cafe_id: input.cafeId,
+    p_staff_member_id: input.staffMemberId,
+    p_is_active: input.isActive,
+  });
+  if (rpc.error) throw rpc.error;
 }
 
 export async function setStaffMemberStatus(input: CafeDatabaseScope & {
@@ -250,6 +202,34 @@ export async function listShiftHistory(scope: CafeDatabaseScope, limit = 50) {
   }));
 }
 
+export async function updateOpenShiftAssignments(input: CafeDatabaseScope & {
+  shiftId: string;
+  assignments: Array<{ userId: string; role: ShiftRole; actorType?: 'staff' | 'owner' }>;
+}) {
+  const admin = ops(input.databaseKey);
+  const { error: deactivateError } = await admin
+    .from('shift_role_assignments')
+    .update({ is_active: false })
+    .eq('cafe_id', input.cafeId)
+    .eq('shift_id', input.shiftId)
+    .eq('is_active', true);
+  if (deactivateError) throw deactivateError;
+
+  if (!input.assignments.length) return;
+
+  const rows = input.assignments.map((assignment) => ({
+    cafe_id: input.cafeId,
+    shift_id: input.shiftId,
+    role_code: assignment.role,
+    staff_member_id: assignment.actorType === 'owner' ? null : assignment.userId,
+    owner_user_id: assignment.actorType === 'owner' ? assignment.userId : null,
+    is_active: true,
+  }));
+
+  const { error: insertError } = await admin.from('shift_role_assignments').insert(rows);
+  if (insertError) throw insertError;
+}
+
 export async function openShiftWithAssignments(input: CafeDatabaseScope & {
   ownerUserId: string;
   kind: 'morning' | 'evening';
@@ -263,7 +243,21 @@ export async function openShiftWithAssignments(input: CafeDatabaseScope & {
     p_business_date: currentCairoDate(),
     p_opened_by_owner_id: input.ownerUserId,
     p_notes: input.notes ?? null,
-    p_assignments: toAssignmentPayload(input.assignments),
+    p_assignments: input.assignments.map((assignment) =>
+      assignment.actorType === 'owner'
+        ? {
+            role: assignment.role,
+            actorType: 'owner',
+            userId: assignment.userId,
+            owner_user_id: assignment.userId,
+          }
+        : {
+            role: assignment.role,
+            actorType: 'staff',
+            userId: assignment.userId,
+            staff_member_id: assignment.userId,
+          },
+    ),
   });
   if (openRpc.error) throw openRpc.error;
 
@@ -278,21 +272,6 @@ export async function openShiftWithAssignments(input: CafeDatabaseScope & {
         ? rpcData.mode
         : 'created',
   } as const;
-}
-
-export async function replaceShiftAssignments(input: CafeDatabaseScope & {
-  shiftId: string;
-  ownerUserId: string;
-  assignments: Array<{ userId: string; role: ShiftRole; actorType?: 'staff' | 'owner' }>;
-}) {
-  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_replace_shift_assignments', {
-    p_cafe_id: input.cafeId,
-    p_shift_id: input.shiftId,
-    p_updated_by_owner_id: input.ownerUserId,
-    p_assignments: toAssignmentPayload(input.assignments),
-  });
-  if (rpc.error) throw rpc.error;
-  return rpc.data;
 }
 
 async function autoCloseClosableSessions(input: {

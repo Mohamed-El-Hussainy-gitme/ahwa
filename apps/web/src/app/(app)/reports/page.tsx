@@ -462,23 +462,19 @@ export default function ReportsPage() {
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const loader = useCallback(() => opsClient.reportsWorkspace(), []);
   const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, {
-    enabled: session.can.viewReports,
+    enabled: session.user?.baseRole === 'owner',
     cacheKey: 'workspace:reports',
     staleTimeMs: 60_000,
   });
+  const isBranchManager = session.user?.ownerLabel === 'branch_manager';
+  const safeTab: ReportTab = isBranchManager ? 'week' : tab;
   const selectedPeriod = useMemo(
     () => data && (safeTab === 'day' || safeTab === 'week' || safeTab === 'month' || safeTab === 'year') ? data.periods[safeTab] : null,
     [data, safeTab],
   );
 
-  if (!session.can.viewReports) {
+  if (session.user?.baseRole !== 'owner') {
     return <AccessDenied title="التقارير" message="هذه الصفحة للإدارة فقط." />;
-  }
-
-  const availableTabs = session.can.viewWeeklyReportsOnly ? ['week'] as const : ['current', 'day', 'week', 'month', 'year', 'deferred'] as const;
-  const safeTab = session.can.viewWeeklyReportsOnly ? 'week' : tab;
-  if (session.can.viewWeeklyReportsOnly && tab !== 'week') {
-    setTimeout(() => setTab('week'), 0);
   }
 
   const currentShift = data?.currentShift ?? null;
@@ -520,7 +516,7 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-6">
-          {(session.can.viewWeeklyReportsOnly ? [{ key: 'week', label: 'الأسبوع' }] : [
+          {(isBranchManager ? [{ key: 'week', label: 'الأسبوع' }] : [
             { key: 'current', label: 'الوردية الحالية' },
             { key: 'day', label: 'اليوم' },
             { key: 'week', label: 'الأسبوع' },
@@ -536,7 +532,7 @@ export default function ReportsPage() {
               }}
               className={[
                 'rounded-2xl border px-2 py-2 text-xs font-semibold',
-                tab === item.key ? 'border-neutral-900 bg-[#1e1712] text-white' : 'bg-[#f8f1e7]',
+                safeTab === item.key ? 'border-neutral-900 bg-[#1e1712] text-white' : 'bg-[#f8f1e7]',
               ].join(' ')}
             >
               {item.label}
@@ -545,7 +541,7 @@ export default function ReportsPage() {
         </div>
       </div>
 
-      {tab === 'current' ? (
+      {safeTab === 'current' ? (
         <section className="mt-3 space-y-3">
           <TotalsHero
             title="الوردية الحالية"

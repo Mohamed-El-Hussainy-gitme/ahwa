@@ -205,7 +205,9 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
 export default function ReportsPrintPage() {
   const { user } = useAuthz();
   const searchParams = useSearchParams();
-  const tab = searchParams.get('tab') ?? 'current';
+  const rawTab = searchParams.get('tab') ?? 'current';
+  const isBranchManager = user?.ownerLabel === 'branch_manager';
+  const tab = isBranchManager ? 'week' : rawTab;
   const loader = useCallback(() => opsClient.reportsWorkspace(), []);
   const { data, error } = useOpsWorkspace<ReportsWorkspace>(loader, {
     cacheKey: 'workspace:reports:print',
@@ -241,7 +243,7 @@ export default function ReportsPrintPage() {
   }, [data, tab]);
 
   if (user?.baseRole !== 'owner') {
-    return <AccessDenied title="تصدير التقارير" message="هذه الصفحة للمالك فقط." />;
+    return <AccessDenied title="تصدير التقارير" message="هذه الصفحة للإدارة فقط." />;
   }
 
   return (

@@ -11,7 +11,7 @@ type RuntimeMe = {
   fullName?: string;
   accountKind?: 'owner' | 'employee';
   ownerLabel?: 'owner' | 'partner' | 'branch_manager';
-  shiftRole?: 'supervisor' | 'waiter' | 'barista' | 'shisha';
+  shiftRole?: 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 };
 
 function issueOptions(source: 'login' | 'in_app') {
@@ -68,7 +68,7 @@ export default function SupportRequestClient() {
     if (runtimeMe.shiftRole === 'supervisor') return shiftRoleLabel(runtimeMe.shiftRole, 'person');
     if (runtimeMe.shiftRole === 'barista') return shiftRoleLabel(runtimeMe.shiftRole, 'person');
     if (runtimeMe.shiftRole === 'shisha') return shiftRoleLabel(runtimeMe.shiftRole, 'person');
-    if (runtimeMe.shiftRole === 'waiter') return shiftRoleLabel(runtimeMe.shiftRole, 'person');
+    if (runtimeMe.shiftRole === 'waiter' || runtimeMe.shiftRole === 'american_waiter') return shiftRoleLabel(runtimeMe.shiftRole, 'person');
     return 'مستخدم داخل النظام';
   }, [runtimeMe]);
 

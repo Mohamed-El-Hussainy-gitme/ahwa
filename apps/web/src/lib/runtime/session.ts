@@ -2,7 +2,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 
 export const RUNTIME_SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 14;
 
-export type RuntimeShiftRole = 'supervisor' | 'waiter' | 'american_waiter' | 'barista' | 'shisha';
+export type RuntimeShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 export type RuntimeAccountKind = 'owner' | 'employee';
 export type RuntimeSessionVersion = 1 | 2;
 
@@ -102,21 +102,14 @@ export function decodeRuntimeSession(raw: string | null | undefined): RuntimeSes
       userId: parsed.userId,
       fullName: parsed.fullName,
       accountKind: parsed.accountKind,
-      ownerLabel:
-        parsed.ownerLabel === 'partner'
-          ? 'partner'
-          : parsed.ownerLabel == 'branch_manager'
-            ? 'branch_manager'
-            : parsed.ownerLabel === 'owner'
-              ? 'owner'
-              : undefined,
+      ownerLabel: parsed.ownerLabel === 'partner' ? 'partner' : parsed.ownerLabel === 'branch_manager' ? 'branch_manager' : parsed.ownerLabel === 'owner' ? 'owner' : undefined,
       shiftId: typeof parsed.shiftId === 'string' ? parsed.shiftId : null,
       shiftRole:
         parsed.shiftRole === 'supervisor' ||
         parsed.shiftRole === 'waiter' ||
-        parsed.shiftRole === 'american_waiter' ||
         parsed.shiftRole === 'barista' ||
-        parsed.shiftRole === 'shisha'
+        parsed.shiftRole === 'shisha' ||
+        parsed.shiftRole === 'american_waiter'
           ? parsed.shiftRole
           : null,
       actorOwnerId: typeof parsed.actorOwnerId === 'string' ? parsed.actorOwnerId : null,

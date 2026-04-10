@@ -42,7 +42,7 @@ function asNumber(value: unknown): number | null {
 }
 
 function asOwnerLabel(value: unknown): PlatformCafeOwnerLabel | null {
-  return value === 'owner' || value === 'partner' ? value : null;
+  return value === 'owner' || value === 'partner' || value === 'branch_manager' ? value : null;
 }
 
 function asSubscriptionStatus(value: unknown): PlatformSubscriptionStatus | null {

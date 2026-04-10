@@ -16,12 +16,12 @@ export function shiftRoleLabel(role: ShiftRole | null | undefined, context: Role
       return 'مشرف التشغيل';
     case 'waiter':
       return context === 'person' ? 'مضيف الصالة' : 'الصالة';
-    case 'american_waiter':
-      return context === 'person' ? 'أميركان ويتر' : 'أميركان ويتر';
     case 'barista':
       return 'الباريستا';
     case 'shisha':
       return context === 'person' ? 'مختص الشيشة' : 'الشيشة';
+    case 'american_waiter':
+      return context === 'person' ? 'أميركان ويتر' : 'أميركان';
     default:
       return 'غير محدد';
   }

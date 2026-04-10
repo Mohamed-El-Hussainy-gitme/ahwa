@@ -38,6 +38,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     cafeSlug: me.tenantSlug,
     name: me.fullName,
     baseRole,
+    ownerLabel: me.ownerLabel,
   };
 
   return (

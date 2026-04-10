@@ -34,7 +34,7 @@ export type RuntimeMe = {
   accountKind: RuntimeAccountKind;
   ownerLabel?: 'owner' | 'partner' | 'branch_manager';
   shiftId?: string;
-  shiftRole?: 'supervisor' | 'waiter' | 'american_waiter' | 'barista' | 'shisha';
+  shiftRole?: 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
   supportAccess?: {
     mode: 'platform_support';
     messageId: string;

@@ -10,7 +10,7 @@ export type OperationalRequestContext = {
   actorOwnerId: string | null;
   actorStaffId: string | null;
   shiftId: string | null;
-  shiftRole: 'supervisor' | 'waiter' | 'barista' | 'shisha' | null;
+  shiftRole: 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter' | null;
 };
 
 export function toOperationalRequestContext(session: BoundRuntimeSessionPayload): OperationalRequestContext {
