@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -202,7 +203,7 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
   );
 }
 
-export default function ReportsPrintPage() {
+function ReportsPrintPageContent() {
   const { user } = useAuthz();
   const searchParams = useSearchParams();
   const rawTab = searchParams.get('tab') ?? 'current';
@@ -265,5 +266,13 @@ export default function ReportsPrintPage() {
         <Link href="/reports" className="text-sm font-semibold text-neutral-700 underline underline-offset-4">العودة إلى التقارير</Link>
       </div>
     </PrintPageFrame>
+  );
+}
+
+export default function ReportsPrintPage() {
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-white" />}>
+      <ReportsPrintPageContent />
+    </Suspense>
   );
 }

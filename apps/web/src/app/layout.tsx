@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import ServiceWorkerRegistrar from "@/components/ServiceWorkerRegistrar";
-import SessionLifecycleClient from "@/components/SessionLifecycleClient";
 
 const resolvedAppUrl =
   process.env.NEXT_PUBLIC_APP_URL ??
@@ -63,7 +62,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ar" dir="rtl">
       <body className="antialiased">
         <ServiceWorkerRegistrar />
-        <SessionLifecycleClient />
         {children}
       </body>
     </html>

@@ -1,5 +1,6 @@
 'use client';
 
+import { Suspense } from 'react';
 import Link from 'next/link';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
@@ -54,7 +55,7 @@ function paymentKindLabel(kind: BillingReceipt['paymentKind']) {
   }
 }
 
-export default function BillingReceiptPage() {
+function BillingReceiptPageContent() {
   const { can, shift } = useAuthz();
   const searchParams = useSearchParams();
   const paymentId = String(searchParams.get('paymentId') ?? '').trim();
@@ -231,5 +232,13 @@ export default function BillingReceiptPage() {
         </div>
       </PrintPageFrame>
     </>
+  );
+}
+
+export default function BillingReceiptPage() {
+  return (
+    <Suspense fallback={<div className="min-h-dvh bg-white" />}>
+      <BillingReceiptPageContent />
+    </Suspense>
   );
 }

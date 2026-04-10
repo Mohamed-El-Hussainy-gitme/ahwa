@@ -19,9 +19,7 @@ type IconName =
   | 'spark'
   | 'phone'
   | 'lock'
-  | 'dashboard'
-  | 'eye'
-  | 'eyeOff';
+  | 'dashboard';
 
 type AppIconProps = SVGProps<SVGSVGElement> & {
   name: IconName;
@@ -217,22 +215,6 @@ function renderPath(name: IconName) {
           <rect x="13" y="4" width="7" height="11" rx="1.75" />
           <rect x="4" y="13" width="7" height="7" rx="1.75" />
           <rect x="13" y="17" width="7" height="3" rx="1.5" />
-        </>
-      );
-    case 'eye':
-      return (
-        <>
-          <path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z" />
-          <circle cx="12" cy="12" r="2.75" />
-        </>
-      );
-    case 'eyeOff':
-      return (
-        <>
-          <path d="M3 3l18 18" />
-          <path d="M10.6 5.2A10.9 10.9 0 0 1 12 5c6 0 9.5 7 9.5 7a17.6 17.6 0 0 1-4 4.7" />
-          <path d="M8.9 8.9A4 4 0 0 0 8 12a4 4 0 0 0 6.4 3.2" />
-          <path d="M6.3 6.4C4.1 8 2.5 12 2.5 12s3.5 7 9.5 7a10.7 10.7 0 0 0 3.2-.5" />
         </>
       );
     default:

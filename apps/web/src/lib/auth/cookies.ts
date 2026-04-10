@@ -5,6 +5,7 @@ export const RUNTIME_SESSION_COOKIE = "ahwa_runtime_session";
 export const PLATFORM_SESSION_COOKIE = "ahwa_platform_session";
 export const DEVICE_TOKEN_COOKIE = "ahwa_device_token";
 export const GATE_SLUG_COOKIE = "ahwa_gate_slug";
+export const LAST_RUNTIME_PATH_COOKIE = "ahwa_last_runtime_path";
 
 function secure() {
   return process.env.NODE_ENV === "production";
@@ -55,7 +56,6 @@ export function setGateSlugCookie(response: NextResponse, slug: string, maxAgeSe
   });
 }
 
-
 export function clearRuntimeSessionCookie(response: NextResponse) {
   response.cookies.set(RUNTIME_SESSION_COOKIE, '', {
     httpOnly: true,
@@ -76,4 +76,12 @@ export function clearAuthCookies(response: NextResponse) {
       maxAge: 0,
     });
   }
+
+  response.cookies.set(LAST_RUNTIME_PATH_COOKIE, "", {
+    httpOnly: false,
+    secure: secure(),
+    sameSite: "lax",
+    path: "/",
+    maxAge: 0,
+  });
 }

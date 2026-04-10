@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
@@ -12,7 +12,6 @@ import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { ReadyDeliveryPanel } from '@/ui/ops/ReadyDeliveryPanel';
 import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { StickyActionBar } from '@/ui/StickyActionBar';
-import { submitOnEnter } from '@/lib/forms/submitOnEnter';
 import { ProductAddonPicker, type ProductAddonOption } from '@/ui/ProductAddonPicker';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
 import { shouldReloadWaiterCatalogWorkspace, shouldReloadWaiterLiveWorkspace } from '@/lib/ops/reload-rules';
@@ -61,6 +60,12 @@ function buildSessionCardView(session: OpsSessionSummary, items: SessionOrderIte
     openedLabel: formatClockLabel(session.openedAt),
     activityLabel: formatClockLabel(latestAt),
   };
+}
+
+function handleDialogSubmitKeyDown(event: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>, submit: () => void) {
+  if (event.key !== 'Enter' || event.shiftKey || event.nativeEvent.isComposing) return;
+  event.preventDefault();
+  submit();
 }
 
 export default function OrdersPage() {
@@ -605,10 +610,10 @@ export default function OrdersPage() {
               ref={composerInputRef}
               value={composerLabel}
               onChange={(e) => setComposerLabel(e.target.value)}
-              onKeyDown={(event) => submitOnEnter(event, confirmComposer)}
-              enterKeyHint="go"
               placeholder="مثال: طاولة 7 أو أحمد"
               className="mt-4 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
+              enterKeyHint="done"
+              onKeyDown={(event) => handleDialogSubmitKeyDown(event, confirmComposer)}
             />
             <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولد النظام اسمًا تلقائيًا.</div>
             <div className="mt-4 flex gap-2">
@@ -634,10 +639,10 @@ export default function OrdersPage() {
               ref={noteTextareaRef}
               value={noteDraft}
               onChange={(e) => setNoteDraft(e.target.value)}
-              onKeyDown={(event) => submitOnEnter(event, confirmNoteComposer, { allowTextarea: true })}
-              enterKeyHint="go"
               placeholder="مثال: بدون سكر • بعد الشيشة • تجهيز سريع"
               className="mt-4 min-h-28 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712] placeholder:text-[#a08a75]"
+              enterKeyHint="done"
+              onKeyDown={(event) => handleDialogSubmitKeyDown(event, confirmNoteComposer)}
             />
             {notePresets.length ? (
               <div className="mt-3">

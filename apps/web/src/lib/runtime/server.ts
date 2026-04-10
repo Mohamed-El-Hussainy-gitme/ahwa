@@ -1,3 +1,4 @@
+import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import {
   getEnrichedRuntimeMeFromCookie,
@@ -25,4 +26,12 @@ export async function requireRuntimeMe(): Promise<RuntimeMe> {
     redirect('/login');
   }
   return me;
+}
+
+export async function getRuntimeResumePath(): Promise<string | null> {
+  const jar = await cookies();
+  const raw = jar.get('ahwa_last_runtime_path')?.value ?? '';
+  if (!raw || !raw.startsWith('/')) return null;
+  if (raw.startsWith('/login') || raw.startsWith('/owner-login') || raw.startsWith('/owner-password') || raw.startsWith('/platform')) return null;
+  return raw;
 }

@@ -1,8 +1,10 @@
 import { NextResponse, type NextRequest } from 'next/server';
 import { PLATFORM_ADMIN_COOKIE } from '@/lib/platform-auth/session';
+import { RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 
 const RUNTIME_SESSION_COOKIE = 'ahwa_runtime_session';
 const LEGACY_PLATFORM_SESSION_COOKIE = 'ahwa_platform_session';
+const LAST_RUNTIME_PATH_COOKIE = 'ahwa_last_runtime_path';
 
 function isPublicPath(path: string) {
   return (
@@ -12,11 +14,8 @@ function isPublicPath(path: string) {
     path === '/owner-password' ||
     path === '/partner/login' ||
     path === '/platform/login' ||
-
     /^\/c\/[^/]+\/?$/.test(path) ||
-
     /^\/c\/[^/]+\/(login|activate)\/?$/.test(path) ||
-
     path.startsWith('/api/auth/') ||
     path.startsWith('/api/public/') ||
     path.startsWith('/api/device-gate/') ||
@@ -37,11 +36,7 @@ function isPublicPath(path: string) {
 function isPlatformPath(path: string) {
   return (
     path.startsWith('/platform') ||
-    (
-      path.startsWith('/api/platform/') &&
-      path !== '/api/platform/auth/login' &&
-      path !== '/api/platform/bootstrap'
-    )
+    (path.startsWith('/api/platform/') && path !== '/api/platform/auth/login' && path !== '/api/platform/bootstrap')
   );
 }
 
@@ -66,21 +61,38 @@ function isRuntimeProtectedPath(path: string) {
 
 export function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
+  const runtimeSessionToken = req.cookies.get(RUNTIME_SESSION_COOKIE)?.value ?? '';
+  const hasRuntimeSession = runtimeSessionToken.length > 0;
+  const hasPlatformSession = !!req.cookies.get(PLATFORM_ADMIN_COOKIE)?.value || !!req.cookies.get(LEGACY_PLATFORM_SESSION_COOKIE)?.value;
 
-  if (isPublicPath(path)) {
-    return NextResponse.next();
-  }
+  const withRuntimeResume = (response: NextResponse) => {
+    if (!hasRuntimeSession) return response;
 
-  const hasRuntimeSession = !!req.cookies.get(RUNTIME_SESSION_COOKIE)?.value;
-  const hasPlatformSession =
-    !!req.cookies.get(PLATFORM_ADMIN_COOKIE)?.value ||
-    !!req.cookies.get(LEGACY_PLATFORM_SESSION_COOKIE)?.value;
+    response.cookies.set(RUNTIME_SESSION_COOKIE, runtimeSessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: RUNTIME_SESSION_MAX_AGE_SECONDS,
+    });
 
-  if (isPlatformPath(path)) {
-    if (hasPlatformSession) {
-      return NextResponse.next();
+    if (isRuntimeProtectedPath(path) && !path.startsWith('/api/')) {
+      response.cookies.set(LAST_RUNTIME_PATH_COOKIE, `${path}${req.nextUrl.search}`, {
+        httpOnly: false,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        path: '/',
+        maxAge: RUNTIME_SESSION_MAX_AGE_SECONDS,
+      });
     }
 
+    return response;
+  };
+
+  if (isPublicPath(path)) return withRuntimeResume(NextResponse.next());
+
+  if (isPlatformPath(path)) {
+    if (hasPlatformSession) return withRuntimeResume(NextResponse.next());
     const url = req.nextUrl.clone();
     url.pathname = '/platform/login';
     url.searchParams.set('next', path);
@@ -88,10 +100,7 @@ export function proxy(req: NextRequest) {
   }
 
   if (isRuntimeProtectedPath(path)) {
-    if (hasRuntimeSession) {
-      return NextResponse.next();
-    }
-
+    if (hasRuntimeSession) return withRuntimeResume(NextResponse.next());
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('next', path);
@@ -105,7 +114,7 @@ export function proxy(req: NextRequest) {
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return withRuntimeResume(NextResponse.next());
 }
 
 export const config = {

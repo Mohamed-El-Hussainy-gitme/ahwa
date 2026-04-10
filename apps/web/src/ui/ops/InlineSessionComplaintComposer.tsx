@@ -78,6 +78,8 @@ export function InlineSessionComplaintComposer({ sessionId, sessionLabel, busy =
             rows={3}
             placeholder="اكتب الملاحظة أو البلاغ التشغيلي بوضوح"
             className={opsInput}
+            enterKeyHint="done"
+            onKeyDown={(event) => { if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return; event.preventDefault(); void submit(); }}
           />
           <div className="flex items-center justify-end gap-2">
             <button
