@@ -7,6 +7,58 @@ type CafeDatabaseScope = {
   databaseKey: string;
 };
 
+
+export type OwnerAccountLabel = 'owner' | 'partner' | 'branch_manager';
+
+export async function listOwnerAccounts(scope: CafeDatabaseScope, includeInactive = true) {
+  let query = ops(scope.databaseKey)
+    .from('owner_users')
+    .select('id, full_name, phone, owner_label, is_active, created_at')
+    .eq('cafe_id', scope.cafeId)
+    .order('created_at', { ascending: true });
+
+  if (!includeInactive) {
+    query = query.eq('is_active', true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((item) => ({
+    id: String(item.id),
+    fullName: item.full_name ? String(item.full_name) : null,
+    phone: item.phone ? String(item.phone) : null,
+    ownerLabel: item.owner_label === 'partner' ? 'partner' : item.owner_label === 'branch_manager' ? 'branch_manager' : 'owner' as OwnerAccountLabel,
+    isActive: !!item.is_active,
+    createdAt: String(item.created_at),
+  }));
+}
+
+export async function createManagementAccount(input: CafeDatabaseScope & {
+  actorOwnerId: string;
+  fullName: string;
+  phone: string;
+  password: string;
+  ownerLabel?: OwnerAccountLabel;
+}) {
+  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_create_management_account', {
+    p_cafe_id: input.cafeId,
+    p_actor_owner_id: input.actorOwnerId,
+    p_full_name: input.fullName,
+    p_phone: input.phone,
+    p_password: input.password,
+    p_owner_label: input.ownerLabel ?? 'branch_manager',
+  });
+  if (rpc.error) throw rpc.error;
+  const payload = (rpc.data ?? {}) as { owner_user_id?: string | null; owner_label?: string | null };
+  const ownerUserId = String(payload.owner_user_id ?? '').trim();
+  if (!ownerUserId) throw new Error('MANAGEMENT_ACCOUNT_CREATE_FAILED');
+  return {
+    ownerUserId,
+    ownerLabel: payload.owner_label === 'partner' ? 'partner' : payload.owner_label === 'branch_manager' ? 'branch_manager' : 'owner' as OwnerAccountLabel,
+  };
+}
+
 function ops(databaseKey: string) {
   return supabaseAdminForDatabase(databaseKey).schema('ops');
 }

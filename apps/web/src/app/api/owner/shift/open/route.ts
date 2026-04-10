@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { publishOpsEvent } from '@/lib/ops/events';
-import { requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerOrManager } from '@/app/api/ops/_helpers';
 import { openShiftWithAssignments } from '@/lib/ops/owner-admin';
 
 const ShiftKind = z.enum(['morning', 'evening']);
@@ -12,7 +12,7 @@ const Input = z.object({
     .array(
       z.object({
         userId: z.string().uuid(),
-        role: z.enum(['supervisor', 'waiter', 'barista', 'shisha']),
+        role: z.enum(['supervisor', 'waiter', 'barista', 'shisha', 'american_waiter']),
         actorType: z.enum(['staff', 'owner']).optional(),
       }),
     )
@@ -32,17 +32,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const ctx = requireOwnerRole(await requireOpsActorContext());
-
-    const hasForeignOwnerAssignment = parsed.data.assignments.some(
-      (item) => item.actorType === 'owner' && item.userId !== ctx.actorOwnerId,
-    );
-    if (hasForeignOwnerAssignment) {
-      return NextResponse.json(
-        { ok: false, error: { code: 'INVALID_OWNER_ASSIGNMENT_TARGET', message: 'يمكنك تعيين نفسك فقط كمالك داخل الوردية.' } },
-        { status: 403 },
-      );
-    }
+    const ctx = requireOwnerOrManager(await requireOpsActorContext());
 
     const opened = await openShiftWithAssignments({
       cafeId: ctx.cafeId,
@@ -87,9 +77,7 @@ export async function POST(request: Request) {
               ? 'لا يمكن تحديد أكثر من باريستا واحد في نفس الوردية.'
               : code === 'duplicate_shift_assignment'
                 ? 'لا يمكن تكرار نفس التعيين داخل نفس الطلب.'
-                : code === 'INVALID_OWNER_ASSIGNMENT_TARGET'
-                  ? 'يمكنك تعيين نفسك فقط كمالك داخل الوردية.'
-                  : code;
+: code;
     return NextResponse.json({ ok: false, error: { code, message } }, { status: 400 });
   }
 }

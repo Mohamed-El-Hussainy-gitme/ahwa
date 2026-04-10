@@ -21,7 +21,7 @@ export function shiftRoleLabel(role: ShiftRole | null | undefined, context: Role
     case 'shisha':
       return context === 'person' ? 'مختص الشيشة' : 'الشيشة';
     case 'american_waiter':
-      return context === 'person' ? 'أميركان ويتر' : 'أميركان';
+      return context === 'person' ? 'الكابتن كابتن' : 'الكابتن';
     default:
       return 'غير محدد';
   }

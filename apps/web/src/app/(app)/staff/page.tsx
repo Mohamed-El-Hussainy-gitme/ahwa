@@ -25,6 +25,15 @@ type StaffRow = {
   createdAt: string;
 };
 
+type ManagementRow = {
+  id: string;
+  fullName: string | null;
+  phone: string | null;
+  ownerLabel: 'owner' | 'partner' | 'branch_manager';
+  isActive: boolean;
+  createdAt: string;
+};
+
 function statusLabel(status: StaffEmploymentStatus) {
   switch (status) {
     case 'active':
@@ -53,21 +62,37 @@ export default function StaffPage() {
   const [pin, setPin] = useState('');
   const [employeeCode, setEmployeeCode] = useState('');
   const [staff, setStaff] = useState<StaffRow[]>([]);
+  const [management, setManagement] = useState<ManagementRow[]>([]);
+  const [managerName, setManagerName] = useState('');
+  const [managerPhone, setManagerPhone] = useState('');
+  const [managerPassword, setManagerPassword] = useState('');
   const [statusFilter, setStatusFilter] = useState<'active' | 'inactive' | 'left' | 'all'>('active');
   const [busy, setBusy] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
 
   async function refresh() {
     setMsg(null);
-    const res = await fetch('/api/owner/staff/list', { cache: 'no-store' });
-    const json = await res.json().catch(() => null);
+    const [staffRes, managementRes] = await Promise.all([
+      fetch('/api/owner/staff/list', { cache: 'no-store' }),
+      fetch('/api/owner/management/list', { cache: 'no-store' }),
+    ]);
+    const [staffJson, managementJson] = await Promise.all([
+      staffRes.json().catch(() => null),
+      managementRes.json().catch(() => null),
+    ]);
 
-    if (!json?.ok) {
+    if (!staffJson?.ok) {
       setStaff([]);
-      setMsg(extractApiErrorMessage(json, 'FAILED_TO_LOAD_STAFF'));
+      setMsg(extractApiErrorMessage(staffJson, 'FAILED_TO_LOAD_STAFF'));
       return;
     }
-    setStaff(json.staff as StaffRow[]);
+    if (!managementJson?.ok) {
+      setManagement([]);
+      setMsg(extractApiErrorMessage(managementJson, 'FAILED_TO_LOAD_MANAGEMENT'));
+      return;
+    }
+    setStaff(staffJson.staff as StaffRow[]);
+    setManagement(managementJson.accounts as ManagementRow[]);
   }
 
   useEffect(() => {
@@ -148,6 +173,30 @@ export default function StaffPage() {
     }
   }
 
+
+  async function createBranchManager() {
+    setMsg(null);
+    setBusy(true);
+    try {
+      const res = await fetch('/api/owner/management/create', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ fullName: managerName, phone: managerPhone, password: managerPassword, ownerLabel: 'branch_manager' }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!json?.ok) {
+        setMsg(extractApiErrorMessage(json, 'MANAGEMENT_CREATE_FAILED'));
+        return;
+      }
+      setManagerName('');
+      setManagerPhone('');
+      setManagerPassword('');
+      await refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   const visibleStaff = useMemo(
     () => staff.filter((item) => (statusFilter === 'all' ? true : item.employmentStatus === statusFilter)),
     [staff, statusFilter],
@@ -188,6 +237,51 @@ export default function StaffPage() {
 
         <div className="mt-2 text-right text-xs leading-6 text-[#7d6a59]">
           تسجيل دخول عضو الفريق: يدخل <b>اسمه أو كوده</b> + <b>PIN</b> داخل شاشة القهوة.
+        </div>
+      </section>
+
+
+      <section className={[opsSurface, 'mt-4 p-4'].join(' ')}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className="text-base font-bold text-[#1e1712]">إدارة مدير الفرع</div>
+            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
+              أنشئ حساب مدير فرع من داخل الإدارة بدون الرجوع إلى البلاتفورم. هذا الحساب يدخل من مسار المالك لكن بصلاحيات المدير المحدودة.
+            </div>
+          </div>
+          <div className={opsBadge('info')}>الإدارة العليا</div>
+        </div>
+
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          <input className={opsInput} placeholder="كلمة المرور" type="password" value={managerPassword} onChange={(e) => setManagerPassword(e.target.value)} />
+          <input className={opsInput} placeholder="رقم الهاتف" value={managerPhone} onChange={(e) => setManagerPhone(e.target.value)} />
+          <input className={opsInput} placeholder="اسم مدير الفرع" value={managerName} onChange={(e) => setManagerName(e.target.value)} />
+        </div>
+
+        <button
+          disabled={busy || !managerName.trim() || !managerPhone.trim() || managerPassword.trim().length < 4}
+          onClick={createBranchManager}
+          className={[opsAccentButton, 'mt-3 w-full'].join(' ')}
+        >
+          {busy ? '...' : 'إضافة مدير فرع'}
+        </button>
+
+        <div className="mt-3 space-y-2">
+          {management.length === 0 ? (
+            <div className="text-right text-sm text-[#7d6a59]">لا توجد حسابات إدارية إضافية حاليًا.</div>
+          ) : management.map((item) => (
+            <div key={item.id} className={[opsInset, 'p-3'].join(' ')}>
+              <div className="flex items-center justify-between gap-2">
+                <div className={item.ownerLabel === 'branch_manager' ? opsBadge('accent') : opsBadge('neutral')}>
+                  {item.ownerLabel === 'branch_manager' ? 'مدير فرع' : item.ownerLabel === 'partner' ? 'شريك' : 'مالك'}
+                </div>
+                <div className="text-right">
+                  <div className="font-semibold text-[#1e1712]">{item.fullName ?? item.phone ?? item.id}</div>
+                  <div className="mt-1 text-[11px] text-[#8b7866]">{item.phone ?? 'بدون هاتف'} • {item.isActive ? 'نشط' : 'موقوف'}</div>
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </section>
 

@@ -467,7 +467,8 @@ export default function ReportsPage() {
     staleTimeMs: 60_000,
   });
   const isBranchManager = session.user?.ownerLabel === 'branch_manager';
-  const safeTab: ReportTab = isBranchManager ? 'week' : tab;
+  const allowedManagerTabs: ReportTab[] = ['current', 'day', 'week'];
+  const safeTab: ReportTab = isBranchManager ? (allowedManagerTabs.includes(tab) ? tab : 'current') : tab;
   const selectedPeriod = useMemo(
     () => data && (safeTab === 'day' || safeTab === 'week' || safeTab === 'month' || safeTab === 'year') ? data.periods[safeTab] : null,
     [data, safeTab],
@@ -516,7 +517,7 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-6">
-          {(isBranchManager ? [{ key: 'week', label: 'الأسبوع' }] : [
+          {(isBranchManager ? [{ key: 'current', label: 'الوردية الحالية' }, { key: 'day', label: 'اليوم' }, { key: 'week', label: 'الأسبوع' }] : [
             { key: 'current', label: 'الوردية الحالية' },
             { key: 'day', label: 'اليوم' },
             { key: 'week', label: 'الأسبوع' },
@@ -598,7 +599,7 @@ export default function ReportsPage() {
         </section>
       ) : null}
 
-      {tab === 'deferred' ? (
+      {safeTab === 'deferred' ? (
         <section className="mt-3 space-y-3">
           <div className="ahwa-card p-4">
             <div className="text-lg font-bold">الآجل</div>

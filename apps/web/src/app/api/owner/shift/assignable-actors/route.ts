@@ -1,26 +1,30 @@
 import { NextResponse } from 'next/server';
-import { requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
-import { listStaffMembers } from '@/lib/ops/owner-admin';
+import { requireOpsActorContext, requireOwnerOrManager } from '@/app/api/ops/_helpers';
+import { listOwnerAccounts, listStaffMembers } from '@/lib/ops/owner-admin';
 
 export async function GET() {
   try {
-    const ctx = requireOwnerRole(await requireOpsActorContext());
+    const ctx = requireOwnerOrManager(await requireOpsActorContext());
 
-    const staff = await listStaffMembers({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey }, true);
+    const [staff, owners] = await Promise.all([
+      listStaffMembers({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey }, true),
+      listOwnerAccounts({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey }, true),
+    ]);
 
     return NextResponse.json({
       ok: true,
       actors: [
-        {
-          id: ctx.actorOwnerId,
-          fullName: ctx.fullName,
-          employeeCode: null,
+        ...owners.filter((item) => item.isActive).map((item) => ({
+          id: item.id,
+          fullName: item.fullName,
+          employeeCode: item.phone,
           actorType: 'owner',
           accountKind: 'owner',
-          isActive: true,
+          isActive: item.isActive,
           employmentStatus: 'active',
-          isCurrentOwner: true,
-        },
+          isCurrentOwner: item.id === ctx.actorOwnerId,
+          ownerLabel: item.ownerLabel,
+        })),
         ...staff.map((item) => ({
           id: item.id,
           fullName: item.fullName,

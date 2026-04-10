@@ -1,12 +1,12 @@
 import { NextResponse } from 'next/server';
-import { requireOpsActorContext, requireOwnerRole } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireOwnerOrManager } from '@/app/api/ops/_helpers';
 import { readCurrentShiftState, updateOpenShiftAssignments } from '@/lib/ops/owner-admin';
 
 type ShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 
 export async function POST(request: Request) {
   try {
-    const ctx = requireOwnerRole(await requireOpsActorContext());
+    const ctx = requireOwnerOrManager(await requireOpsActorContext());
     const body = (await request.json().catch(() => ({}))) as {
       shiftId?: string;
       assignments?: Array<{ userId?: string; role?: ShiftRole; actorType?: 'owner' | 'staff' }>;

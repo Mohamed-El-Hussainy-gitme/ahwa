@@ -150,7 +150,7 @@ function roleLabel(role: ShiftRole) {
     case 'shisha':
       return 'مختص الشيشة';
     case 'american_waiter':
-      return 'أميركان ويتر';
+      return 'الكابتن كابتن';
   }
 }
 
@@ -436,7 +436,7 @@ export default function ShiftPage() {
         </div>
       ) : null}
 
-      {!canManageShift && effectiveRole === 'supervisor' ? (
+      {!canManageShift && (effectiveRole === 'supervisor' || effectiveRole === 'american_waiter') ? (
         <div className="mb-3 rounded-[22px] border border-[#d6dee5] bg-[#f4f7f9] p-3 text-right text-sm text-[#3c617c]">
           يمكنك متابعة حالة الوردية الحالية والسناب شوت فقط، بينما الفتح والتقفيل وتوزيع الأدوار متاحة لصلاحيات الإدارة فقط.
         </div>
@@ -506,6 +506,46 @@ export default function ShiftPage() {
 
             {canManageShift ? (
               <>
+                <div className={[opsInset, 'mt-4 p-3'].join(' ')}>
+                  <div className="mb-2 text-right text-sm font-semibold text-[#1e1712]">تعديل فريق الوردية المفتوحة</div>
+                  <div className="mb-2 text-right text-xs leading-6 text-[#7d6a59]">يمكنك إضافة عضو أو إخراجه أو تغيير دوره أثناء الوردية دون تعطيل التشغيل، مع بقاء مشرف واحد فقط.</div>
+                  <div className="space-y-2">
+                    {activeAssignableActors.map((item) => {
+                      const currentRole = assignments[item.id] ?? '';
+                      return (
+                        <div key={`open-${item.id}`} className={[opsInset, 'flex items-center gap-2 p-2'].join(' ')}>
+                          <select
+                            aria-label={item.actorType === 'owner' ? 'اختر دور الحساب الإداري في الوردية' : 'اختر دور عضو الفريق في الوردية'}
+                            className={[opsSelect, 'w-1/2'].join(' ')}
+                            value={currentRole}
+                            onChange={(event) => setRole(item.id, event.target.value as ShiftRole | '')}
+                          >
+                            <option value="">خارج الوردية</option>
+                            <option value="supervisor">مشرف التشغيل</option>
+                            <option value="waiter">مضيف الصالة</option>
+                            <option value="barista">الباريستا</option>
+                            <option value="shisha">مختص الشيشة</option>
+                            <option value="american_waiter">أميركان كابتن</option>
+                          </select>
+                          <div className="flex-1 text-right">
+                            <div className="text-sm font-semibold text-[#1e1712]">
+                              {item.fullName ?? item.id}
+                              {item.actorType === 'owner' ? ' • إدارة' : ''}
+                            </div>
+                            <div className="text-[11px] text-[#8b7866]">
+                              {currentRole ? `الدور الحالي: ${roleLabel(currentRole as ShiftRole)}` : 'خارج الوردية'}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button disabled={busy || activeAssignableActors.length === 0} onClick={updateAssignments} className={[opsAccentButton, 'mt-4 w-full'].join(' ')}>
+                    {busy ? '...' : 'حفظ تعديل الوردية'}
+                  </button>
+                </div>
+
                 <div className="mt-4">
                   <label className="block text-right text-xs font-semibold text-[#7d6a59]">ملاحظات الإغلاق</label>
                   <textarea
@@ -588,6 +628,7 @@ export default function ShiftPage() {
                       <option value="waiter">مضيف الصالة</option>
                       <option value="barista">الباريستا</option>
                       <option value="shisha">مختص الشيشة</option>
+                      <option value="american_waiter">أميركان كابتن</option>
                     </select>
                     <div className="flex-1 text-right">
                       <div className="text-sm font-semibold text-[#1e1712]">

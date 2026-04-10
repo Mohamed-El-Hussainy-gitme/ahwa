@@ -100,7 +100,7 @@ export async function POST(req: NextRequest) {
     fullName: String(row.full_name ?? ''),
     accountKind: 'employee',
     shiftId: String(row.shift_id),
-    shiftRole: String(row.shift_role) as 'supervisor' | 'waiter' | 'barista' | 'shisha',
+    shiftRole: String(row.shift_role) as 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter',
     actorOwnerId: null,
     actorStaffId: String(row.staff_member_id),
   });

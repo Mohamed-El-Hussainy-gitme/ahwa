@@ -10,7 +10,7 @@ import { resolveMessage } from '@/lib/messages/catalog';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import type { StationCode } from '@/lib/ops/types';
 
-export type OpsShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
+export type OpsShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 export type OpsStationCode = 'barista' | 'shisha';
 
 export type OpsActorContext = {
@@ -20,6 +20,7 @@ export type OpsActorContext = {
   runtimeUserId: string;
   fullName: string;
   accountKind: 'owner' | 'employee';
+  ownerLabel: 'owner' | 'partner' | 'branch_manager' | null;
   shiftId: string | null;
   shiftRole: OpsShiftRole | null;
   actorOwnerId: string | null;
@@ -59,6 +60,7 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
   const runtimeUserId = String(session.userId ?? '');
   const fullName = String(session.fullName ?? '').trim();
   const accountKind: 'owner' | 'employee' = session.accountKind === 'owner' ? 'owner' : 'employee';
+  const ownerLabel = session.ownerLabel === 'partner' ? 'partner' : session.ownerLabel === 'branch_manager' ? 'branch_manager' : session.ownerLabel === 'owner' ? 'owner' : null;
   const shiftId = session.shiftId ? String(session.shiftId) : null;
   const shiftRole = session.shiftRole ? (String(session.shiftRole) as OpsShiftRole) : null;
   const actorOwnerId = session.actorOwnerId ? String(session.actorOwnerId) : null;
@@ -83,6 +85,7 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
     runtimeUserId,
     fullName,
     accountKind,
+    ownerLabel,
     shiftId,
     shiftRole,
     actorOwnerId,
@@ -116,28 +119,49 @@ export function requireOwnerRole(ctx: OpsActorContext): OwnerOpsActorContext {
   throw new Error('FORBIDDEN');
 }
 
+
+export function isBranchManager(ctx: OpsActorContext): boolean {
+  return ctx.accountKind === 'owner' && ctx.ownerLabel === 'branch_manager';
+}
+
+export function requireFullOwnerRole(ctx: OpsActorContext): OwnerOpsActorContext {
+  const ownerCtx = requireOwnerRole(ctx);
+  if (ownerCtx.ownerLabel === 'branch_manager') {
+    throw new Error('FORBIDDEN');
+  }
+  return ownerCtx;
+}
+
+export function requireManagementAccess(ctx: OpsActorContext) {
+  return requireFullOwnerRole(ctx);
+}
+
+export function requireOwnerOrManager(ctx: OpsActorContext) {
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
+}
+
 export function requireOwnerOrSupervisor(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireBillingAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireDeferredAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireReportsAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireComplaintLogAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha', 'american_waiter']);
 }
 
 export function requireComplaintManagementAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireComplaintActionAccess(
@@ -148,15 +172,15 @@ export function requireComplaintActionAccess(
 }
 
 export function requireWaiterWorkspaceAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha', 'american_waiter']);
 }
 
 export function requireSessionOrderAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha', 'american_waiter']);
 }
 
 export function requireDeliveryAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha', 'american_waiter']);
 }
 
 function isAllowedStationCode(stationCode: StationCode | null | undefined, allowed: readonly StationCode[]) {
@@ -168,7 +192,7 @@ export function requireScopedOrderItemAccess(
   stationCode: StationCode | null | undefined,
   allowed: readonly StationCode[],
 ) {
-  if (isOwner(ctx) || ctx.shiftRole === 'supervisor') {
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'american_waiter') {
     return ctx;
   }
 
@@ -189,7 +213,7 @@ export function requireScopedOrderSelectionAccess(
 ) {
   requireSessionOrderAccess(ctx);
 
-  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'waiter') {
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'waiter' || ctx.shiftRole === 'american_waiter') {
     return ctx;
   }
 
@@ -201,9 +225,9 @@ export function requireScopedOrderSelectionAccess(
 }
 
 export function requireDeliveryItemAccess(ctx: OpsActorContext, stationCode: StationCode | null | undefined) {
-  requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha', 'american_waiter']);
 
-  if (isOwner(ctx) || ctx.shiftRole === 'supervisor') {
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'american_waiter') {
     return ctx;
   }
 
@@ -226,7 +250,7 @@ export function requireComplaintItemAccess(
   if (action === 'none') {
     requireComplaintLogAccess(ctx);
 
-    if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'waiter') {
+    if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'waiter' || ctx.shiftRole === 'american_waiter') {
       return ctx;
     }
 
@@ -241,7 +265,7 @@ export function requireComplaintItemAccess(
 }
 
 export function requireStationAccess(ctx: OpsActorContext, stationCode: OpsStationCode) {
-  if (isOwner(ctx) || ctx.shiftRole === 'supervisor') {
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'american_waiter') {
     return ctx;
   }
 
