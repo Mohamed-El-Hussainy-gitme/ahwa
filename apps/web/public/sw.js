@@ -1,4 +1,4 @@
-const SW_VERSION = "ahwa-sw-v3";
+const SW_VERSION = "ahwa-sw-v4";
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const PAGE_CACHE = `${SW_VERSION}-pages`;
 const MENU_CACHE = `${SW_VERSION}-menu`;
@@ -111,4 +111,43 @@ self.addEventListener("fetch", (event) => {
   if (STATIC_ASSETS.includes(url.pathname)) {
     event.respondWith(caches.match(request).then((cached) => cached || fetch(request)));
   }
+});
+
+
+self.addEventListener('push', (event) => {
+  const payload = event.data ? event.data.json() : {};
+  event.waitUntil((async () => {
+    const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    const hasVisibleClient = clientsList.some((client) => client.visibilityState === 'visible');
+    for (const client of clientsList) {
+      client.postMessage({ type: 'ahwa:push', payload });
+    }
+    if (hasVisibleClient) return;
+    await self.registration.showNotification(payload.title || 'تنبيه التشغيل', {
+      body: payload.body || 'لديك تحديث جديد في التشغيل.',
+      tag: payload.tag || 'ahwa-ops-notification',
+      data: { url: payload.url || '/', signal: payload.signal || 'station-order' },
+      requireInteraction: payload.requireInteraction !== false,
+      renotify: true,
+      badge: '/icon-192x192.png',
+      icon: '/icon-192x192.png',
+      vibrate: payload.signal === 'waiter-ready' ? [120, 50, 120, 50, 180] : [180, 70, 180, 70, 240],
+    });
+  })());
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification?.data?.url || '/';
+  event.waitUntil((async () => {
+    const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clientsList) {
+      if ('focus' in client) {
+        await client.focus();
+        if ('navigate' in client) await client.navigate(targetUrl);
+        return;
+      }
+    }
+    await self.clients.openWindow(targetUrl);
+  })());
 });

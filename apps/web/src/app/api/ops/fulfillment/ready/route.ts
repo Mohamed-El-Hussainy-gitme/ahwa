@@ -11,6 +11,7 @@ import {
   requireOpsActorContext,
   requireStationAccess,
 } from '@/app/api/ops/_helpers';
+import { sendOpsPushToRoles } from '@/lib/pwa/push-server';
 
 type MarkReadyRpcResult = {
   ok?: boolean;
@@ -65,6 +66,21 @@ export async function POST(req: Request) {
         scopes: ['waiter', 'barista', 'shisha', 'dashboard', 'nav-summary'],
       });
     }
+
+    void sendOpsPushToRoles({
+      cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
+      shiftId: item.shiftId,
+      roles: ['waiter', 'american_waiter'],
+      payload: {
+        title: 'جاهز للتسليم',
+        body: 'تم تجهيز طلب جديد ويحتاج الاستلام والتسليم الآن.',
+        tag: `ops:ready:${normalizedOrderItemId}`,
+        url: '/ready',
+        signal: 'waiter-ready',
+        requireInteraction: true,
+      },
+    });
 
     kickOpsOutboxDispatch(ctx);
 

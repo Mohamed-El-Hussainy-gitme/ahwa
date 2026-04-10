@@ -2,6 +2,7 @@
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSession } from "@/lib/session";
+import { syncOpsPushSubscription, type EligiblePushRole } from "@/lib/pwa/push-client";
 import { getOpsRealtimeSnapshot, isOpsRealtimeHealthy, subscribeOpsRealtime } from '@/lib/ops/realtime';
 import {
   resolveEffectiveRole,
@@ -220,6 +221,15 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
   );
 
   const can = useMemo(() => resolvePermissions({ user, effectiveRole }), [user, effectiveRole]);
+
+  const pushRole = useMemo<EligiblePushRole | null>(() => {
+    if (!shift?.isOpen) return null;
+    return effectiveRole === 'waiter' || effectiveRole === 'american_waiter' || effectiveRole === 'barista' || effectiveRole === 'shisha' ? effectiveRole : null;
+  }, [effectiveRole, shift?.isOpen]);
+
+  useEffect(() => {
+    void syncOpsPushSubscription({ enabled: Boolean(session.user), role: pushRole, shiftId: shift?.isOpen ? shift.id : null });
+  }, [pushRole, session.user, shift?.id, shift?.isOpen]);
 
   const reload = useCallback(async () => {
     await runReload();

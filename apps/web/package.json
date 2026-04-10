@@ -10,22 +10,24 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@ahwa/shared": "file:../../packages/shared",
     "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.95.3",
-    "@ahwa/shared": "file:../../packages/shared",
+    "ioredis": "^5.8.1",
     "next": "16.1.6",
+    "qrcode": "^1.5.4",
     "react": "19.2.3",
     "react-dom": "19.2.3",
-    "ioredis": "^5.8.1",
+    "web-push": "^3.6.7",
     "zod": "^4.3.6",
-    "zustand": "^5.0.11",
-    "qrcode": "^1.5.4"
+    "zustand": "^5.0.11"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@types/web-push": "^3.6.4",
     "babel-plugin-react-compiler": "1.0.0",
     "eslint": "^9",
     "eslint-config-next": "16.1.6",

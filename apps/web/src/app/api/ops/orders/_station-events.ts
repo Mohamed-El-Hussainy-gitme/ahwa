@@ -2,6 +2,7 @@ import { adminOps } from '@/app/api/ops/_server';
 import { enqueueOpsMutation, kickOpsOutboxDispatch, publishOpsMutation, requireScopedOrderSelectionAccess, type OpsActorContext } from '@/app/api/ops/_helpers';
 import { normalizeNullableStationCode } from '@/lib/ops/stations';
 import type { StationCode } from '@/lib/ops/types';
+import { sendOpsPushToRoles } from '@/lib/pwa/push-server';
 
 type MenuProductRow = {
   id?: string | null;
@@ -142,6 +143,20 @@ export function dispatchStationOrderSubmittedInBackground(
           shiftId: ctx.shiftId ?? null,
           data,
           scopes: [stationCode, 'dashboard', 'nav-summary'],
+        });
+        await sendOpsPushToRoles({
+          cafeId: ctx.cafeId,
+          databaseKey: ctx.databaseKey,
+          shiftId: ctx.shiftId ?? null,
+          roles: stationCode === 'barista' ? ['barista'] : ['shisha'],
+          payload: {
+            title: stationCode === 'barista' ? 'طلب جديد للباريستا' : 'طلب جديد للشيشة',
+            body: input.sessionLabel ? `جلسة ${input.sessionLabel} بها طلب جديد.` : 'يوجد طلب جديد يحتاج التنفيذ الآن.',
+            tag: `ops:${stationCode}:submitted:${input.serviceSessionId}`,
+            url: stationCode === 'barista' ? '/kitchen' : '/shisha',
+            signal: 'station-order',
+            requireInteraction: true,
+          },
         });
       }),
     );

@@ -209,7 +209,7 @@ export default function ShishaPage() {
 
   if (!shift) return <ShiftRequired title="الشيشة" />;
   if (!(can.owner || effectiveRole === 'shisha' || effectiveRole === 'supervisor')) {
-    return <AccessDenied title="الشيشة" message="هذه الصفحة لمختص الشيشة أو مشرف التشغيل أو المالك فقط." />;
+    return <AccessDenied title="الشيشة" message="هذه الصفحة لمختص الشيشة أو أميركان كابتن أو مشرف التشغيل أو المالك فقط." />;
   }
 
   function warnSessionRequired() {

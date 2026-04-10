@@ -208,7 +208,7 @@ function ProductList({ items }: { items: ProductReportRow[] }) {
     <div className="space-y-2">
       {ranked.map((row, index) => (
         <div key={row.productId} className="ahwa-card p-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="text-right">
               <div className="flex items-center gap-2">
                 <span className="rounded-full border bg-[#f8f1e7] px-2 py-1 text-[11px] font-semibold text-[#746353]">#{index + 1}</span>
@@ -236,7 +236,7 @@ function AddonList({ items }: { items: AddonReportRow[] }) {
     <div className="space-y-2">
       {ranked.map((row, index) => (
         <div key={row.addonId} className="ahwa-card p-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="text-right">
               <div className="flex items-center gap-2">
                 <span className="rounded-full border bg-[#f8f1e7] px-2 py-1 text-[11px] font-semibold text-[#746353]">#{index + 1}</span>
@@ -262,7 +262,7 @@ function StaffList({ items }: { items: StaffPerformanceRow[] }) {
     <div className="space-y-2">
       {ranked.map((row, index) => (
         <div key={row.actorKey} className="ahwa-card p-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="text-right">
               <div className="flex items-center gap-2">
                 <span className="rounded-full border bg-[#f8f1e7] px-2 py-1 text-[11px] font-semibold text-[#746353]">#{index + 1}</span>
@@ -288,7 +288,7 @@ function ShiftList({ items }: { items: ReportShiftRow[] }) {
     <div className="space-y-2">
       {items.map((row) => (
         <div key={row.shiftId} className="ahwa-card p-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="text-right">
               <div className="font-semibold">{shiftKindLabel(row.kind)}</div>
               <div className="mt-1 text-xs text-[#8a7763]">{row.businessDate ?? ''}</div>
@@ -311,7 +311,7 @@ function DayBreakdown({ period }: { period: PeriodReport }) {
     <div className="space-y-2">
       {period.days.map((row) => (
         <div key={row.businessDate} className="ahwa-card p-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="text-right">
               <div className="font-semibold">{row.businessDate}</div>
               <div className="mt-1 text-xs text-[#8a7763]">ورديات {row.shiftCount} • جلسات {row.totalSessions} • شكاوى {row.complaintTotal} • ملاحظات أصناف {row.itemIssueTotal}</div>
@@ -334,7 +334,7 @@ function DeferredList({ items }: { items: DeferredCustomerSummary[] }) {
     <div className="space-y-2">
       {ranked.map((row) => (
         <div key={row.id} className="ahwa-card p-3">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex min-w-0 items-center justify-between gap-3">
             <div className="text-right">
               <div className="font-semibold">{row.debtorName}</div>
               <div className="mt-1 text-xs text-[#8a7763]">دين {formatMoney(row.debtTotal)} • سداد {formatMoney(row.repaymentTotal)}</div>
@@ -498,7 +498,7 @@ export default function ReportsPage() {
       ) : null}
 
       <div className="rounded-3xl border bg-[#fffdf9] p-3 shadow-sm">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center justify-between gap-3">
           <div>
             <div className="font-semibold">التقارير</div>
             <div className="mt-1 text-xs text-[#8a7763]">مرجع التقرير: {data?.referenceDate ?? '--'}</div>

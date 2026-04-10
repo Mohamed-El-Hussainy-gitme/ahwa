@@ -15,7 +15,7 @@ import { opsBadge, opsGhostButton, opsMetricCard, opsSurface } from '@/ui/ops/pr
 
 export default function ReadyPage() {
   const { can, shift, effectiveRole } = useAuthz();
-  const canAccess = effectiveRole === 'waiter' || effectiveRole === 'supervisor';
+  const canAccess = effectiveRole === 'waiter' || effectiveRole === 'supervisor' || effectiveRole === 'american_waiter';
   const [readySelection, setReadySelection] = useState<Record<string, number>>({});
   const [localError, setLocalError] = useState<string | null>(null);
 
@@ -48,7 +48,7 @@ export default function ReadyPage() {
 
   if (!shift) return <ShiftRequired title="جاهز" />;
   if (can.owner || !canAccess) {
-    return <AccessDenied title="جاهز" message="هذه الصفحة لمضيف الصالة أو مشرف التشغيل فقط." />;
+    return <AccessDenied title="جاهز" message="هذه الصفحة لمضيف الصالة أو أميركان كابتن أو مشرف التشغيل فقط." />;
   }
 
   return (
