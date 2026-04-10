@@ -462,17 +462,23 @@ export default function ReportsPage() {
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
   const loader = useCallback(() => opsClient.reportsWorkspace(), []);
   const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, {
-    enabled: session.user?.baseRole === 'owner',
+    enabled: session.can.viewReports,
     cacheKey: 'workspace:reports',
     staleTimeMs: 60_000,
   });
   const selectedPeriod = useMemo(
-    () => data && (tab === 'day' || tab === 'week' || tab === 'month' || tab === 'year') ? data.periods[tab] : null,
-    [data, tab],
+    () => data && (safeTab === 'day' || safeTab === 'week' || safeTab === 'month' || safeTab === 'year') ? data.periods[safeTab] : null,
+    [data, safeTab],
   );
 
-  if (session.user?.baseRole !== 'owner') {
-    return <AccessDenied title="التقارير" message="هذه الصفحة للمالك فقط." />;
+  if (!session.can.viewReports) {
+    return <AccessDenied title="التقارير" message="هذه الصفحة للإدارة فقط." />;
+  }
+
+  const availableTabs = session.can.viewWeeklyReportsOnly ? ['week'] as const : ['current', 'day', 'week', 'month', 'year', 'deferred'] as const;
+  const safeTab = session.can.viewWeeklyReportsOnly ? 'week' : tab;
+  if (session.can.viewWeeklyReportsOnly && tab !== 'week') {
+    setTimeout(() => setTab('week'), 0);
   }
 
   const currentShift = data?.currentShift ?? null;
@@ -502,7 +508,7 @@ export default function ReportsPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link
-              href={tab === 'deferred' ? '/customers/print' : `/reports/print?tab=${tab}`}
+              href={safeTab === 'deferred' ? '/customers/print' : `/reports/print?tab=${safeTab}`}
              
               className="rounded-xl border bg-[#fffdf9] px-3 py-2 text-xs font-semibold text-[#5e4d3f]"
             >
@@ -514,14 +520,14 @@ export default function ReportsPage() {
           </div>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-6">
-          {[
+          {(session.can.viewWeeklyReportsOnly ? [{ key: 'week', label: 'الأسبوع' }] : [
             { key: 'current', label: 'الوردية الحالية' },
             { key: 'day', label: 'اليوم' },
             { key: 'week', label: 'الأسبوع' },
             { key: 'month', label: 'الشهر' },
             { key: 'year', label: 'السنة' },
             { key: 'deferred', label: 'الآجل' },
-          ].map((item) => (
+          ]).map((item) => (
             <button
               key={item.key}
               onClick={() => {

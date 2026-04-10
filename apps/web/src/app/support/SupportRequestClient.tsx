@@ -10,7 +10,7 @@ type RuntimeMe = {
   tenantId?: string;
   fullName?: string;
   accountKind?: 'owner' | 'employee';
-  ownerLabel?: 'owner' | 'partner';
+  ownerLabel?: 'owner' | 'partner' | 'branch_manager';
   shiftRole?: 'supervisor' | 'waiter' | 'barista' | 'shisha';
 };
 

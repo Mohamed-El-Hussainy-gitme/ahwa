@@ -15,7 +15,7 @@ export type SessionUser = {
 
 type SessionState = {
   user: SessionUser | null;
-  ownerViewRole: "supervisor" | "waiter" | "barista" | "shisha";
+  ownerViewRole: "supervisor" | "waiter" | "american_waiter" | "barista" | "shisha";
   setUser: (u: SessionUser | null) => void;
   logout: () => Promise<void>;
   setOwnerViewRole: (r: SessionState["ownerViewRole"]) => void;

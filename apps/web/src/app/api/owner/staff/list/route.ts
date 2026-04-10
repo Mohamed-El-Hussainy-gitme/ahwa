@@ -1,10 +1,10 @@
 import { NextResponse } from 'next/server';
-import { requireOpsActorContext, requireOwnerOrSupervisor } from '@/app/api/ops/_helpers';
+import { requireManagementAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
 import { listStaffMembers } from '@/lib/ops/owner-admin';
 
 export async function GET() {
   try {
-    const ctx = requireOwnerOrSupervisor(await requireOpsActorContext());
+    const ctx = requireManagementAccess(await requireOpsActorContext());
 
     const staff = await listStaffMembers({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey }, true);
     return NextResponse.json({

@@ -6,7 +6,7 @@ import {
   completeIdempotentMutation,
   releaseIdempotentMutation,
   requireOpsActorContext,
-  requireOwnerRole,
+  requireManagementAccess,
 } from '@/app/api/ops/_helpers';
 import { closeShift } from '@/lib/ops/owner-admin';
 import { apiFail } from '@/app/api/_shared';
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
   let mutation: BegunIdempotentMutation | null = null;
 
   try {
-    const ctx = requireOwnerRole(await requireOpsActorContext());
+    const ctx = requireManagementAccess(await requireOpsActorContext());
 
     const shiftId = parsed.data.shiftId ?? ctx.shiftId;
     if (!shiftId) {
@@ -72,7 +72,7 @@ export async function POST(request: Request) {
     return NextResponse.json(responseBody);
   } catch (error) {
     try {
-      const ctx = requireOwnerRole(await requireOpsActorContext());
+      const ctx = requireManagementAccess(await requireOpsActorContext());
       await releaseIdempotentMutation(ctx, mutation);
     } catch {}
 

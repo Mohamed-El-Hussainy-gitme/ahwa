@@ -73,7 +73,7 @@ export async function POST(req: NextRequest) {
   const preflightCafeId = String(preflightRow?.cafe_id ?? '');
   const preflightOwnerUserId = String(preflightRow?.owner_user_id ?? '');
   const preflightFullName = String(preflightRow?.full_name ?? '');
-  const preflightOwnerLabel = preflightRow?.owner_label === 'partner' ? 'partner' : 'owner';
+  const preflightOwnerLabel = preflightRow?.owner_label === 'partner' ? 'partner' : preflightRow?.owner_label === 'branch_manager' ? 'branch_manager' : 'owner';
   const resolvedSlug = normalizeCafeSlug(String(preflightRow?.cafe_slug ?? slug));
 
   if (!preflightCafeId || !preflightOwnerUserId || !resolvedSlug) {

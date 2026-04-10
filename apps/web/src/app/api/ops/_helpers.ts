@@ -10,8 +10,9 @@ import { resolveMessage } from '@/lib/messages/catalog';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import type { StationCode } from '@/lib/ops/types';
 
-export type OpsShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha';
+export type OpsShiftRole = 'supervisor' | 'waiter' | 'american_waiter' | 'barista' | 'shisha';
 export type OpsStationCode = 'barista' | 'shisha';
+export type OpsOwnerLabel = 'owner' | 'partner' | 'branch_manager' | null;
 
 export type OpsActorContext = {
   cafeId: string;
@@ -20,6 +21,7 @@ export type OpsActorContext = {
   runtimeUserId: string;
   fullName: string;
   accountKind: 'owner' | 'employee';
+  ownerLabel: OpsOwnerLabel;
   shiftId: string | null;
   shiftRole: OpsShiftRole | null;
   actorOwnerId: string | null;
@@ -59,6 +61,14 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
   const runtimeUserId = String(session.userId ?? '');
   const fullName = String(session.fullName ?? '').trim();
   const accountKind: 'owner' | 'employee' = session.accountKind === 'owner' ? 'owner' : 'employee';
+  const ownerLabel: OpsOwnerLabel =
+    session.ownerLabel === 'partner'
+      ? 'partner'
+      : session.ownerLabel === 'branch_manager'
+        ? 'branch_manager'
+        : session.ownerLabel === 'owner'
+          ? 'owner'
+          : null;
   const shiftId = session.shiftId ? String(session.shiftId) : null;
   const shiftRole = session.shiftRole ? (String(session.shiftRole) as OpsShiftRole) : null;
   const actorOwnerId = session.actorOwnerId ? String(session.actorOwnerId) : null;
@@ -76,68 +86,85 @@ export async function requireOpsActorContext(): Promise<OpsActorContext> {
     throw new Error('STAFF_ACTOR_NOT_BOUND');
   }
 
-  const context = {
+  return {
     cafeId,
     tenantSlug,
     databaseKey,
     runtimeUserId,
     fullName,
     accountKind,
+    ownerLabel,
     shiftId,
     shiftRole,
     actorOwnerId,
     actorStaffId,
   } satisfies OpsActorContext;
-
-  return context;
 }
 
 function isOwner(ctx: OpsActorContext): ctx is OwnerOpsActorContext {
   return ctx.accountKind === 'owner' && !!ctx.actorOwnerId;
 }
 
+export function isBranchManager(ctx: OpsActorContext): boolean {
+  return isOwner(ctx) && ctx.ownerLabel === 'branch_manager';
+}
+
+export function isFullOwner(ctx: OpsActorContext): ctx is OwnerOpsActorContext {
+  return isOwner(ctx) && ctx.ownerLabel !== 'branch_manager';
+}
+
 function hasAnyShiftRole(ctx: OpsActorContext, roles: OpsShiftRole[]) {
-  return !!ctx.shiftRole && roles.includes(ctx.shiftRole);
+  if (!ctx.shiftRole) return false;
+  if (ctx.shiftRole === 'american_waiter') {
+    return roles.some((role) => role === 'waiter' || role === 'barista' || role === 'shisha' || role === 'supervisor' || role === 'american_waiter');
+  }
+  return roles.includes(ctx.shiftRole);
 }
 
 function requireRoleAccess(ctx: OpsActorContext, allowedShiftRoles: OpsShiftRole[] = []) {
   if (isOwner(ctx) || hasAnyShiftRole(ctx, allowedShiftRoles)) {
     return ctx;
   }
-
   throw new Error('FORBIDDEN');
 }
 
 export function requireOwnerRole(ctx: OpsActorContext): OwnerOpsActorContext {
-  if (isOwner(ctx)) {
-    return ctx;
-  }
+  if (isOwner(ctx)) return ctx;
+  throw new Error('FORBIDDEN');
+}
 
+export function requireFullOwnerRole(ctx: OpsActorContext): OwnerOpsActorContext {
+  if (isFullOwner(ctx)) return ctx;
+  throw new Error('FORBIDDEN');
+}
+
+export function requireManagementAccess(ctx: OpsActorContext) {
+  if (isOwner(ctx)) return ctx;
   throw new Error('FORBIDDEN');
 }
 
 export function requireOwnerOrSupervisor(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireBillingAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireDeferredAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireReportsAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireComplaintLogAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'american_waiter', 'shisha']);
 }
 
 export function requireComplaintManagementAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor']);
+  return requireRoleAccess(ctx, ['supervisor', 'american_waiter']);
 }
 
 export function requireComplaintActionAccess(
@@ -148,15 +175,15 @@ export function requireComplaintActionAccess(
 }
 
 export function requireWaiterWorkspaceAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'american_waiter', 'shisha']);
 }
 
 export function requireSessionOrderAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'american_waiter', 'shisha']);
 }
 
 export function requireDeliveryAccess(ctx: OpsActorContext) {
-  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  return requireRoleAccess(ctx, ['supervisor', 'waiter', 'american_waiter', 'shisha']);
 }
 
 function isAllowedStationCode(stationCode: StationCode | null | undefined, allowed: readonly StationCode[]) {
@@ -168,7 +195,7 @@ export function requireScopedOrderItemAccess(
   stationCode: StationCode | null | undefined,
   allowed: readonly StationCode[],
 ) {
-  if (isOwner(ctx) || ctx.shiftRole === 'supervisor') {
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'american_waiter') {
     return ctx;
   }
 
@@ -189,7 +216,7 @@ export function requireScopedOrderSelectionAccess(
 ) {
   requireSessionOrderAccess(ctx);
 
-  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'waiter') {
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'waiter' || ctx.shiftRole === 'american_waiter') {
     return ctx;
   }
 
@@ -201,9 +228,9 @@ export function requireScopedOrderSelectionAccess(
 }
 
 export function requireDeliveryItemAccess(ctx: OpsActorContext, stationCode: StationCode | null | undefined) {
-  requireRoleAccess(ctx, ['supervisor', 'waiter', 'shisha']);
+  requireRoleAccess(ctx, ['supervisor', 'waiter', 'american_waiter', 'shisha']);
 
-  if (isOwner(ctx) || ctx.shiftRole === 'supervisor') {
+  if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'american_waiter') {
     return ctx;
   }
 
@@ -218,279 +245,118 @@ export function requireDeliveryItemAccess(ctx: OpsActorContext, stationCode: Sta
   throw new Error('FORBIDDEN');
 }
 
-export function requireComplaintItemAccess(
+export async function withIdempotentMutation<T>(
   ctx: OpsActorContext,
-  stationCode: StationCode | null | undefined,
-  action: 'none' | 'remake' | 'cancel_undelivered' | 'waive_delivered',
-) {
-  if (action === 'none') {
-    requireComplaintLogAccess(ctx);
-
-    if (isOwner(ctx) || ctx.shiftRole === 'supervisor' || ctx.shiftRole === 'waiter') {
-      return ctx;
-    }
-
-    if (ctx.shiftRole === 'shisha' && stationCode === 'shisha') {
-      return ctx;
-    }
-
-    throw new Error('FORBIDDEN');
-  }
-
-  return requireComplaintActionAccess(ctx, stationCode);
-}
-
-export function requireStationAccess(ctx: OpsActorContext, stationCode: OpsStationCode) {
-  if (isOwner(ctx) || ctx.shiftRole === 'supervisor') {
-    return ctx;
-  }
-
-  if (stationCode === 'barista' && ctx.shiftRole === 'barista') {
-    return ctx;
-  }
-
-  if (stationCode === 'shisha' && ctx.shiftRole === 'shisha') {
-    return ctx;
-  }
-
-  throw new Error('FORBIDDEN');
-}
-
-export async function requireOpenOpsShift(cafeId: string, databaseKey: string) {
-  const admin = adminOps(databaseKey);
-  const { data, error } = await admin
-    .from('shifts')
-    .select('id, shift_kind, status, opened_at')
-    .eq('cafe_id', cafeId)
-    .eq('status', 'open')
-    .order('opened_at', { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw error;
-  }
-
-  if (!data) {
-    throw new Error('NO_OPEN_SHIFT');
-  }
-
-  return data;
-}
-
-function stableStringify(value: unknown): string {
-  if (value === null || value === undefined) {
-    return String(value);
-  }
-
-  if (typeof value !== 'object') {
-    return JSON.stringify(value);
-  }
-
-  if (Array.isArray(value)) {
-    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
-  }
-
-  const record = value as Record<string, unknown>;
-  const keys = Object.keys(record).sort();
-  return `{${keys.map((key) => `${JSON.stringify(key)}:${stableStringify(record[key])}`).join(',')}}`;
-}
-
-function readIdempotencyKey(request: Request) {
-  const key = request.headers.get('x-ahwa-idempotency-key');
-  return key ? key.trim().slice(0, 180) : '';
-}
-
-export async function beginIdempotentMutation(
-  request: Request,
-  ctx: Pick<OpsActorContext, 'cafeId' | 'databaseKey' | 'runtimeUserId' | 'actorOwnerId' | 'actorStaffId'>,
-  actionName: string,
-  payload: unknown,
-): Promise<{ replayResponse: NextResponse | null; mutation: BegunIdempotentMutation | null }> {
-  const key = readIdempotencyKey(request);
-  if (!key) {
-    return { replayResponse: null, mutation: null };
-  }
-
-  const requestHash = crypto
+  params: {
+    scope: string;
+    actionName: string;
+    requestBody: unknown;
+    execute: (helpers: { idempotencyKey: string }) => Promise<T>;
+  },
+): Promise<T> {
+  const client = supabaseAdminForDatabase(ctx.databaseKey);
+  const bodyText = JSON.stringify(params.requestBody ?? {});
+  const requestHash = crypto.createHash('sha256').update(bodyText).digest('hex');
+  const idempotencyKey = crypto
     .createHash('sha256')
-    .update(`${actionName}|${stableStringify(payload)}`)
+    .update([ctx.cafeId, ctx.runtimeUserId, params.scope, requestHash].join(':'))
     .digest('hex');
 
-  const admin = adminOps(ctx.databaseKey);
-  const insertPayload = {
-    cafe_id: ctx.cafeId,
-    idempotency_key: key,
-    action_name: actionName,
-    request_hash: requestHash,
-    actor_runtime_user_id: ctx.runtimeUserId,
-    actor_owner_id: ctx.actorOwnerId,
-    actor_staff_id: ctx.actorStaffId,
-  };
-
-  const { error: insertError } = await admin.from('idempotency_keys').insert(insertPayload);
-  if (!insertError) {
-    return {
-      replayResponse: null,
-      mutation: { key, actionName, requestHash },
-    };
-  }
-
-  if ((insertError as { code?: string } | null)?.code != '23505') {
-    throw insertError;
-  }
-
-  const { data, error } = await admin
+  const { data: existingRow, error: existingError } = await client
+    .schema('ops')
     .from('idempotency_keys')
     .select('request_hash, status, response_status, response_body')
     .eq('cafe_id', ctx.cafeId)
-    .eq('idempotency_key', key)
-    .maybeSingle();
+    .eq('key', idempotencyKey)
+    .maybeSingle<IdempotencyRow>();
 
-  if (error) {
-    throw error;
+  if (existingError) {
+    throw existingError;
   }
 
-  const row = (data ?? null) as IdempotencyRow | null;
-  if (!row) {
-    throw new Error('IDEMPOTENCY_RETRY_REQUIRED');
+  if (existingRow?.request_hash && existingRow.request_hash !== requestHash) {
+    throw new Error('IDEMPOTENCY_KEY_REUSED_WITH_DIFFERENT_PAYLOAD');
   }
 
-  if (String(row.request_hash ?? '') !== requestHash) {
-    throw new Error('IDEMPOTENCY_KEY_PAYLOAD_MISMATCH');
+  if (existingRow?.status === 'completed') {
+    return existingRow.response_body as T;
   }
 
-  if (String(row.status ?? '') === 'completed' && row.response_body && typeof row.response_body === 'object') {
-    return {
-      replayResponse: NextResponse.json(row.response_body as Record<string, unknown>, {
-        status: Number(row.response_status ?? 200),
-      }),
-      mutation: null,
-    };
-  }
-
-  throw new Error('IDEMPOTENT_REQUEST_IN_PROGRESS');
-}
-
-export async function completeIdempotentMutation(
-  ctx: Pick<OpsActorContext, 'cafeId' | 'databaseKey'>,
-  mutation: BegunIdempotentMutation | null,
-  responseBody: Record<string, unknown>,
-  responseStatus = 200,
-) {
-  if (!mutation) {
-    return;
-  }
-
-  const admin = adminOps(ctx.databaseKey);
-  const { error } = await admin
-    .from('idempotency_keys')
-    .update({
-      status: 'completed',
-      response_status: responseStatus,
-      response_body: responseBody,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('cafe_id', ctx.cafeId)
-    .eq('idempotency_key', mutation.key)
-    .eq('request_hash', mutation.requestHash);
-
-  if (error) {
-    throw error;
-  }
-}
-
-export async function releaseIdempotentMutation(
-  ctx: Pick<OpsActorContext, 'cafeId' | 'databaseKey'>,
-  mutation: BegunIdempotentMutation | null,
-) {
-  if (!mutation) {
-    return;
-  }
-
-  const admin = adminOps(ctx.databaseKey);
-  const { error } = await admin
-    .from('idempotency_keys')
-    .delete()
-    .eq('cafe_id', ctx.cafeId)
-    .eq('idempotency_key', mutation.key)
-    .eq('request_hash', mutation.requestHash)
-    .eq('status', 'pending');
-
-  if (error) {
-    throw error;
-  }
-}
-
-export function jsonError(error: unknown, status = 400) {
-  const message = resolveMessage(error instanceof Error ? error.message : 'REQUEST_FAILED');
-  return NextResponse.json({ error: message }, { status });
-}
-
-export function ok(data: unknown) {
-  return NextResponse.json(data, { status: 200 });
-}
-
-export async function enqueueOpsMutation(
-  ctx: Pick<OpsActorContext, 'cafeId' | 'shiftId' | 'databaseKey'>,
-  input: {
-    type: string;
-    entityId?: string | null;
-    shiftId?: string | null;
-    data?: Record<string, unknown>;
-    scopes?: string[];
-    stream?: string | null;
-  },
-) {
-  const { data, error } = await supabaseAdminForDatabase(ctx.databaseKey).rpc('ops_stage_outbox_event', {
+  const { error: upsertError } = await client.rpc('ops_begin_idempotent_mutation', {
     p_cafe_id: ctx.cafeId,
-    p_shift_id: input.shiftId ?? ctx.shiftId ?? null,
-    p_event_type: input.type,
-    p_entity_id: input.entityId ?? null,
-    p_payload: input.data ?? {},
-    p_scope_codes: input.scopes ?? null,
-    p_stream_name: input.stream ?? 'ops',
+    p_key: idempotencyKey,
+    p_action_name: params.actionName,
+    p_request_hash: requestHash,
+    p_actor_owner_id: ctx.actorOwnerId,
+    p_actor_staff_id: ctx.actorStaffId,
   });
 
-  if (error) {
-    throw error;
+  if (upsertError) {
+    throw upsertError;
   }
 
-  return String(data ?? '').trim();
+  try {
+    const result = await params.execute({ idempotencyKey });
+
+    const responseBody = result === undefined ? null : result;
+    const { error: finishError } = await client.rpc('ops_finish_idempotent_mutation', {
+      p_cafe_id: ctx.cafeId,
+      p_key: idempotencyKey,
+      p_response_status: 200,
+      p_response_body: responseBody,
+    });
+
+    if (finishError) {
+      throw finishError;
+    }
+
+    return result;
+  } catch (error) {
+    const errorCode = error instanceof Error ? error.message : 'REQUEST_FAILED';
+    const { error: failError } = await client.rpc('ops_fail_idempotent_mutation', {
+      p_cafe_id: ctx.cafeId,
+      p_key: idempotencyKey,
+      p_response_status: 400,
+      p_response_body: { ok: false, error: errorCode },
+    });
+
+    if (failError) {
+      console.error('[ops:idempotency] failed to persist failure response', failError);
+    }
+
+    throw error;
+  }
 }
 
-export async function publishOpsMutation(
-  ctx: Pick<OpsActorContext, 'cafeId' | 'shiftId'>,
-  input: {
-    id?: string | null;
-    type: string;
-    entityId?: string | null;
-    shiftId?: string | null;
-    data?: Record<string, unknown>;
-    scopes?: string[];
-    stream?: string | null;
-  },
-) {
-  return publishOpsEvent({
-    id: input.id ?? null,
+export function opsErrorResponse(error: unknown, fallbackCode = 'REQUEST_FAILED', status = 400) {
+  const code = error instanceof Error ? error.message : fallbackCode;
+  return NextResponse.json({ ok: false, error: resolveMessage(code) ?? code }, { status });
+}
+
+export async function publishWorkspaceInvalidation(input: {
+  ctx: OpsActorContext;
+  type: string;
+  scopes: string[];
+  entityId?: string | null;
+  payload?: Record<string, unknown>;
+}) {
+  await publishOpsEvent({
+    cafeId: input.ctx.cafeId,
     type: input.type,
-    cafeId: ctx.cafeId,
-    shiftId: input.shiftId ?? ctx.shiftId ?? null,
+    scopes: input.scopes,
     entityId: input.entityId ?? null,
-    data: input.data,
-    scopes: input.scopes ?? [],
-    stream: input.stream ?? 'ops',
-    cursor: input.id ?? null,
-  }).catch(() => undefined);
+    actor: {
+      actorType: input.ctx.accountKind === 'owner' ? 'owner' : 'staff',
+      actorId: input.ctx.accountKind === 'owner' ? input.ctx.actorOwnerId : input.ctx.actorStaffId,
+      actorLabel:
+        input.ctx.accountKind === 'owner'
+          ? input.ctx.ownerLabel ?? 'owner'
+          : input.ctx.shiftRole ?? 'staff',
+    },
+    payload: input.payload ?? {},
+  });
+
+  await scheduleOpsOutboxDispatch({ databaseKey: input.ctx.databaseKey });
 }
 
-export function kickOpsOutboxDispatch(
-  ctx: Pick<OpsActorContext, 'databaseKey' | 'cafeId'>,
-  input: { cafeId?: string | null; limit?: number } = {},
-) {
-  scheduleOpsOutboxDispatch({
-    databaseKey: ctx.databaseKey,
-    cafeId: input.cafeId ?? ctx.cafeId,
-    limit: input.limit,
-  });
-}
+export { adminOps };

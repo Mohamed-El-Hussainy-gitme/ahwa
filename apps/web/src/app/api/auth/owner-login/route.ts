@@ -76,7 +76,7 @@ export async function POST(req: NextRequest) {
     userId: String(row.owner_user_id),
     fullName: String(row.full_name ?? ''),
     accountKind: 'owner',
-    ownerLabel: row.owner_label === 'partner' ? 'partner' : 'owner',
+    ownerLabel: row.owner_label === 'partner' ? 'partner' : row.owner_label === 'branch_manager' ? 'branch_manager' : 'owner',
     actorOwnerId: String(row.owner_user_id),
     actorStaffId: null,
     shiftId: null,
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       id: String(row.owner_user_id),
       fullName: String(row.full_name ?? ''),
       accountKind: 'owner',
-      ownerLabel: row.owner_label === 'partner' ? 'partner' : 'owner',
+      ownerLabel: row.owner_label === 'partner' ? 'partner' : row.owner_label === 'branch_manager' ? 'branch_manager' : 'owner',
     },
   });
   setRuntimeSessionCookie(response, token, RUNTIME_SESSION_MAX_AGE_SECONDS);

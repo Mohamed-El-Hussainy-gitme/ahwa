@@ -210,6 +210,7 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
       name: session.user.name,
       cafeId: session.user.cafeId,
       baseRole: session.user.baseRole,
+      ownerLabel: session.user.ownerLabel,
     };
   }, [session.user]);
 

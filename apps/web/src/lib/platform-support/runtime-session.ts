@@ -10,7 +10,7 @@ const MAX_SUPPORT_RUNTIME_SESSION_SECONDS = 60 * 60 * 12;
 type SupportOwnerRow = {
   id: string;
   full_name: string;
-  owner_label: 'owner' | 'partner';
+  owner_label: 'owner' | 'partner' | 'branch_manager';
   created_at: string;
 };
 

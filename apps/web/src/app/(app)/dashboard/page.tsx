@@ -34,7 +34,7 @@ type ActionCard = {
     | 'support';
 };
 
-type RoleView = 'owner' | 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'unassigned';
+type RoleView = 'owner' | 'branch_manager' | 'supervisor' | 'waiter' | 'american_waiter' | 'barista' | 'shisha' | 'unassigned';
 
 type RoleConfig = {
   title: string;
@@ -231,7 +231,7 @@ function buildRoleConfig(role: RoleView, data: OpsNavSummary | undefined, deferr
     };
   }
 
-  if (role === 'waiter') {
+  if (role === 'waiter' || role === 'american_waiter') {
     return {
       title: 'مضيف الصالة',
       eyebrow: 'خدمة الصالة',
@@ -265,7 +265,7 @@ export default function DashboardPage() {
     cacheKey: 'workspace:dashboard',
     staleTimeMs: 30_000,
   });
-  const role: RoleView = can.owner ? 'owner' : effectiveRole ?? 'unassigned';
+  const role: RoleView = can.owner ? 'owner' : can.branchManager ? 'branch_manager' : effectiveRole ?? 'unassigned';
   const config = buildRoleConfig(role, data ?? undefined, data?.deferredCustomerCount ?? 0);
 
   const effectiveError = error ?? null;

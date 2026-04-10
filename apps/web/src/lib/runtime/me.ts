@@ -32,9 +32,9 @@ export type RuntimeMe = {
   userId: string;
   fullName: string;
   accountKind: RuntimeAccountKind;
-  ownerLabel?: 'owner' | 'partner';
+  ownerLabel?: 'owner' | 'partner' | 'branch_manager';
   shiftId?: string;
-  shiftRole?: 'supervisor' | 'waiter' | 'barista' | 'shisha';
+  shiftRole?: 'supervisor' | 'waiter' | 'american_waiter' | 'barista' | 'shisha';
   supportAccess?: {
     mode: 'platform_support';
     messageId: string;
