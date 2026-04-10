@@ -68,6 +68,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
         runtimeUserId: owner.ownerId,
         fullName: owner.ownerName,
         accountKind: 'owner',
+        ownerLabel: 'owner',
         shiftId: String(shift.id),
         shiftRole: null,
         actorOwnerId: owner.ownerId,

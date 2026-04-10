@@ -34,6 +34,10 @@ export async function POST(request: Request) {
   try {
     const ctx = requireOwnerOrManager(await requireOpsActorContext());
 
+    if (!ctx.actorOwnerId) {
+      throw new Error('FORBIDDEN');
+    }
+
     const opened = await openShiftWithAssignments({
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
