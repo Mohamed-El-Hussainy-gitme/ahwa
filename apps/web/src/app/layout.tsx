@@ -24,6 +24,7 @@ export const metadata: Metadata = {
     icon: [
       { url: "/icon-192x192.png", sizes: "192x192", type: "image/png" },
       { url: "/icon-512x512.png", sizes: "512x512", type: "image/png" },
+      { url: "/icon-512x512-maskable.png", sizes: "512x512", type: "image/png" },
     ],
     shortcut: "/icon-192x192.png",
     apple: "/apple-icon.png",
@@ -53,7 +54,7 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#111827",
+  themeColor: "#2b1710",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

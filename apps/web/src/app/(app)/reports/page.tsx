@@ -528,7 +528,7 @@ function OverviewPanel({
         </div>
       ) : null}
 
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 2xl:grid-cols-2">
         <div className="ahwa-card min-w-0 overflow-hidden p-3">
           <div className="font-semibold">أعلى المنتجات</div>
           <div className="mt-3 min-w-0">
@@ -628,7 +628,7 @@ export default function ReportsPage() {
   const periodTopStaff = selectedPeriod?.staff.length ? (sortStaff(selectedPeriod.staff)[0] ?? null) : null;
 
   return (
-    <MobileShell title="التقارير" backHref="/dashboard">
+    <MobileShell title="التقارير" backHref="/dashboard" shellWidth="wide">
       {error ? <div className="mb-3 ahwa-alert-danger p-3 text-sm">{error}</div> : null}
 
       <div className="rounded-3xl border bg-[#fffdf9] p-3 shadow-sm">
