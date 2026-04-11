@@ -13,6 +13,13 @@ export type OpsNotificationSignal = 'station-order' | 'waiter-ready';
 
 type UseOpsRealtimeNotificationsInput = { enabled: boolean; role: ShiftRole | null; isOwner: boolean; };
 
+type ServiceWorkerPushMessage = {
+  type?: string;
+  payload?: {
+    signal?: unknown;
+  };
+};
+
 let cachedAudioContext: AudioContext | null = null;
 let unlockListenersAttached = false;
 
@@ -24,23 +31,62 @@ function getAudioContext(): AudioContext | null {
   if (!cachedAudioContext) cachedAudioContext = new AudioContextCtor();
   return cachedAudioContext;
 }
+
 async function unlockAudioContext() {
   const context = getAudioContext();
-  if (!context) return;
-  if (context.state === 'suspended') { try { await context.resume(); } catch {} }
+  if (!context) return false;
+  if (context.state === 'suspended') {
+    try {
+      await context.resume();
+    } catch {
+      return false;
+    }
+  }
+  return true;
 }
+
+function primeAudioContext(context: AudioContext) {
+  const oscillator = context.createOscillator();
+  const gain = context.createGain();
+  const startAt = context.currentTime + 0.01;
+  oscillator.type = 'sine';
+  oscillator.frequency.setValueAtTime(880, startAt);
+  gain.gain.setValueAtTime(0.0001, startAt);
+  gain.gain.exponentialRampToValueAtTime(0.00001, startAt + 0.02);
+  oscillator.connect(gain);
+  gain.connect(context.destination);
+  oscillator.start(startAt);
+  oscillator.stop(startAt + 0.03);
+}
+
+export async function enableOpsNotificationAudio() {
+  ensureAudioUnlockListeners();
+  const unlocked = await unlockAudioContext();
+  if (!unlocked) return false;
+  const context = getAudioContext();
+  if (!context) return false;
+  primeAudioContext(context);
+  return true;
+}
+
 function ensureAudioUnlockListeners() {
   if (typeof window === 'undefined' || unlockListenersAttached) return;
   unlockListenersAttached = true;
-  const unlock = () => { void unlockAudioContext(); };
+  const unlock = () => {
+    void enableOpsNotificationAudio();
+  };
   window.addEventListener('pointerdown', unlock, { passive: true });
   window.addEventListener('keydown', unlock);
   window.addEventListener('touchstart', unlock, { passive: true });
 }
+
 function vibrate(pattern: number[]) {
   if (typeof navigator === 'undefined' || typeof navigator.vibrate !== 'function') return;
-  try { navigator.vibrate(pattern); } catch {}
+  try {
+    navigator.vibrate(pattern);
+  } catch {}
 }
+
 function scheduleTone(context: AudioContext, startAt: number, frequency: number, durationMs: number, gainValue: number) {
   const oscillator = context.createOscillator();
   const gain = context.createGain();
@@ -54,13 +100,20 @@ function scheduleTone(context: AudioContext, startAt: number, frequency: number,
   oscillator.start(startAt);
   oscillator.stop(startAt + durationMs / 1000 + 0.03);
 }
+
 export async function playOpsNotificationSignal(signal: OpsNotificationSignal) {
   const now = Date.now();
   if (now - globalSignalLastPlayedAt[signal] < SOUND_COOLDOWN_MS) return;
   globalSignalLastPlayedAt[signal] = now;
   const context = getAudioContext();
   if (!context) return;
-  if (context.state === 'suspended') { try { await context.resume(); } catch { return; } }
+  if (context.state === 'suspended') {
+    try {
+      await context.resume();
+    } catch {
+      return;
+    }
+  }
   const startAt = context.currentTime + 0.01;
   if (signal === 'station-order') {
     scheduleTone(context, startAt, 760, 180, 0.16);
@@ -74,7 +127,11 @@ export async function playOpsNotificationSignal(signal: OpsNotificationSignal) {
   scheduleTone(context, startAt + 0.34, 1760, 240, 0.17);
   vibrate([110, 40, 110, 40, 160]);
 }
-function normalizeStationCode(value: unknown): StationCode | null { return value === 'barista' || value === 'shisha' ? value : null; }
+
+function normalizeStationCode(value: unknown): StationCode | null {
+  return value === 'barista' || value === 'shisha' ? value : null;
+}
+
 function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, isOwner: boolean, pathname: string): OpsNotificationSignal | null {
   if (!role || isOwner) return null;
   if (event.type === 'station.order_submitted') {
@@ -86,12 +143,48 @@ function resolveSignalForEvent(event: OpsRealtimeEvent, role: ShiftRole | null, 
   if (event.type === 'station.ready' && (role === 'waiter' || role === 'american_waiter') && pathname === '/ready') return 'waiter-ready';
   return null;
 }
+
+function normalizeSignal(value: unknown): OpsNotificationSignal | null {
+  return value === 'station-order' || value === 'waiter-ready' ? value : null;
+}
+
+export function useOpsServiceWorkerPushBridge(enabled: boolean) {
+  useEffect(() => {
+    if (!enabled || typeof window === 'undefined' || !('serviceWorker' in navigator)) {
+      return;
+    }
+
+    const onMessage = (event: MessageEvent<ServiceWorkerPushMessage>) => {
+      if (document.visibilityState !== 'visible') {
+        return;
+      }
+      if (event.data?.type !== 'ahwa:push') {
+        return;
+      }
+      const signal = normalizeSignal(event.data?.payload?.signal);
+      if (!signal) {
+        return;
+      }
+      void playOpsNotificationSignal(signal);
+    };
+
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => {
+      navigator.serviceWorker.removeEventListener('message', onMessage);
+    };
+  }, [enabled]);
+}
+
 export function useOpsRealtimeNotifications(input: UseOpsRealtimeNotificationsInput) {
   const pathname = usePathname();
   const seenEventIdsRef = useRef<string[]>([]);
   const seenEventIdsSetRef = useRef<Set<string>>(new Set());
   const lastPlayedAtRef = useRef<Record<OpsNotificationSignal, number>>({ 'station-order': 0, 'waiter-ready': 0 });
-  useEffect(() => { if (input.enabled) ensureAudioUnlockListeners(); }, [input.enabled]);
+
+  useEffect(() => {
+    if (input.enabled) ensureAudioUnlockListeners();
+  }, [input.enabled]);
+
   return useCallback(async (event: OpsRealtimeEvent) => {
     if (!input.enabled) return;
     if (seenEventIdsSetRef.current.has(event.id)) return;

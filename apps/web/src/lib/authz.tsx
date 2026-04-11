@@ -1,6 +1,7 @@
 "use client";
 
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import OpsPushPrompt from '@/components/OpsPushPrompt';
 import { useSession } from "@/lib/session";
 import { syncOpsPushSubscription, type EligiblePushRole } from "@/lib/pwa/push-client";
 import { getOpsRealtimeSnapshot, isOpsRealtimeHealthy, subscribeOpsRealtime } from '@/lib/ops/realtime';
@@ -244,7 +245,12 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
     return <div className="min-h-dvh grid place-items-center text-sm text-neutral-500">تحميل...</div>;
   }
 
-  return <AuthzCtx.Provider value={value}>{children}</AuthzCtx.Provider>;
+  return (
+    <>
+      <AuthzCtx.Provider value={value}>{children}</AuthzCtx.Provider>
+      <OpsPushPrompt enabled={Boolean(session.user)} role={pushRole} shiftId={shift?.isOpen ? shift.id : null} />
+    </>
+  );
 }
 
 export function useAuthz() {

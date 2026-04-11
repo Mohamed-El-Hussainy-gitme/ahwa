@@ -2,7 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuthz } from '@/lib/authz';
-import { useOpsRealtimeNotifications } from '@/lib/ops/notifications';
+import { useOpsRealtimeNotifications, useOpsServiceWorkerPushBridge } from '@/lib/ops/notifications';
 import { getOpsRealtimeSnapshot, isOpsRealtimeHealthy, subscribeOpsRealtime, useOpsRealtimeStatus } from '@/lib/ops/realtime';
 import { subscribeOpsInvalidation } from '@/lib/ops/invalidation';
 import { apiPost } from '@/lib/http/client';
@@ -135,6 +135,7 @@ export function OpsChromeProvider({ children }: { children: React.ReactNode }) {
 
   const enabled = Boolean(user);
   const notifyRealtime = useOpsRealtimeNotifications({ enabled, role: effectiveRole, isOwner: can.owner });
+  useOpsServiceWorkerPushBridge(enabled);
 
   const clearReloadTimer = useCallback(() => {
     if (reloadTimerRef.current) {
