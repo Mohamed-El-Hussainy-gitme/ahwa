@@ -160,6 +160,12 @@ export function normalizeCafeListRow(value: unknown): PlatformCafeListRow | null
     is_active: isActive,
     created_at: createdAt,
     last_activity_at: asString(value.last_activity_at),
+    operational_last_activity_at: asString(value.operational_last_activity_at),
+    last_online_at: asString(value.last_online_at),
+    last_app_opened_at: asString(value.last_app_opened_at),
+    online_users_count: asNumber(value.online_users_count) ?? 0,
+    visible_runtime_count: asNumber(value.visible_runtime_count) ?? 0,
+    online_now: asBoolean(value.online_now) ?? false,
     owner_count: asNumber(value.owner_count) ?? owners.length,
     active_owner_count:
       asNumber(value.active_owner_count) ?? owners.filter((owner) => owner.is_active).length,

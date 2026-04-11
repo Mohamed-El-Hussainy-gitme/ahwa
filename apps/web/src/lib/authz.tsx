@@ -4,6 +4,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import OpsPushPrompt from '@/components/OpsPushPrompt';
 import { useSession } from "@/lib/session";
 import { syncOpsPushSubscription, type EligiblePushRole } from "@/lib/pwa/push-client";
+import { postRuntimePresence } from '@/lib/runtime/presence-client';
 import { getOpsRealtimeSnapshot, isOpsRealtimeHealthy, subscribeOpsRealtime } from '@/lib/ops/realtime';
 import {
   resolveEffectiveRole,
@@ -227,6 +228,44 @@ export function AuthzProvider({ children }: { children: React.ReactNode }) {
     if (!shift?.isOpen) return null;
     return effectiveRole === 'waiter' || effectiveRole === 'american_waiter' || effectiveRole === 'barista' || effectiveRole === 'shisha' ? effectiveRole : null;
   }, [effectiveRole, shift?.isOpen]);
+
+  useEffect(() => {
+    if (!session.user) return;
+
+    const emitPresence = (reason: 'app_open' | 'visible' | 'heartbeat') => {
+      void postRuntimePresence({
+        reason,
+        shiftId: shift?.isOpen ? shift.id : null,
+        shiftRole: effectiveRole,
+      });
+    };
+
+    emitPresence('app_open');
+
+    const onFocus = () => {
+      emitPresence('visible');
+    };
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        emitPresence('visible');
+      }
+    };
+
+    const heartbeat = window.setInterval(() => {
+      if (document.visibilityState === 'visible') {
+        emitPresence('heartbeat');
+      }
+    }, 75_000);
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      window.clearInterval(heartbeat);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [effectiveRole, session.user, shift?.id, shift?.isOpen]);
 
   useEffect(() => {
     void syncOpsPushSubscription({ enabled: Boolean(session.user), role: pushRole, shiftId: shift?.isOpen ? shift.id : null });

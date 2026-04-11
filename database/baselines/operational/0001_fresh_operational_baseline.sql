@@ -16459,6 +16459,35 @@ create index if not exists idx_order_item_addons_item
   on ops.order_item_addons (cafe_id, order_item_id, created_at);
 -- <<< 0053_ops_menu_addons_foundation.sql
 
+-- >>> 0054_ops_incremental_rls_for_recent_tables.sql
+begin;
+
+do $$
+declare
+  v_table text;
+begin
+  for v_table in
+    select unnest(array[
+      'cafe_billing_settings',
+      'order_note_presets',
+      'menu_addons',
+      'menu_product_addons',
+      'order_item_addons'
+    ])
+  loop
+    execute format('alter table ops.%I enable row level security', v_table);
+    execute format('drop policy if exists cafe_access_policy on ops.%I', v_table);
+    execute format(
+      'create policy cafe_access_policy on ops.%I for all using (app.can_access_cafe(cafe_id)) with check (app.can_access_cafe(cafe_id))',
+      v_table
+    );
+  end loop;
+end;
+$$;
+
+commit;
+-- <<< 0054_ops_incremental_rls_for_recent_tables.sql
+
 -- >>> 0055_search_path_linter_cleanup.sql
 begin;
 
@@ -16521,8 +16550,595 @@ $$;
 commit;
 -- <<< 0055_search_path_linter_cleanup.sql
 
--- 0057_ops_runtime_status_snapshot_export.sql
+-- >>> 0056_control_plane_runtime_activity_read_model.sql
+begin;
 
+create table if not exists control.cafe_runtime_status_read_model (
+  cafe_id uuid primary key references ops.cafes(id) on delete cascade,
+  database_key text null references control.operational_databases(database_key) on delete set null,
+  last_activity_at timestamptz null,
+  usage_state text null check (usage_state is null or usage_state in ('active_now', 'active_today', 'active_recently', 'inactive', 'external_runtime')),
+  has_open_shift boolean null,
+  open_shift_id uuid null,
+  open_shift_kind text null,
+  open_shift_business_date date null,
+  open_shift_opened_at timestamptz null,
+  last_shift_closed_at timestamptz null,
+  source_updated_at timestamptz null,
+  source_kind text not null default 'manual_sync' check (source_kind in ('manual_sync', 'runtime_push', 'control_repair')),
+  notes jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists idx_control_cafe_runtime_status_read_model_database_updated
+  on control.cafe_runtime_status_read_model (database_key, updated_at desc);
+
+create or replace function public.control_upsert_cafe_runtime_status_read_model(
+  p_cafe_id uuid,
+  p_database_key text default null,
+  p_last_activity_at timestamptz default null,
+  p_usage_state text default null,
+  p_has_open_shift boolean default null,
+  p_open_shift_id uuid default null,
+  p_open_shift_kind text default null,
+  p_open_shift_business_date date default null,
+  p_open_shift_opened_at timestamptz default null,
+  p_last_shift_closed_at timestamptz default null,
+  p_source_updated_at timestamptz default null,
+  p_source_kind text default 'runtime_push',
+  p_notes jsonb default '{}'::jsonb
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, control, ops
+as $$
+declare
+  v_database_key text := lower(nullif(btrim(p_database_key), ''));
+  v_source_kind text := lower(coalesce(nullif(btrim(p_source_kind), ''), 'runtime_push'));
+  v_row control.cafe_runtime_status_read_model%rowtype;
+begin
+  if p_cafe_id is null then
+    raise exception 'p_cafe_id is required';
+  end if;
+
+  if not exists (select 1 from ops.cafes c where c.id = p_cafe_id) then
+    raise exception 'cafe_not_found';
+  end if;
+
+  if v_database_key is not null and not exists (
+    select 1
+    from control.operational_databases od
+    where od.database_key = v_database_key
+  ) then
+    raise exception 'operational_database_not_found';
+  end if;
+
+  if v_source_kind not in ('manual_sync', 'runtime_push', 'control_repair') then
+    raise exception 'invalid_source_kind';
+  end if;
+
+  insert into control.cafe_runtime_status_read_model (
+    cafe_id,
+    database_key,
+    last_activity_at,
+    usage_state,
+    has_open_shift,
+    open_shift_id,
+    open_shift_kind,
+    open_shift_business_date,
+    open_shift_opened_at,
+    last_shift_closed_at,
+    source_updated_at,
+    source_kind,
+    notes,
+    created_at,
+    updated_at
+  ) values (
+    p_cafe_id,
+    v_database_key,
+    p_last_activity_at,
+    case
+      when p_usage_state is null then null
+      when lower(btrim(p_usage_state)) in ('active_now', 'active_today', 'active_recently', 'inactive', 'external_runtime') then lower(btrim(p_usage_state))
+      else null
+    end,
+    p_has_open_shift,
+    p_open_shift_id,
+    nullif(btrim(p_open_shift_kind), ''),
+    p_open_shift_business_date,
+    p_open_shift_opened_at,
+    p_last_shift_closed_at,
+    p_source_updated_at,
+    v_source_kind,
+    coalesce(p_notes, '{}'::jsonb),
+    now(),
+    now()
+  )
+  on conflict (cafe_id) do update set
+    database_key = excluded.database_key,
+    last_activity_at = excluded.last_activity_at,
+    usage_state = excluded.usage_state,
+    has_open_shift = excluded.has_open_shift,
+    open_shift_id = excluded.open_shift_id,
+    open_shift_kind = excluded.open_shift_kind,
+    open_shift_business_date = excluded.open_shift_business_date,
+    open_shift_opened_at = excluded.open_shift_opened_at,
+    last_shift_closed_at = excluded.last_shift_closed_at,
+    source_updated_at = excluded.source_updated_at,
+    source_kind = excluded.source_kind,
+    notes = excluded.notes,
+    updated_at = now()
+  returning * into v_row;
+
+  return jsonb_build_object(
+    'cafe_id', v_row.cafe_id,
+    'database_key', v_row.database_key,
+    'last_activity_at', v_row.last_activity_at,
+    'usage_state', v_row.usage_state,
+    'has_open_shift', v_row.has_open_shift,
+    'open_shift_id', v_row.open_shift_id,
+    'open_shift_kind', v_row.open_shift_kind,
+    'open_shift_business_date', v_row.open_shift_business_date,
+    'open_shift_opened_at', v_row.open_shift_opened_at,
+    'last_shift_closed_at', v_row.last_shift_closed_at,
+    'source_updated_at', v_row.source_updated_at,
+    'source_kind', v_row.source_kind,
+    'notes', v_row.notes,
+    'updated_at', v_row.updated_at
+  );
+end;
+$$;
+
+grant execute on function public.control_upsert_cafe_runtime_status_read_model(uuid, text, timestamptz, text, boolean, uuid, text, date, timestamptz, timestamptz, timestamptz, text, jsonb) to service_role;
+
+create or replace function public.platform_list_cafes()
+returns jsonb
+language sql
+security definer
+set search_path = public, ops, platform, control
+as $$
+  with latest_subscription as (
+    select distinct on (s.cafe_id)
+      s.cafe_id,
+      s.id,
+      s.starts_at,
+      s.ends_at,
+      s.grace_days,
+      s.status,
+      s.amount_paid,
+      s.is_complimentary,
+      s.notes,
+      s.created_at,
+      s.updated_at,
+      case
+        when s.status = 'suspended' then 'suspended'
+        when now() > s.ends_at + make_interval(days => s.grace_days) then 'expired'
+        else s.status
+      end as effective_status,
+      greatest(0, floor(extract(epoch from (s.ends_at - now()))))::bigint as countdown_seconds
+    from platform.cafe_subscriptions s
+    order by s.cafe_id, s.created_at desc, s.id desc
+  ), local_last_activity as (
+    select
+      activity.cafe_id,
+      max(activity.activity_at) as last_activity_at
+    from (
+      select cafe_id, max(created_at) as activity_at from ops.audit_events group by cafe_id
+      union all
+      select cafe_id, max(opened_at) as activity_at from ops.shifts group by cafe_id
+      union all
+      select cafe_id, max(opened_at) as activity_at from ops.service_sessions group by cafe_id
+      union all
+      select cafe_id, max(created_at) as activity_at from ops.orders group by cafe_id
+      union all
+      select cafe_id, max(created_at) as activity_at from ops.payments group by cafe_id
+      union all
+      select cafe_id, max(created_at) as activity_at from ops.complaints group by cafe_id
+      union all
+      select cafe_id, max(created_at) as activity_at from ops.order_item_issues group by cafe_id
+    ) activity
+    group by activity.cafe_id
+  )
+  select coalesce(jsonb_agg(to_jsonb(x) order by x.last_activity_at desc nulls last, x.created_at desc), '[]'::jsonb)
+  from (
+    select
+      c.id,
+      c.slug,
+      c.display_name,
+      c.is_active,
+      c.created_at,
+      coalesce(rm.last_activity_at, la.last_activity_at) as last_activity_at,
+      coalesce(rm.usage_state, case
+        when la.last_activity_at is not null and la.last_activity_at >= now() - interval '24 hours' then 'active_today'
+        when la.last_activity_at is not null and la.last_activity_at >= now() - interval '7 days' then 'active_recently'
+        else 'inactive'
+      end) as usage_state,
+      (
+        select count(*)::integer
+        from ops.owner_users ou
+        where ou.cafe_id = c.id
+      ) as owner_count,
+      (
+        select count(*)::integer
+        from ops.owner_users ou
+        where ou.cafe_id = c.id
+          and ou.is_active = true
+      ) as active_owner_count,
+      coalesce((
+        select jsonb_agg(
+          jsonb_build_object(
+            'id', ou.id,
+            'full_name', ou.full_name,
+            'phone', ou.phone,
+            'owner_label', ou.owner_label,
+            'is_active', ou.is_active,
+            'created_at', ou.created_at
+          ) order by ou.created_at asc
+        )
+        from ops.owner_users ou
+        where ou.cafe_id = c.id
+      ), '[]'::jsonb) as owners,
+      case
+        when ls.cafe_id is null then null
+        else jsonb_build_object(
+          'id', ls.id,
+          'starts_at', ls.starts_at,
+          'ends_at', ls.ends_at,
+          'grace_days', ls.grace_days,
+          'status', ls.status,
+          'effective_status', ls.effective_status,
+          'amount_paid', ls.amount_paid,
+          'is_complimentary', ls.is_complimentary,
+          'notes', ls.notes,
+          'created_at', ls.created_at,
+          'updated_at', ls.updated_at,
+          'countdown_seconds', ls.countdown_seconds
+        )
+      end as current_subscription,
+      jsonb_build_object(
+        'database_key', b.database_key,
+        'binding_source', b.binding_source,
+        'binding_updated_at', b.updated_at,
+        'runtime_status_available', rm.cafe_id is not null,
+        'runtime_status_updated_at', rm.updated_at
+      ) as database_binding
+    from ops.cafes c
+    left join latest_subscription ls on ls.cafe_id = c.id
+    left join local_last_activity la on la.cafe_id = c.id
+    left join control.cafe_database_bindings b on b.cafe_id = c.id
+    left join control.cafe_runtime_status_read_model rm
+      on rm.cafe_id = c.id
+     and (rm.database_key is null or b.database_key is null or rm.database_key = b.database_key)
+  ) x;
+$$;
+
+create or replace function public.platform_get_cafe_detail(
+  p_super_admin_user_id uuid,
+  p_cafe_id uuid
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, ops, platform, control
+as $$
+declare
+  v_admin platform.super_admin_users%rowtype;
+  v_cafe ops.cafes%rowtype;
+  v_now timestamptz := now();
+  v_result jsonb;
+begin
+  select *
+  into v_admin
+  from platform.super_admin_users
+  where id = p_super_admin_user_id
+    and is_active = true;
+
+  if not found then
+    raise exception 'active super admin not found';
+  end if;
+
+  select *
+  into v_cafe
+  from ops.cafes
+  where id = p_cafe_id;
+
+  if not found then
+    raise exception 'cafe_not_found';
+  end if;
+
+  with binding_row as (
+    select
+      b.cafe_id,
+      b.database_key,
+      b.binding_source,
+      b.created_at,
+      b.updated_at
+    from control.cafe_database_bindings b
+    where b.cafe_id = p_cafe_id
+    limit 1
+  ), latest_subscription as (
+    select distinct on (s.cafe_id)
+      s.cafe_id,
+      s.id,
+      s.starts_at,
+      s.ends_at,
+      s.grace_days,
+      s.status,
+      s.amount_paid,
+      s.is_complimentary,
+      s.notes,
+      s.created_at,
+      s.updated_at,
+      case
+        when s.status = 'suspended' then 'suspended'
+        when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
+        else s.status
+      end as effective_status,
+      greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint as countdown_seconds
+    from platform.cafe_subscriptions s
+    where s.cafe_id = p_cafe_id
+    order by s.cafe_id, s.created_at desc, s.id desc
+  ), owner_rows as (
+    select
+      ou.id,
+      ou.full_name,
+      ou.phone,
+      ou.owner_label,
+      ou.is_active,
+      ou.created_at
+    from ops.owner_users ou
+    where ou.cafe_id = p_cafe_id
+    order by ou.created_at asc
+  ), local_last_activity as (
+    select max(activity_at) as last_activity_at
+    from (
+      select max(created_at) as activity_at from ops.audit_events where cafe_id = p_cafe_id
+      union all
+      select max(opened_at) as activity_at from ops.shifts where cafe_id = p_cafe_id
+      union all
+      select max(opened_at) as activity_at from ops.service_sessions where cafe_id = p_cafe_id
+      union all
+      select max(created_at) as activity_at from ops.orders where cafe_id = p_cafe_id
+      union all
+      select max(created_at) as activity_at from ops.payments where cafe_id = p_cafe_id
+      union all
+      select max(created_at) as activity_at from ops.complaints where cafe_id = p_cafe_id
+      union all
+      select max(created_at) as activity_at from ops.order_item_issues where cafe_id = p_cafe_id
+    ) activity
+  ), local_open_shift as (
+    select
+      s.id,
+      s.shift_kind,
+      s.business_date,
+      s.opened_at
+    from ops.shifts s
+    where s.cafe_id = p_cafe_id
+      and s.status = 'open'
+    order by s.business_date desc, s.opened_at desc nulls last
+    limit 1
+  ), runtime_model as (
+    select
+      rm.cafe_id,
+      rm.database_key,
+      rm.last_activity_at,
+      rm.usage_state,
+      rm.has_open_shift,
+      rm.open_shift_id,
+      rm.open_shift_kind,
+      rm.open_shift_business_date,
+      rm.open_shift_opened_at,
+      rm.last_shift_closed_at,
+      rm.source_updated_at,
+      rm.source_kind,
+      rm.notes,
+      rm.updated_at
+    from control.cafe_runtime_status_read_model rm
+    where rm.cafe_id = p_cafe_id
+      and (not exists (select 1 from binding_row br) or rm.database_key is null or rm.database_key = (select br.database_key from binding_row br limit 1))
+    limit 1
+  ), effective_activity as (
+    select
+      coalesce((select rm.last_activity_at from runtime_model rm), (select lla.last_activity_at from local_last_activity lla)) as last_activity_at,
+      coalesce((select rm.has_open_shift from runtime_model rm), exists(select 1 from local_open_shift)) as has_open_shift,
+      coalesce((select rm.last_shift_closed_at from runtime_model rm), (select max(s.closed_at) from ops.shifts s where s.cafe_id = p_cafe_id and s.status = 'closed')) as last_shift_closed_at,
+      coalesce((select rm.usage_state from runtime_model rm), case
+        when exists(select 1 from local_open_shift) then 'active_now'
+        when (select lla.last_activity_at from local_last_activity lla) is not null and (select lla.last_activity_at from local_last_activity lla) >= v_now - interval '24 hours' then 'active_today'
+        when (select lla.last_activity_at from local_last_activity lla) is not null and (select lla.last_activity_at from local_last_activity lla) >= v_now - interval '7 days' then 'active_recently'
+        else 'inactive'
+      end) as usage_state
+  ), attention as (
+    select array_remove(array[
+      case when v_cafe.is_active = false then 'cafe_disabled' end,
+      case when (select count(*) from owner_rows where is_active = true) = 0 then 'no_active_owner' end,
+      case when (select count(*) from latest_subscription) = 0 then 'no_subscription' end,
+      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'expired')
+        and (coalesce((select has_open_shift from effective_activity), false) or ((select last_activity_at from effective_activity) is not null and (select last_activity_at from effective_activity) >= v_now - interval '7 days'))
+        then 'expired_but_active'
+      end,
+      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'suspended')
+        and (coalesce((select has_open_shift from effective_activity), false) or ((select last_activity_at from effective_activity) is not null and (select last_activity_at from effective_activity) >= v_now - interval '7 days'))
+        then 'suspended_but_active'
+      end,
+      case when coalesce((select has_open_shift from effective_activity), false)
+        and coalesce((select open_shift_opened_at from runtime_model), (select opened_at from local_open_shift)) <= v_now - interval '18 hours' then 'open_shift_too_long' end,
+      case when exists (select 1 from latest_subscription ls where ls.effective_status = 'active')
+        and not coalesce((select has_open_shift from effective_activity), false)
+        and ((select last_activity_at from effective_activity) is null or (select last_activity_at from effective_activity) < v_now - interval '14 days')
+        and v_cafe.created_at <= v_now - interval '14 days'
+        then 'paid_but_inactive'
+      end
+    ], null::text) as reasons
+  )
+  select jsonb_build_object(
+    'generated_at', v_now,
+    'cafe', jsonb_build_object(
+      'id', v_cafe.id,
+      'slug', v_cafe.slug,
+      'display_name', v_cafe.display_name,
+      'is_active', v_cafe.is_active,
+      'created_at', v_cafe.created_at,
+      'owner_count', (select count(*)::int from owner_rows),
+      'active_owner_count', (select count(*)::int from owner_rows where is_active = true),
+      'owners', coalesce((
+        select jsonb_agg(
+          jsonb_build_object(
+            'id', r.id,
+            'full_name', r.full_name,
+            'phone', r.phone,
+            'owner_label', r.owner_label,
+            'is_active', r.is_active,
+            'created_at', r.created_at
+          )
+          order by r.created_at asc
+        )
+        from owner_rows r
+      ), '[]'::jsonb)
+    ),
+    'database_binding', (
+      select jsonb_build_object(
+        'database_key', br.database_key,
+        'binding_source', br.binding_source,
+        'created_at', br.created_at,
+        'updated_at', br.updated_at,
+        'runtime_status_available', exists(select 1 from runtime_model),
+        'runtime_status_updated_at', (select rm.updated_at from runtime_model rm),
+        'runtime_status_source_kind', (select rm.source_kind from runtime_model rm),
+        'runtime_status_source_updated_at', (select rm.source_updated_at from runtime_model rm)
+      )
+      from binding_row br
+    ),
+    'subscription', jsonb_build_object(
+      'current', (
+        select case
+          when ls.id is null then null
+          else jsonb_build_object(
+            'id', ls.id,
+            'starts_at', ls.starts_at,
+            'ends_at', ls.ends_at,
+            'grace_days', ls.grace_days,
+            'status', ls.status,
+            'effective_status', ls.effective_status,
+            'amount_paid', ls.amount_paid,
+            'is_complimentary', ls.is_complimentary,
+            'notes', ls.notes,
+            'created_at', ls.created_at,
+            'updated_at', ls.updated_at,
+            'countdown_seconds', ls.countdown_seconds
+          )
+        end
+        from latest_subscription ls
+      ),
+      'history', coalesce((
+        select jsonb_agg(
+          jsonb_build_object(
+            'id', s.id,
+            'starts_at', s.starts_at,
+            'ends_at', s.ends_at,
+            'grace_days', s.grace_days,
+            'status', s.status,
+            'effective_status', case
+              when s.status = 'suspended' then 'suspended'
+              when v_now > s.ends_at + make_interval(days => s.grace_days) then 'expired'
+              else s.status
+            end,
+            'amount_paid', s.amount_paid,
+            'is_complimentary', s.is_complimentary,
+            'notes', s.notes,
+            'created_at', s.created_at,
+            'updated_at', s.updated_at,
+            'countdown_seconds', greatest(0, floor(extract(epoch from (s.ends_at - v_now))))::bigint
+          )
+          order by s.created_at desc, s.id desc
+        )
+        from (
+          select *
+          from platform.cafe_subscriptions s
+          where s.cafe_id = p_cafe_id
+          order by s.created_at desc, s.id desc
+          limit 12
+        ) s
+      ), '[]'::jsonb)
+    ),
+    'activity', jsonb_build_object(
+      'last_activity_at', (select last_activity_at from effective_activity),
+      'usage_state', (select usage_state from effective_activity),
+      'has_open_shift', (select has_open_shift from effective_activity),
+      'open_shift', (
+        select case
+          when rm.open_shift_id is not null then jsonb_build_object(
+            'id', rm.open_shift_id,
+            'shift_kind', rm.open_shift_kind,
+            'business_date', rm.open_shift_business_date,
+            'opened_at', rm.open_shift_opened_at
+          )
+          when los.id is not null then jsonb_build_object(
+            'id', los.id,
+            'shift_kind', los.shift_kind,
+            'business_date', los.business_date,
+            'opened_at', los.opened_at
+          )
+          else null
+        end
+        from runtime_model rm
+        full outer join local_open_shift los on true
+        limit 1
+      ),
+      'last_shift_closed_at', (select last_shift_closed_at from effective_activity),
+      'read_model', jsonb_build_object(
+        'source', case when exists(select 1 from runtime_model) then 'control.cafe_runtime_status_read_model' else 'local_ops_tables' end,
+        'runtime_status_available', exists(select 1 from runtime_model),
+        'runtime_status_updated_at', (select rm.updated_at from runtime_model rm),
+        'runtime_status_source_updated_at', (select rm.source_updated_at from runtime_model rm),
+        'notes', coalesce((select rm.notes from runtime_model rm), '{}'::jsonb)
+      )
+    ),
+    'billing_follow', jsonb_build_object(
+      'payment_state', case
+        when (select count(*) from latest_subscription) = 0 then 'trial_or_free'
+        when exists (select 1 from latest_subscription ls where ls.effective_status = 'suspended') then 'suspended'
+        when exists (select 1 from latest_subscription ls where ls.effective_status = 'expired') then 'overdue'
+        when exists (select 1 from latest_subscription ls where ls.effective_status = 'trial') then 'trial_or_free'
+        else 'paid_current'
+      end,
+      'current_subscription_effective_status', (select effective_status from latest_subscription limit 1),
+      'subscription_expires_at', (select ends_at from latest_subscription limit 1)
+    ),
+    'attention', jsonb_build_object(
+      'reasons', to_jsonb((select reasons from attention)),
+      'scope', 'administrative_only'
+    )
+  ) into v_result;
+
+  return v_result;
+end;
+$$;
+
+commit;
+-- <<< 0056_control_plane_runtime_activity_read_model.sql
+
+-- >>> 0057_branch_manager_and_american_waiter.sql
+-- Deprecated mixed migration kept as a no-op for compatibility.
+--
+-- This file previously mixed operational schema changes with control-plane
+-- platform function changes. That caused failures on operational-only
+-- databases that do not contain the `platform` schema.
+--
+-- Replacement migrations:
+--   0061_operational_branch_manager_owner_label.sql
+--   0062_control_plane_branch_manager_owner_functions.sql
+--
+-- Apply 0061 on operational databases.
+-- Apply 0062 on the control-plane database only.
+
+begin;
+commit;
+-- <<< 0057_branch_manager_and_american_waiter.sql
+
+-- >>> 0057_ops_runtime_status_snapshot_export.sql
 begin;
 
 create or replace function public.ops_get_cafe_runtime_status_snapshot(
@@ -16642,4 +17258,462 @@ $$;
 grant execute on function public.ops_get_cafe_runtime_status_snapshot(uuid) to service_role;
 
 commit;
+-- <<< 0057_ops_runtime_status_snapshot_export.sql
+
+-- >>> 0060_owner_management_and_shift_role_expansion.sql
+begin;
+
+alter table if exists ops.shift_role_assignments
+  drop constraint if exists shift_role_assignments_role_code_check;
+
+alter table if exists ops.shift_role_assignments
+  add constraint shift_role_assignments_role_code_check
+  check (role_code in ('supervisor', 'waiter', 'barista', 'shisha', 'american_waiter'));
+
+create or replace function public.ops_create_management_account(
+  p_cafe_id uuid,
+  p_actor_owner_id uuid,
+  p_full_name text,
+  p_phone text,
+  p_password text,
+  p_owner_label text default 'branch_manager'
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public, ops
+as $$
+declare
+  v_actor ops.owner_users%rowtype;
+  v_owner_id uuid;
+  v_owner_label text;
+begin
+  select * into v_actor
+  from ops.owner_users
+  where cafe_id = p_cafe_id
+    and id = p_actor_owner_id
+    and is_active = true;
+
+  if not found then
+    raise exception 'owner_actor_not_found';
+  end if;
+
+  if v_actor.owner_label = 'branch_manager' then
+    raise exception 'branch_manager_cannot_manage_admin_accounts';
+  end if;
+
+  if nullif(btrim(p_full_name), '') is null then
+    raise exception 'p_full_name is required';
+  end if;
+  if nullif(btrim(p_phone), '') is null then
+    raise exception 'p_phone is required';
+  end if;
+  if nullif(p_password, '') is null then
+    raise exception 'p_password is required';
+  end if;
+
+  v_owner_label := lower(coalesce(nullif(btrim(p_owner_label), ''), 'branch_manager'));
+  if v_owner_label <> 'branch_manager' then
+    raise exception 'invalid owner label';
+  end if;
+
+  insert into ops.owner_users (cafe_id, full_name, phone, password_hash, owner_label, is_active)
+  values (
+    p_cafe_id,
+    btrim(p_full_name),
+    btrim(p_phone),
+    extensions.crypt(p_password, extensions.gen_salt('bf')),
+    v_owner_label,
+    true
+  )
+  returning id into v_owner_id;
+
+  insert into ops.audit_events (cafe_id, actor_type, actor_label, event_code, entity_type, entity_id, payload)
+  values (
+    p_cafe_id,
+    'owner',
+    coalesce(v_actor.full_name, v_actor.phone, p_actor_owner_id::text),
+    'owner_create_management_account',
+    'owner_user',
+    v_owner_id,
+    jsonb_build_object('phone', btrim(p_phone), 'owner_label', v_owner_label)
+  );
+
+  return jsonb_build_object('ok', true, 'owner_user_id', v_owner_id, 'owner_label', v_owner_label);
+end;
+$$;
+
+commit;
+-- <<< 0060_owner_management_and_shift_role_expansion.sql
+
+-- >>> 0061_operational_branch_manager_owner_label.sql
+-- Operational-only migration.
+-- Add branch_manager as a valid ops.owner_users label.
+
+begin;
+
+alter table if exists ops.owner_users
+  drop constraint if exists chk_ops_owner_users_owner_label;
+
+alter table if exists ops.owner_users
+  add constraint chk_ops_owner_users_owner_label
+  check (owner_label in ('owner', 'partner', 'branch_manager'));
+
+create index if not exists idx_owner_users_cafe_owner_label
+  on ops.owner_users(cafe_id, owner_label);
+
+commit;
+-- <<< 0061_operational_branch_manager_owner_label.sql
+
+-- >>> 0062_control_plane_branch_manager_owner_functions.sql
+-- Control-plane-only migration.
+-- Update platform owner management functions to accept branch_manager.
+
+DO $$
+BEGIN
+  IF to_regnamespace('platform') IS NULL THEN
+    RAISE EXCEPTION 'CONTROL_PLANE_ONLY_MIGRATION: schema "platform" does not exist in this database';
+  END IF;
+END
+$$;
+
+create or replace function public.platform_create_owner_user(
+  p_super_admin_user_id uuid,
+  p_cafe_id uuid,
+  p_full_name text,
+  p_phone text,
+  p_password text,
+  p_owner_label text default 'partner'
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public, ops, platform
+as $$
+declare
+  v_admin platform.super_admin_users%rowtype;
+  v_cafe ops.cafes%rowtype;
+  v_owner_id uuid;
+  v_owner_label text;
+begin
+  select * into v_admin from platform.super_admin_users where id = p_super_admin_user_id and is_active = true;
+  if not found then raise exception 'active super admin not found'; end if;
+  select * into v_cafe from ops.cafes where id = p_cafe_id;
+  if not found then raise exception 'cafe not found'; end if;
+  if nullif(btrim(p_full_name), '') is null then raise exception 'p_full_name is required'; end if;
+  if nullif(btrim(p_phone), '') is null then raise exception 'p_phone is required'; end if;
+  v_owner_label := lower(coalesce(nullif(btrim(p_owner_label), ''), 'partner'));
+  if v_owner_label not in ('owner', 'partner', 'branch_manager') then raise exception 'invalid owner label'; end if;
+  insert into ops.owner_users (cafe_id, full_name, phone, password_hash, owner_label, is_active)
+  values (p_cafe_id, btrim(p_full_name), btrim(p_phone), case when nullif(p_password, '') is null then null else extensions.crypt(p_password, extensions.gen_salt('bf')) end, v_owner_label, true)
+  returning id into v_owner_id;
+  insert into ops.audit_events (cafe_id, actor_type, actor_label, event_code, entity_type, entity_id, payload)
+  values (p_cafe_id, 'super_admin', v_admin.email, 'platform_create_owner_user', 'owner_user', v_owner_id, jsonb_build_object('phone', btrim(p_phone), 'owner_label', v_owner_label));
+  return jsonb_build_object('ok', true, 'owner_user_id', v_owner_id, 'owner_label', v_owner_label);
+end;
+$$;
+
+create or replace function public.platform_update_owner_user(
+  p_super_admin_user_id uuid,
+  p_cafe_id uuid,
+  p_owner_user_id uuid,
+  p_full_name text default null,
+  p_phone text default null,
+  p_owner_label text default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = public, ops, platform
+as $$
+declare
+  v_admin platform.super_admin_users%rowtype;
+  v_owner ops.owner_users%rowtype;
+  v_next_full_name text;
+  v_next_phone text;
+  v_next_owner_label text;
+begin
+  select * into v_admin from platform.super_admin_users where id = p_super_admin_user_id and is_active = true;
+  if not found then raise exception 'active super admin not found'; end if;
+  select * into v_owner from ops.owner_users where cafe_id = p_cafe_id and id = p_owner_user_id;
+  if not found then raise exception 'owner user not found'; end if;
+  v_next_full_name := coalesce(nullif(btrim(p_full_name), ''), v_owner.full_name);
+  v_next_phone := coalesce(nullif(btrim(p_phone), ''), v_owner.phone);
+  v_next_owner_label := lower(coalesce(nullif(btrim(p_owner_label), ''), v_owner.owner_label));
+  if v_next_owner_label not in ('owner', 'partner', 'branch_manager') then raise exception 'invalid owner label'; end if;
+  update ops.owner_users set full_name = v_next_full_name, phone = v_next_phone, owner_label = v_next_owner_label where cafe_id = p_cafe_id and id = p_owner_user_id;
+  insert into ops.audit_events (cafe_id, actor_type, actor_label, event_code, entity_type, entity_id, payload)
+  values (p_cafe_id, 'super_admin', v_admin.email, 'platform_update_owner_user', 'owner_user', p_owner_user_id, jsonb_build_object('full_name', v_next_full_name, 'phone', v_next_phone, 'owner_label', v_next_owner_label));
+  return jsonb_build_object('ok', true, 'owner_user_id', p_owner_user_id, 'owner_label', v_next_owner_label);
+end;
+$$;
+-- <<< 0062_control_plane_branch_manager_owner_functions.sql
+
+-- >>> 0063_ops_pwa_push_subscriptions.sql
+create table if not exists ops.pwa_push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  cafe_id uuid not null references ops.cafes(id) on delete cascade,
+  user_id uuid not null,
+  shift_id uuid not null references ops.shifts(id) on delete cascade,
+  role_code text not null check (role_code in ('waiter', 'american_waiter', 'barista', 'shisha')),
+  endpoint text not null,
+  p256dh_key text not null,
+  auth_key text not null,
+  is_active boolean not null default true,
+  last_seen_at timestamptz not null default now(),
+  last_error_at timestamptz null,
+  user_agent text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (cafe_id, endpoint)
+);
+create index if not exists idx_pwa_push_subscriptions_active_role_shift on ops.pwa_push_subscriptions (cafe_id, shift_id, role_code) where is_active = true;
+create index if not exists idx_pwa_push_subscriptions_user on ops.pwa_push_subscriptions (cafe_id, user_id);
+create or replace function ops.touch_pwa_push_subscription_updated_at() returns trigger language plpgsql as $$ begin new.updated_at := now(); return new; end; $$;
+drop trigger if exists trg_touch_pwa_push_subscription_updated_at on ops.pwa_push_subscriptions;
+create trigger trg_touch_pwa_push_subscription_updated_at before update on ops.pwa_push_subscriptions for each row execute function ops.touch_pwa_push_subscription_updated_at();
+-- <<< 0063_ops_pwa_push_subscriptions.sql
+
+-- >>> 0064_ops_runtime_presence_platform_reality.sql
+begin;
+
+create table if not exists ops.runtime_presence (
+  id uuid primary key default gen_random_uuid(),
+  cafe_id uuid not null references ops.cafes(id) on delete cascade,
+  runtime_user_id uuid not null,
+  device_id text not null,
+  actor_type text not null check (actor_type in ('owner', 'employee', 'platform_support')),
+  owner_label text null check (owner_label is null or owner_label in ('owner', 'partner', 'branch_manager')),
+  shift_id uuid null,
+  shift_role text null check (shift_role is null or shift_role in ('supervisor', 'waiter', 'barista', 'shisha', 'american_waiter')),
+  last_seen_at timestamptz not null default now(),
+  last_app_opened_at timestamptz null,
+  last_visible_at timestamptz null,
+  page_path text null,
+  user_agent text null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (cafe_id, runtime_user_id, device_id),
+  constraint fk_runtime_presence_shift
+    foreign key (cafe_id, shift_id)
+    references ops.shifts(cafe_id, id)
+    on delete set null
+);
+
+create index if not exists idx_ops_runtime_presence_cafe_last_seen
+  on ops.runtime_presence (cafe_id, last_seen_at desc);
+
+create index if not exists idx_ops_runtime_presence_shift_last_seen
+  on ops.runtime_presence (cafe_id, shift_id, last_seen_at desc)
+  where shift_id is not null;
+
+create index if not exists idx_ops_runtime_presence_visible
+  on ops.runtime_presence (cafe_id, last_visible_at desc);
+
+create or replace function public.ops_get_cafe_runtime_status_snapshot(
+  p_cafe_id uuid default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public, ops, app
+as $$
+declare
+  v_cafe_id uuid := coalesce(p_cafe_id, app.current_cafe_id());
+  v_operational_last_activity_at timestamptz;
+  v_presence_last_activity_at timestamptz;
+  v_effective_last_activity_at timestamptz;
+  v_last_online_at timestamptz;
+  v_last_app_opened_at timestamptz;
+  v_has_open_shift boolean := false;
+  v_open_shift_id uuid;
+  v_open_shift_kind text;
+  v_open_shift_business_date date;
+  v_open_shift_opened_at timestamptz;
+  v_last_shift_closed_at timestamptz;
+  v_open_sessions_count integer := 0;
+  v_active_staff_count integer := 0;
+  v_online_users_count integer := 0;
+  v_visible_runtime_count integer := 0;
+  v_last_open_order_at timestamptz;
+  v_last_open_order_id uuid;
+  v_last_open_order_session_id uuid;
+  v_last_open_order_session_label text;
+  v_last_open_order_status text;
+  v_last_open_order_items_count integer := 0;
+  v_usage_state text := 'inactive';
+begin
+  if v_cafe_id is null then
+    raise exception 'cafe_id_required';
+  end if;
+
+  if not exists (select 1 from ops.cafes where id = v_cafe_id) then
+    raise exception 'cafe_not_found';
+  end if;
+
+  select max(activity_at)
+    into v_operational_last_activity_at
+  from (
+    select max(created_at) as activity_at from ops.audit_events where cafe_id = v_cafe_id
+    union all
+    select max(opened_at) as activity_at from ops.shifts where cafe_id = v_cafe_id
+    union all
+    select max(opened_at) as activity_at from ops.service_sessions where cafe_id = v_cafe_id
+    union all
+    select max(created_at) as activity_at from ops.orders where cafe_id = v_cafe_id
+    union all
+    select max(created_at) as activity_at from ops.payments where cafe_id = v_cafe_id
+    union all
+    select max(created_at) as activity_at from ops.complaints where cafe_id = v_cafe_id
+    union all
+    select max(created_at) as activity_at from ops.order_item_issues where cafe_id = v_cafe_id
+  ) activity;
+
+  select
+    max(rp.last_seen_at),
+    max(rp.last_app_opened_at),
+    count(distinct rp.runtime_user_id) filter (where rp.last_seen_at >= now() - interval '90 seconds')::integer,
+    count(distinct rp.runtime_user_id) filter (where rp.last_visible_at >= now() - interval '90 seconds')::integer
+  into
+    v_last_online_at,
+    v_last_app_opened_at,
+    v_online_users_count,
+    v_visible_runtime_count
+  from ops.runtime_presence rp
+  where rp.cafe_id = v_cafe_id;
+
+  select max(activity_at)
+    into v_presence_last_activity_at
+  from (
+    select v_last_online_at as activity_at
+    union all
+    select v_last_app_opened_at as activity_at
+  ) activity
+  where activity.activity_at is not null;
+
+  v_effective_last_activity_at := coalesce(v_presence_last_activity_at, v_operational_last_activity_at);
+
+  select
+    true,
+    s.id,
+    s.shift_kind,
+    s.business_date,
+    s.opened_at
+  into
+    v_has_open_shift,
+    v_open_shift_id,
+    v_open_shift_kind,
+    v_open_shift_business_date,
+    v_open_shift_opened_at
+  from ops.shifts s
+  where s.cafe_id = v_cafe_id
+    and s.closed_at is null
+  order by s.opened_at desc, s.id desc
+  limit 1;
+
+  select max(s.closed_at)
+    into v_last_shift_closed_at
+  from ops.shifts s
+  where s.cafe_id = v_cafe_id
+    and s.closed_at is not null;
+
+  select count(*)::integer
+    into v_open_sessions_count
+  from ops.service_sessions ss
+  where ss.cafe_id = v_cafe_id
+    and ss.closed_at is null;
+
+  select count(distinct ss.opened_by_staff_id)::integer
+    into v_active_staff_count
+  from ops.service_sessions ss
+  where ss.cafe_id = v_cafe_id
+    and ss.closed_at is null
+    and ss.opened_by_staff_id is not null;
+
+  select
+    o.created_at,
+    o.id,
+    o.service_session_id,
+    ss.session_label,
+    o.status,
+    count(oi.id)::integer
+  into
+    v_last_open_order_at,
+    v_last_open_order_id,
+    v_last_open_order_session_id,
+    v_last_open_order_session_label,
+    v_last_open_order_status,
+    v_last_open_order_items_count
+  from ops.orders o
+  join ops.service_sessions ss
+    on ss.cafe_id = o.cafe_id
+   and ss.id = o.service_session_id
+   and ss.closed_at is null
+   and ss.status = 'open'
+  left join ops.order_items oi
+    on oi.cafe_id = o.cafe_id
+   and oi.order_id = o.id
+  where o.cafe_id = v_cafe_id
+    and o.status <> 'cancelled'
+    and (v_open_shift_id is null or o.shift_id = v_open_shift_id)
+  group by o.created_at, o.id, o.service_session_id, ss.session_label, o.status
+  order by o.created_at desc, o.id desc
+  limit 1;
+
+  v_usage_state := case
+    when coalesce(v_online_users_count, 0) > 0 then 'active_now'
+    when v_has_open_shift then 'active_now'
+    when v_effective_last_activity_at is not null and v_effective_last_activity_at >= now() - interval '24 hours' then 'active_today'
+    when v_effective_last_activity_at is not null and v_effective_last_activity_at >= now() - interval '7 days' then 'active_recently'
+    else 'inactive'
+  end;
+
+  return jsonb_build_object(
+    'cafe_id', v_cafe_id,
+    'last_activity_at', v_effective_last_activity_at,
+    'operational_last_activity_at', v_operational_last_activity_at,
+    'last_online_at', v_last_online_at,
+    'last_app_opened_at', v_last_app_opened_at,
+    'online_users_count', coalesce(v_online_users_count, 0),
+    'visible_runtime_count', coalesce(v_visible_runtime_count, 0),
+    'usage_state', v_usage_state,
+    'has_open_shift', coalesce(v_has_open_shift, false),
+    'open_shift_id', v_open_shift_id,
+    'open_shift_kind', v_open_shift_kind,
+    'open_shift_business_date', v_open_shift_business_date,
+    'open_shift_opened_at', v_open_shift_opened_at,
+    'last_shift_closed_at', v_last_shift_closed_at,
+    'open_sessions_count', coalesce(v_open_sessions_count, 0),
+    'active_staff_count', coalesce(v_active_staff_count, 0),
+    'last_open_order_at', v_last_open_order_at,
+    'last_open_order_id', v_last_open_order_id,
+    'last_open_order_session_id', v_last_open_order_session_id,
+    'last_open_order_session_label', v_last_open_order_session_label,
+    'last_open_order_status', v_last_open_order_status,
+    'last_open_order_items_count', coalesce(v_last_open_order_items_count, 0),
+    'source_updated_at', now(),
+    'source_kind', 'runtime_push',
+    'notes', jsonb_build_object(
+      'producer', 'ops_get_cafe_runtime_status_snapshot',
+      'open_sessions_count', coalesce(v_open_sessions_count, 0),
+      'active_staff_count', coalesce(v_active_staff_count, 0),
+      'online_users_count', coalesce(v_online_users_count, 0),
+      'visible_runtime_count', coalesce(v_visible_runtime_count, 0),
+      'last_open_order', case
+        when v_last_open_order_id is null then null
+        else jsonb_build_object(
+          'id', v_last_open_order_id,
+          'created_at', v_last_open_order_at,
+          'service_session_id', v_last_open_order_session_id,
+          'session_label', v_last_open_order_session_label,
+          'status', v_last_open_order_status,
+          'items_count', coalesce(v_last_open_order_items_count, 0)
+        )
+      end
+    )
+  );
+end;
+$$;
+
+grant execute on function public.ops_get_cafe_runtime_status_snapshot(uuid) to service_role;
+
+commit;
+-- <<< 0064_ops_runtime_presence_platform_reality.sql
 

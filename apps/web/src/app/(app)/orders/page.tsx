@@ -85,6 +85,7 @@ export default function OrdersPage() {
   const [readySelection, setReadySelection] = useState<Record<string, number>>({});
   const [remakeSelection, setRemakeSelection] = useState<Record<string, number>>({});
   const [sessionWarning, setSessionWarning] = useState<string | null>(null);
+  const [requestedSessionId, setRequestedSessionId] = useState<string | null>(null);
   const composerInputRef = useRef<HTMLInputElement | null>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -175,6 +176,28 @@ export default function OrdersPage() {
       setSessionWarning(null);
     }
   }, [creatingNew, effectiveSessionId]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const requested = new URLSearchParams(window.location.search).get('sessionId');
+    setRequestedSessionId(requested?.trim() ? requested.trim() : null);
+  }, []);
+
+  useEffect(() => {
+    if (!requestedSessionId || !liveData || creatingNew) {
+      return;
+    }
+    const requestedSession = sessions.find((session) => session.id === requestedSessionId);
+    if (requestedSession) {
+      setSessionId((current) => (current === requestedSession.id ? current : requestedSession.id));
+      setCreatingNew(false);
+      setSessionWarning(null);
+      setRequestedSessionId(null);
+      return;
+    }
+    setSessionWarning('الجلسة المطلوبة لم تعد مفتوحة حاليًا.');
+    setRequestedSessionId(null);
+  }, [creatingNew, liveData, requestedSessionId, sessions]);
 
   useEffect(() => {
     if (!composerOpen) return;

@@ -43,6 +43,12 @@ type CafeRow = {
   is_active: boolean;
   created_at: string;
   last_activity_at?: string | null;
+  operational_last_activity_at?: string | null;
+  last_online_at?: string | null;
+  last_app_opened_at?: string | null;
+  online_users_count?: number;
+  visible_runtime_count?: number;
+  online_now?: boolean;
   owner_count?: number;
   active_owner_count?: number;
   owners?: CafeOwnerRow[];
@@ -95,6 +101,12 @@ function isCafeRow(value: unknown): value is CafeRow {
     typeof value.is_active === 'boolean' &&
     typeof value.created_at === 'string' &&
     (typeof value.last_activity_at === 'string' || value.last_activity_at === null || typeof value.last_activity_at === 'undefined') &&
+    (typeof value.operational_last_activity_at === 'string' || value.operational_last_activity_at === null || typeof value.operational_last_activity_at === 'undefined') &&
+    (typeof value.last_online_at === 'string' || value.last_online_at === null || typeof value.last_online_at === 'undefined') &&
+    (typeof value.last_app_opened_at === 'string' || value.last_app_opened_at === null || typeof value.last_app_opened_at === 'undefined') &&
+    (typeof value.online_users_count === 'number' || typeof value.online_users_count === 'undefined') &&
+    (typeof value.visible_runtime_count === 'number' || typeof value.visible_runtime_count === 'undefined') &&
+    (typeof value.online_now === 'boolean' || typeof value.online_now === 'undefined') &&
     (typeof value.owner_count === 'number' || typeof value.owner_count === 'undefined') &&
     (typeof value.active_owner_count === 'number' || typeof value.active_owner_count === 'undefined') &&
     (typeof value.owners === 'undefined' || (Array.isArray(value.owners) && value.owners.every(isCafeOwnerRow))) &&
@@ -184,6 +196,23 @@ function bindingStatusLabel(cafe: CafeRow) {
     default:
       return cafe.database_binding?.database_key ?? cafe.database_key ?? 'غير مربوط';
   }
+}
+
+
+function latestPresenceAt(cafe: CafeRow) {
+  return cafe.last_online_at ?? cafe.last_app_opened_at ?? cafe.last_activity_at ?? cafe.created_at;
+}
+
+function presenceLabel(cafe: CafeRow) {
+  return cafe.online_now ? 'أونلاين الآن' : (cafe.online_users_count ?? 0) > 0 ? 'أونلاين' : 'غير متصل';
+}
+
+function presenceBadgeClass(cafe: CafeRow) {
+  return cafe.online_now
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    : (cafe.online_users_count ?? 0) > 0
+      ? 'border-sky-200 bg-sky-50 text-sky-700'
+      : 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
 function bindingBadgeClass(status: BindingStatus | undefined) {
@@ -376,7 +405,7 @@ export default function PlatformCafesPageClient() {
                   <th className="px-4 py-3">القهوة</th>
                   <th className="px-4 py-3">الاشتراك</th>
                   <th className="px-4 py-3">الملاك</th>
-                  <th className="px-4 py-3">آخر نشاط</th>
+                  <th className="px-4 py-3">آخر ظهور</th>
                   <th className="px-4 py-3">إجراءات</th>
                 </tr>
               </thead>
@@ -424,7 +453,14 @@ export default function PlatformCafesPageClient() {
                         <div className="mt-1 text-xs text-slate-500">{primaryOwner?.phone ?? 'لا يوجد مالك محدد'}</div>
                         <div className="mt-2 text-xs text-slate-500">{cafe.active_owner_count ?? 0}/{cafe.owner_count ?? 0} نشط</div>
                       </td>
-                      <td className="px-4 py-4 text-slate-700">{formatDateTime(cafe.last_activity_at ?? cafe.created_at)}</td>
+                      <td className="px-4 py-4 text-slate-700">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${presenceBadgeClass(cafe)}`}>{presenceLabel(cafe)}</span>
+                          {(cafe.online_users_count ?? 0) > 0 ? <span className="text-xs text-slate-500">{cafe.online_users_count} مستخدم</span> : null}
+                        </div>
+                        <div className="mt-2 font-medium text-slate-900">{formatDateTime(latestPresenceAt(cafe))}</div>
+                        <div className="mt-1 text-xs text-slate-500">فتح التطبيق: {formatDateTime(cafe.last_app_opened_at)}</div>
+                      </td>
                       <td className="px-4 py-4">
                         <div className="flex flex-wrap gap-2">
                           <Link href={`/platform/cafes/${cafe.id}`} className="rounded-2xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700">
@@ -471,6 +507,10 @@ export default function PlatformCafesPageClient() {
               <div className="font-semibold text-slate-900">{selectedCafe.display_name}</div>
               <div className="mt-1 text-xs text-slate-500">{selectedCafe.slug}</div>
               <div className="mt-2 text-xs text-slate-400">قاعدة التشغيل: {bindingStatusLabel(selectedCafe)}</div>
+              <div className="mt-3 flex flex-wrap gap-2 text-[11px]">
+                <span className={`rounded-full border px-2.5 py-1 font-semibold ${presenceBadgeClass(selectedCafe)}`}>{presenceLabel(selectedCafe)}</span>
+                {(selectedCafe.online_users_count ?? 0) > 0 ? <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 font-semibold text-slate-700">{selectedCafe.online_users_count} أونلاين</span> : null}
+              </div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1">
               <div className="rounded-[20px] border border-slate-200 bg-white p-4">
@@ -479,8 +519,9 @@ export default function PlatformCafesPageClient() {
                 <div className="mt-1 text-xs text-slate-500">{selectedCafe.owners?.[0]?.phone ?? 'لا يوجد'}</div>
               </div>
               <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-                <div className="text-xs text-slate-500">آخر نشاط</div>
-                <div className="mt-1 font-semibold text-slate-900">{formatDateTime(selectedCafe.last_activity_at ?? selectedCafe.created_at)}</div>
+                <div className="text-xs text-slate-500">آخر ظهور</div>
+                <div className="mt-1 font-semibold text-slate-900">{formatDateTime(latestPresenceAt(selectedCafe))}</div>
+                <div className="mt-1 text-xs text-slate-500">فتح التطبيق: {formatDateTime(selectedCafe.last_app_opened_at)}</div>
               </div>
               <div className="rounded-[20px] border border-slate-200 bg-white p-4">
                 <div className="text-xs text-slate-500">الاشتراك</div>

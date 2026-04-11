@@ -13,6 +13,11 @@ export type CafeRuntimeSyncBinding = {
 type RuntimeSnapshot = {
   cafe_id?: string | null;
   last_activity_at?: string | null;
+  operational_last_activity_at?: string | null;
+  last_online_at?: string | null;
+  last_app_opened_at?: string | null;
+  online_users_count?: number | null;
+  visible_runtime_count?: number | null;
   usage_state?: string | null;
   has_open_shift?: boolean | null;
   open_shift_id?: string | null;
@@ -20,6 +25,14 @@ type RuntimeSnapshot = {
   open_shift_business_date?: string | null;
   open_shift_opened_at?: string | null;
   last_shift_closed_at?: string | null;
+  open_sessions_count?: number | null;
+  active_staff_count?: number | null;
+  last_open_order_at?: string | null;
+  last_open_order_id?: string | null;
+  last_open_order_session_id?: string | null;
+  last_open_order_session_label?: string | null;
+  last_open_order_status?: string | null;
+  last_open_order_items_count?: number | null;
   source_updated_at?: string | null;
   source_kind?: string | null;
   notes?: unknown;
@@ -164,6 +177,19 @@ async function upsertRuntimeSnapshot(
       p_open_shift_business_date: snapshot.open_shift_business_date ?? null,
       p_open_shift_opened_at: snapshot.open_shift_opened_at ?? null,
       p_last_shift_closed_at: snapshot.last_shift_closed_at ?? null,
+      p_operational_last_activity_at: snapshot.operational_last_activity_at ?? null,
+      p_last_online_at: snapshot.last_online_at ?? null,
+      p_last_app_opened_at: snapshot.last_app_opened_at ?? null,
+      p_online_users_count: typeof snapshot.online_users_count === 'number' ? snapshot.online_users_count : 0,
+      p_visible_runtime_count: typeof snapshot.visible_runtime_count === 'number' ? snapshot.visible_runtime_count : 0,
+      p_open_sessions_count: typeof snapshot.open_sessions_count === 'number' ? snapshot.open_sessions_count : 0,
+      p_active_staff_count: typeof snapshot.active_staff_count === 'number' ? snapshot.active_staff_count : 0,
+      p_last_open_order_at: snapshot.last_open_order_at ?? null,
+      p_last_open_order_id: snapshot.last_open_order_id ?? null,
+      p_last_open_order_session_id: snapshot.last_open_order_session_id ?? null,
+      p_last_open_order_session_label: snapshot.last_open_order_session_label ?? null,
+      p_last_open_order_status: snapshot.last_open_order_status ?? null,
+      p_last_open_order_items_count: typeof snapshot.last_open_order_items_count === 'number' ? snapshot.last_open_order_items_count : 0,
       p_source_updated_at: snapshot.source_updated_at ?? null,
       p_source_kind: 'manual_sync',
       p_notes: {

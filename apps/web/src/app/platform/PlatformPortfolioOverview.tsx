@@ -37,6 +37,11 @@ type PortfolioCafeRow = {
   payment_state: PaymentState;
   usage_state: UsageState;
   last_activity_at: string | null;
+  operational_last_activity_at: string | null;
+  last_online_at: string | null;
+  last_app_opened_at: string | null;
+  online_users_count: number;
+  visible_runtime_count: number;
   has_open_shift: boolean;
   open_shift_business_date: string | null;
   open_shift_started_at: string | null;
@@ -142,6 +147,11 @@ function isPortfolioCafeRow(value: unknown): value is PortfolioCafeRow {
     isPaymentState(value.payment_state) &&
     isUsageState(value.usage_state) &&
     (typeof value.last_activity_at === 'string' || value.last_activity_at === null) &&
+    (typeof value.operational_last_activity_at === 'string' || value.operational_last_activity_at === null) &&
+    (typeof value.last_online_at === 'string' || value.last_online_at === null) &&
+    (typeof value.last_app_opened_at === 'string' || value.last_app_opened_at === null) &&
+    typeof value.online_users_count === 'number' &&
+    typeof value.visible_runtime_count === 'number' &&
     typeof value.has_open_shift === 'boolean' &&
     (typeof value.open_shift_business_date === 'string' || value.open_shift_business_date === null) &&
     (typeof value.open_shift_started_at === 'string' || value.open_shift_started_at === null) &&
@@ -304,6 +314,26 @@ function paymentLabel(state: PaymentState) {
   }
 }
 
+function latestPresenceAt(cafe: Pick<PortfolioCafeRow, 'last_online_at' | 'last_app_opened_at' | 'last_activity_at'>) {
+  return cafe.last_online_at ?? cafe.last_app_opened_at ?? cafe.last_activity_at;
+}
+
+function operationalActivityAt(cafe: Pick<PortfolioCafeRow, 'operational_last_activity_at' | 'last_activity_at'>) {
+  return cafe.operational_last_activity_at ?? cafe.last_activity_at;
+}
+
+function presenceLabel(cafe: Pick<PortfolioCafeRow, 'online_users_count' | 'visible_runtime_count'>) {
+  return cafe.online_users_count > 0 ? 'أونلاين الآن' : cafe.visible_runtime_count > 0 ? 'مرئي بدون heartbeat' : 'غير متصل';
+}
+
+function presenceBadgeClass(cafe: Pick<PortfolioCafeRow, 'online_users_count' | 'visible_runtime_count'>) {
+  return cafe.online_users_count > 0
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    : cafe.visible_runtime_count > 0
+      ? 'border-sky-200 bg-sky-50 text-sky-700'
+      : 'border-slate-200 bg-slate-50 text-slate-700';
+}
+
 
 export default function PlatformPortfolioOverview({
   selectedCafeId,
@@ -373,6 +403,19 @@ export default function PlatformPortfolioOverview({
     ? Math.max(0, Math.min(100, data.database_usage.usage_percent))
     : 0;
 
+  const cafesOnlineNowCount = useMemo(
+    () => (data?.cafes ?? []).filter((cafe) => cafe.online_users_count > 0).length,
+    [data],
+  );
+  const onlineUsersTotal = useMemo(
+    () => (data?.cafes ?? []).reduce((sum, cafe) => sum + cafe.online_users_count, 0),
+    [data],
+  );
+  const visibleRuntimeTotal = useMemo(
+    () => (data?.cafes ?? []).reduce((sum, cafe) => sum + cafe.visible_runtime_count, 0),
+    [data],
+  );
+
   return (
     <div className="space-y-6">
       <section className="flex items-center justify-between gap-3">
@@ -393,15 +436,15 @@ export default function PlatformPortfolioOverview({
             <div className="mt-2 text-3xl font-bold text-slate-900">{data?.summary.cafes_active ?? 0}</div>
             <div className="mt-2 text-xs text-slate-500">من أصل {data?.summary.cafes_total ?? 0} قهوة مسجلة</div>
           </div>
-          <div className="rounded-[24px] border border-amber-200 bg-amber-50 p-5 shadow-sm">
-            <div className="text-sm text-amber-800">يحتاج تدخل</div>
-            <div className="mt-2 text-3xl font-bold text-amber-900">{data?.summary.needs_attention ?? 0}</div>
-            <div className="mt-2 text-xs text-amber-700">متأخر أو خارج الطبيعي ويحتاج قرارًا سريعًا</div>
+          <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5 shadow-sm">
+            <div className="text-sm text-emerald-800">قهاوي أونلاين الآن</div>
+            <div className="mt-2 text-3xl font-bold text-emerald-900">{cafesOnlineNowCount}</div>
+            <div className="mt-2 text-xs text-emerald-700">Presence حي من التطبيق</div>
           </div>
           <div className="rounded-[24px] border border-sky-200 bg-sky-50 p-5 shadow-sm">
-            <div className="text-sm text-sky-800">رسائل دعم جديدة</div>
-            <div className="mt-2 text-3xl font-bold text-sky-900">{supportNewCount}</div>
-            <div className="mt-2 text-xs text-sky-700">البلاغات غير المفتوحة بعد</div>
+            <div className="text-sm text-sky-800">مستخدمون أونلاين</div>
+            <div className="mt-2 text-3xl font-bold text-sky-900">{onlineUsersTotal}</div>
+            <div className="mt-2 text-xs text-sky-700">شاشات مرئية الآن: {visibleRuntimeTotal}</div>
           </div>
           <div className="rounded-[24px] border border-rose-200 bg-rose-50 p-5 shadow-sm">
             <div className="text-sm text-rose-800">اشتراكات متعثرة</div>
@@ -449,14 +492,14 @@ export default function PlatformPortfolioOverview({
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
             <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-              <div className="text-xs text-slate-500">نشاط الآن</div>
-              <div className="mt-1 text-xl font-bold text-slate-900">{data?.summary.active_now ?? 0}</div>
-              <div className="mt-1 text-xs text-slate-500">ورديات مفتوحة: {data?.summary.open_shifts_now ?? 0}</div>
+              <div className="text-xs text-slate-500">ورديات مفتوحة</div>
+              <div className="mt-1 text-xl font-bold text-slate-900">{data?.summary.open_shifts_now ?? 0}</div>
+              <div className="mt-1 text-xs text-slate-500">قهاوي تحتاج تدخل: {data?.summary.needs_attention ?? 0}</div>
             </div>
             <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-              <div className="text-xs text-slate-500">نشاط اليوم</div>
-              <div className="mt-1 text-xl font-bold text-slate-900">{data?.summary.active_today ?? 0}</div>
-              <div className="mt-1 text-xs text-slate-500">قهاوي غير نشطة: {data?.summary.inactive ?? 0}</div>
+              <div className="text-xs text-slate-500">رسائل دعم جديدة</div>
+              <div className="mt-1 text-xl font-bold text-slate-900">{supportNewCount}</div>
+              <div className="mt-1 text-xs text-slate-500">نشاط اليوم: {data?.summary.active_today ?? 0}</div>
             </div>
           </div>
         </aside>
@@ -491,7 +534,7 @@ export default function PlatformPortfolioOverview({
                       {usageLabel(item.usage_state)}
                     </span>
                   </div>
-                  <div className="mt-1 text-xs text-slate-500">{item.slug} • آخر نشاط: {formatDateTime(item.last_activity_at)}</div>
+                  <div className="mt-1 text-xs text-slate-500">{item.slug} • آخر حركة متابعة: {formatDateTime(item.last_activity_at)}</div>
                 </div>
                 <div className="flex flex-1 flex-wrap gap-2 lg:justify-end">
                   {item.attention_reasons.map((reason) => (
@@ -536,23 +579,27 @@ export default function PlatformPortfolioOverview({
                 </div>
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-                    <div className="text-xs text-slate-500">الحالة</div>
-                    <div className="mt-1 font-semibold text-slate-900">{selectedCafe.is_active ? 'مفعلة' : 'معطلة'}</div>
+                    <div className="text-xs text-slate-500">الحضور الآن</div>
+                    <div className="mt-1 font-semibold text-slate-900">{presenceLabel(selectedCafe)}</div>
+                    <div className="mt-1 text-xs text-slate-500">{selectedCafe.online_users_count} مستخدم • {selectedCafe.visible_runtime_count} شاشة</div>
                   </div>
                   <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-                    <div className="text-xs text-slate-500">آخر نشاط</div>
-                    <div className="mt-1 font-semibold text-slate-900">{formatDateTime(selectedCafe.last_activity_at)}</div>
+                    <div className="text-xs text-slate-500">آخر ظهور</div>
+                    <div className="mt-1 font-semibold text-slate-900">{formatDateTime(latestPresenceAt(selectedCafe))}</div>
                   </div>
                   <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-                    <div className="text-xs text-slate-500">الملاك النشطون</div>
-                    <div className="mt-1 font-semibold text-slate-900">{selectedCafe.active_owner_count}/{selectedCafe.owner_count}</div>
+                    <div className="text-xs text-slate-500">آخر فتح تطبيق</div>
+                    <div className="mt-1 font-semibold text-slate-900">{formatDateTime(selectedCafe.last_app_opened_at)}</div>
                   </div>
                   <div className="rounded-[20px] border border-slate-200 bg-white p-4">
-                    <div className="text-xs text-slate-500">الوردية الحالية</div>
-                    <div className="mt-1 font-semibold text-slate-900">{selectedCafe.has_open_shift ? 'مفتوحة الآن' : 'لا توجد'}</div>
+                    <div className="text-xs text-slate-500">آخر نشاط تشغيلي</div>
+                    <div className="mt-1 font-semibold text-slate-900">{formatDateTime(operationalActivityAt(selectedCafe))}</div>
                   </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
+                  <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${presenceBadgeClass(selectedCafe)}`}>
+                    {presenceLabel(selectedCafe)}
+                  </span>
                   <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassForPayment(selectedCafe.payment_state)}`}>
                     {paymentLabel(selectedCafe.payment_state)}
                   </span>
@@ -634,9 +681,18 @@ export default function PlatformPortfolioOverview({
                     <div className={`inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${badgeClassForUsage(cafe.usage_state)}`}>
                       {usageLabel(cafe.usage_state)}
                     </div>
+                    <div className={`mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${presenceBadgeClass(cafe)}`}>
+                      {presenceLabel(cafe)}
+                    </div>
                     <div className="mt-2 text-xs text-slate-500">{cafe.has_open_shift ? 'وردية مفتوحة الآن' : 'بدون وردية مفتوحة'}</div>
                   </td>
-                  <td className="px-4 py-4 text-slate-700">{formatDateTime(cafe.last_activity_at)}</td>
+                  <td className="px-4 py-4 text-slate-700">
+                    <div className="space-y-1 text-xs">
+                      <div><span className="text-slate-500">آخر ظهور:</span> {formatDateTime(latestPresenceAt(cafe))}</div>
+                      <div><span className="text-slate-500">فتح التطبيق:</span> {formatDateTime(cafe.last_app_opened_at)}</div>
+                      <div><span className="text-slate-500">نشاط تشغيلي:</span> {formatDateTime(operationalActivityAt(cafe))}</div>
+                    </div>
+                  </td>
                 </tr>
               ))}
               {!loading && !data?.cafes.length ? (

@@ -88,20 +88,19 @@ export async function POST(req: Request) {
     const orderId = String(createRpc.order_id ?? '').trim();
     if (!orderId) throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
 
-    await Promise.all([
-      persistOrderItemAddons({
-        cafeId: ctx.cafeId,
-        orderId,
-        databaseKey: ctx.databaseKey,
-        items: requestedItems.map((item) => ({ productId: item.productId, quantity: item.quantity, addonIds: item.addonIds })),
-      }),
-      persistOrderNotePreset({
-        cafeId: ctx.cafeId,
-        databaseKey: ctx.databaseKey,
-        note: body.notes,
-        productStationCodes: stationCodes,
-      }),
-    ]);
+    await persistOrderItemAddons({
+      cafeId: ctx.cafeId,
+      orderId,
+      databaseKey: ctx.databaseKey,
+      items: requestedItems.map((item) => ({ productId: item.productId, quantity: item.quantity, addonIds: item.addonIds })),
+    });
+
+    await persistOrderNotePreset({
+      cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
+      note: body.notes,
+      productStationCodes: stationCodes,
+    });
     dispatchStationOrderSubmittedInBackground(ctx, {
       orderId,
       serviceSessionId: sessionId,

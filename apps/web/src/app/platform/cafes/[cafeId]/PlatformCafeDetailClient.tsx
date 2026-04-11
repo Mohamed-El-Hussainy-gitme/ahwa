@@ -54,6 +54,22 @@ type SupportItem = {
   created_at: string;
 };
 
+type SupportAccessSummary = {
+  active_message_id: string | null;
+  expires_at: string | null;
+  message_status: string | null;
+  issue_type: string | null;
+};
+
+type LastOpenOrder = {
+  id: string;
+  created_at: string | null;
+  service_session_id: string | null;
+  session_label: string | null;
+  status: string | null;
+  items_count: number;
+};
+
 type PasswordSetupInvite = {
   ownerName: string;
   ownerPhone: string;
@@ -80,11 +96,21 @@ type CafeDetail = {
   };
   activity: {
     last_activity_at: string | null;
+    operational_last_activity_at: string | null;
+    last_online_at: string | null;
+    last_app_opened_at: string | null;
+    online_now: boolean;
+    online_users_count: number;
+    visible_runtime_count: number;
+    open_sessions_count: number;
+    active_staff_count: number;
     usage_state: UsageState;
     has_open_shift: boolean;
     open_shift: OpenShift | null;
     last_shift_closed_at: string | null;
   };
+  last_open_order: LastOpenOrder | null;
+  support_access: SupportAccessSummary;
   billing_follow: {
     payment_state: PaymentState;
     current_subscription_effective_status: SubscriptionStatus | null;
@@ -202,6 +228,18 @@ function usageLabel(state: UsageState) {
     default:
       return 'غير نشطة';
   }
+}
+
+function onlinePresenceLabel(onlineNow: boolean, onlineUsersCount: number) {
+  if (onlineNow) return 'أونلاين الآن';
+  if (onlineUsersCount > 0) return 'أونلاين';
+  return 'غير متصل';
+}
+
+function onlinePresenceBadgeClass(onlineNow: boolean, onlineUsersCount: number) {
+  if (onlineNow) return 'border-emerald-200 bg-emerald-50 text-emerald-700';
+  if (onlineUsersCount > 0) return 'border-sky-200 bg-sky-50 text-sky-700';
+  return 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
 function toDateInputValue(date: Date) {
@@ -441,6 +479,12 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
   }
 
   const supportPreview = supportItems.slice(0, 3);
+  const latestPresenceAt = data.activity.last_online_at ?? data.activity.last_app_opened_at ?? data.activity.last_activity_at;
+  const presenceLabel = onlinePresenceLabel(data.activity.online_now, data.activity.online_users_count);
+  const presenceBadgeClass = onlinePresenceBadgeClass(data.activity.online_now, data.activity.online_users_count);
+  const lastOpenOrderLink = data.support_access.active_message_id && data.last_open_order?.service_session_id
+    ? `/api/platform/support/access/enter?messageId=${encodeURIComponent(data.support_access.active_message_id)}&next=${encodeURIComponent(`/orders?sessionId=${data.last_open_order.service_session_id}`)}`
+    : null;
 
   return (
     <div className="space-y-6">
@@ -468,11 +512,19 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
             <div className="grid gap-3 text-sm text-slate-700 sm:grid-cols-2 xl:grid-cols-4">
               <div className="rounded-2xl bg-slate-50 px-4 py-3">الملاك/الشركاء: <strong>{cafe.owner_count}</strong></div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3">النشطون: <strong>{cafe.active_owner_count}</strong></div>
-              <div className="rounded-2xl bg-slate-50 px-4 py-3">آخر نشاط: <strong>{formatDateTime(data.activity.last_activity_at)}</strong></div>
+              <div className="rounded-2xl bg-slate-50 px-4 py-3">آخر ظهور: <strong>{formatDateTime(latestPresenceAt)}</strong></div>
               <div className="rounded-2xl bg-slate-50 px-4 py-3">آخر تحديث: <strong>{formatDateTime(data.generated_at)}</strong></div>
+            </div>
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className={`rounded-full border px-3 py-1 font-semibold ${presenceBadgeClass}`}>{presenceLabel}</span>
+              {data.activity.online_users_count > 0 ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">{data.activity.online_users_count} مستخدم أونلاين</span> : null}
+              {data.activity.visible_runtime_count > 0 ? <span className="rounded-full border border-slate-200 bg-white px-3 py-1 font-semibold text-slate-700">{data.activity.visible_runtime_count} شاشة ظاهرة</span> : null}
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
+            {lastOpenOrderLink ? (
+              <Link href={lastOpenOrderLink} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">فتح آخر طلب</Link>
+            ) : null}
             <button type="button" onClick={() => void load()} disabled={busy || loading} className="rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">تحديث</button>
             <button type="button" onClick={() => void runAction('/api/platform/cafes/toggle', { cafeId, isActive: !cafe.is_active }, cafe.is_active ? 'تم تعطيل القهوة.' : 'تم تفعيل القهوة.')} disabled={busy || loading} className={`rounded-2xl px-4 py-2 text-sm font-medium text-white ${cafe.is_active ? 'bg-rose-600' : 'bg-emerald-600'} disabled:opacity-60`}>
               {cafe.is_active ? 'تعطيل القهوة' : 'تفعيل القهوة'}
@@ -491,12 +543,46 @@ export default function PlatformCafeDetailClient({ cafeId }: { cafeId: string })
 
       {activeTab === 'summary' ? (
         <div className="space-y-6">
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-            <StatCard label="الحالة المالية" value={paymentLabel(data.billing_follow.payment_state)} helper={currentSubscription ? countdownLabel(currentSubscription.countdown_seconds) : 'لا يوجد اشتراك حالي'} />
-            <StatCard label="النشاط" value={usageLabel(data.activity.usage_state)} helper={`آخر نشاط ${formatDateTime(data.activity.last_activity_at)}`} />
-            <StatCard label="الورديات" value={data.activity.has_open_shift ? 'يوجد وردية مفتوحة' : 'لا توجد وردية مفتوحة'} helper={`آخر قفل ${formatDateTime(data.activity.last_shift_closed_at)}`} />
+          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            <StatCard label="الحضور الآن" value={presenceLabel} helper={data.activity.online_users_count > 0 ? `${data.activity.online_users_count} مستخدم أونلاين • ${data.activity.visible_runtime_count} شاشة ظاهرة` : 'لا يوجد حضور مرئي الآن'} />
+            <StatCard label="آخر ظهور" value={formatDateTime(latestPresenceAt)} helper={data.activity.last_online_at ? 'آخر heartbeat أو ظهور فعلي داخل التطبيق' : 'مستنتج من فتح التطبيق أو النشاط الأخير'} />
+            <StatCard label="آخر فتح تطبيق" value={formatDateTime(data.activity.last_app_opened_at)} helper="آخر bootstrap أو resume ناجح للتطبيق" />
+            <StatCard label="النشاط التشغيلي" value={usageLabel(data.activity.usage_state)} helper={`آخر نشاط تشغيلي ${formatDateTime(data.activity.operational_last_activity_at ?? data.activity.last_activity_at)}`} />
+            <StatCard label="الجلسات المفتوحة" value={String(data.activity.open_sessions_count)} helper={`${data.activity.active_staff_count} مستخدم تشغيلي مرتبط بالوردية الحالية`} />
             <StatCard label="الاشتراك الحالي" value={currentSubscription ? (currentSubscription.is_complimentary ? 'مجاني / استثنائي' : `${amountLabel(currentSubscription.amount_paid)} ج.م`) : 'بدون اشتراك'} helper={currentSubscription ? `ينتهي ${formatDateTime(currentSubscription.ends_at)}` : 'يحتاج إلى تفعيل'} />
           </section>
+
+          <SectionFrame
+            title="آخر طلب فعلي"
+            description="هذا الطلب يُجلب من جلسة مفتوحة فعليًا داخل التشغيل، وليس من سجل قديم فقط."
+            actions={lastOpenOrderLink ? <Link href={lastOpenOrderLink} className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">فتح آخر طلب</Link> : null}
+          >
+            {data.last_open_order ? (
+              <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                  <div className="text-xs text-slate-500">معرف الطلب</div>
+                  <div className="mt-1 font-semibold text-slate-900">{data.last_open_order.id}</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                  <div className="text-xs text-slate-500">وقت الإنشاء</div>
+                  <div className="mt-1 font-semibold text-slate-900">{formatDateTime(data.last_open_order.created_at)}</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                  <div className="text-xs text-slate-500">الجلسة</div>
+                  <div className="mt-1 font-semibold text-slate-900">{data.last_open_order.session_label ?? data.last_open_order.service_session_id ?? '—'}</div>
+                </div>
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
+                  <div className="text-xs text-slate-500">الحالة والعناصر</div>
+                  <div className="mt-1 font-semibold text-slate-900">{data.last_open_order.status ?? '—'} • {data.last_open_order.items_count} صنف</div>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-300 p-4 text-sm text-slate-500">لا يوجد طلب مرتبط بجلسة مفتوحة حاليًا.</div>
+            )}
+            {!lastOpenOrderLink && data.last_open_order ? (
+              <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">يوجد طلب فعلي، لكن لا يوجد grant دعم نشط الآن يسمح بفتح القهوة مباشرة من المنصة.</div>
+            ) : null}
+          </SectionFrame>
 
           {data.activity.open_shift ? (
             <SectionFrame title="الوردية المفتوحة">

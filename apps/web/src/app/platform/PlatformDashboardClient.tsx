@@ -45,6 +45,12 @@ type CafeRow = {
   is_active: boolean;
   created_at: string;
   last_activity_at?: string | null;
+  operational_last_activity_at?: string | null;
+  last_online_at?: string | null;
+  last_app_opened_at?: string | null;
+  online_users_count?: number;
+  visible_runtime_count?: number;
+  online_now?: boolean;
   owner_count?: number;
   active_owner_count?: number;
   owners?: CafeOwnerRow[];
@@ -256,6 +262,12 @@ function isCafeRow(value: unknown): value is CafeRow {
     typeof value.is_active === 'boolean' &&
     typeof value.created_at === 'string' &&
     (typeof value.last_activity_at === 'undefined' || typeof value.last_activity_at === 'string' || value.last_activity_at === null) &&
+    (typeof value.operational_last_activity_at === 'undefined' || typeof value.operational_last_activity_at === 'string' || value.operational_last_activity_at === null) &&
+    (typeof value.last_online_at === 'undefined' || typeof value.last_online_at === 'string' || value.last_online_at === null) &&
+    (typeof value.last_app_opened_at === 'undefined' || typeof value.last_app_opened_at === 'string' || value.last_app_opened_at === null) &&
+    (typeof value.online_users_count === 'undefined' || typeof value.online_users_count === 'number') &&
+    (typeof value.visible_runtime_count === 'undefined' || typeof value.visible_runtime_count === 'number') &&
+    (typeof value.online_now === 'undefined' || typeof value.online_now === 'boolean') &&
     (typeof value.owner_count === 'undefined' || typeof value.owner_count === 'number') &&
     (typeof value.active_owner_count === 'undefined' || typeof value.active_owner_count === 'number') &&
     (typeof value.owners === 'undefined' || (Array.isArray(value.owners) && value.owners.every(isCafeOwnerRow))) &&
@@ -408,6 +420,26 @@ function countdownLabel(totalSeconds: number | null | undefined) {
   if (days > 0) return `${days} يوم و ${hours} ساعة`;
   const minutes = Math.floor((safe % 3600) / 60);
   return `${hours} ساعة و ${minutes} دقيقة`;
+}
+
+function latestPresenceAt(cafe: Pick<CafeRow, 'last_online_at' | 'last_app_opened_at' | 'last_activity_at' | 'created_at'>) {
+  return cafe.last_online_at ?? cafe.last_app_opened_at ?? cafe.last_activity_at ?? cafe.created_at;
+}
+
+function operationalActivityAt(cafe: Pick<CafeRow, 'operational_last_activity_at' | 'last_activity_at' | 'created_at'>) {
+  return cafe.operational_last_activity_at ?? cafe.last_activity_at ?? cafe.created_at;
+}
+
+function presenceLabel(cafe: Pick<CafeRow, 'online_now' | 'online_users_count'>) {
+  return cafe.online_now ? 'أونلاين الآن' : (cafe.online_users_count ?? 0) > 0 ? 'أونلاين' : 'غير متصل';
+}
+
+function presenceBadgeClass(cafe: Pick<CafeRow, 'online_now' | 'online_users_count'>) {
+  return cafe.online_now
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700'
+    : (cafe.online_users_count ?? 0) > 0
+      ? 'border-sky-200 bg-sky-50 text-sky-700'
+      : 'border-slate-200 bg-slate-50 text-slate-600';
 }
 
 function supportStatusClass(status: SupportMessageStatus) {
@@ -1037,8 +1069,10 @@ export default function PlatformDashboardClient({ session }: { session: Platform
     .slice(0, 8), [cafes]);
 
   const expiredCafes = useMemo(() => cafes.filter((cafe) => cafe.current_subscription?.effective_status === 'expired').slice(0, 8), [cafes]);
-  const complimentaryCafes = useMemo(() => cafes.filter((cafe) => cafe.current_subscription?.is_complimentary).length, [cafes]);
   const paidCurrentCount = useMemo(() => cafes.filter((cafe) => cafe.current_subscription?.effective_status === 'active' && !cafe.current_subscription?.is_complimentary).length, [cafes]);
+  const cafesOnlineNowCount = useMemo(() => cafes.filter((cafe) => cafe.online_now || (cafe.online_users_count ?? 0) > 0).length, [cafes]);
+  const onlineUsersTotal = useMemo(() => cafes.reduce((sum, cafe) => sum + (cafe.online_users_count ?? 0), 0), [cafes]);
+  const visibleRuntimeTotal = useMemo(() => cafes.reduce((sum, cafe) => sum + (cafe.visible_runtime_count ?? 0), 0), [cafes]);
 
   async function submitCreateCafe() {
     setBusy(true);
@@ -1146,36 +1180,56 @@ export default function PlatformDashboardClient({ session }: { session: Platform
             </div>
 
             <div className="rounded-[28px] border border-slate-200 bg-slate-50 p-4">
-              <div className="text-sm font-semibold text-slate-900">لقطات سريعة</div>
+              <div className="text-sm font-semibold text-slate-900">الواقع الحي</div>
               <div className="mt-3 grid grid-cols-2 gap-3 text-sm">
                 <div className="rounded-2xl bg-white p-3">
-                  <div className="text-xs text-slate-500">قهاوي مفعلة</div>
-                  <div className="mt-1 text-lg font-bold text-slate-900">{cafes.filter((item) => item.is_active).length}</div>
+                  <div className="text-xs text-slate-500">قهاوي أونلاين الآن</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{cafesOnlineNowCount}</div>
                 </div>
                 <div className="rounded-2xl bg-white p-3">
-                  <div className="text-xs text-slate-500">مدفوع</div>
+                  <div className="text-xs text-slate-500">مستخدمون أونلاين</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{onlineUsersTotal}</div>
+                </div>
+                <div className="rounded-2xl bg-white p-3">
+                  <div className="text-xs text-slate-500">شاشات مرئية</div>
+                  <div className="mt-1 text-lg font-bold text-slate-900">{visibleRuntimeTotal}</div>
+                </div>
+                <div className="rounded-2xl bg-white p-3">
+                  <div className="text-xs text-slate-500">اشتراكات مدفوعة</div>
                   <div className="mt-1 text-lg font-bold text-slate-900">{paidCurrentCount}</div>
-                </div>
-                <div className="rounded-2xl bg-white p-3">
-                  <div className="text-xs text-slate-500">مجاني</div>
-                  <div className="mt-1 text-lg font-bold text-slate-900">{complimentaryCafes}</div>
-                </div>
-                <div className="rounded-2xl bg-white p-3">
-                  <div className="text-xs text-slate-500">منتهي</div>
-                  <div className="mt-1 text-lg font-bold text-slate-900">{expiredCafes.length}</div>
                 </div>
               </div>
             </div>
 
             {selectedCafe ? (
               <div className="rounded-[28px] border border-slate-200 bg-white p-4">
-                <div className="text-sm font-semibold text-slate-900">القهوة المحددة</div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-slate-900">القهوة المحددة</div>
+                  <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold ${presenceBadgeClass(selectedCafe)}`}>{presenceLabel(selectedCafe)}</span>
+                </div>
                 <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="font-semibold text-slate-900">{selectedCafe.display_name}</div>
                   <div className="mt-1 text-xs text-slate-500">{selectedCafe.slug}</div>
+                  <div className="mt-3 grid gap-3 text-xs text-slate-600 sm:grid-cols-2">
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                      <div className="text-[11px] text-slate-500">الحضور الآن</div>
+                      <div className="mt-1 font-semibold text-slate-900">{selectedCafe.online_users_count ?? 0} مستخدم • {selectedCafe.visible_runtime_count ?? 0} شاشة</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                      <div className="text-[11px] text-slate-500">آخر ظهور</div>
+                      <div className="mt-1 font-semibold text-slate-900">{formatDateTime(latestPresenceAt(selectedCafe))}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                      <div className="text-[11px] text-slate-500">آخر فتح تطبيق</div>
+                      <div className="mt-1 font-semibold text-slate-900">{formatDateTime(selectedCafe.last_app_opened_at)}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                      <div className="text-[11px] text-slate-500">آخر نشاط تشغيلي</div>
+                      <div className="mt-1 font-semibold text-slate-900">{formatDateTime(operationalActivityAt(selectedCafe))}</div>
+                    </div>
+                  </div>
                   <div className="mt-3 space-y-1 text-xs text-slate-600">
                     <div>المالك الرئيسي: {selectedCafe.owners?.[0]?.full_name ?? '—'}</div>
-                    <div>آخر نشاط: {formatDateTime(selectedCafe.last_activity_at ?? selectedCafe.created_at)}</div>
                     <div>{selectedCafe.current_subscription ? countdownLabel(selectedCafe.current_subscription.countdown_seconds) : 'بدون اشتراك'}</div>
                   </div>
                 </div>
@@ -1215,10 +1269,10 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                   />
                 </label>
                 <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <HeaderMiniStat title="قهاوي فعالة" value={String(cafes.filter((item) => item.is_active).length)} helper="المفعلة الآن" />
+                  <HeaderMiniStat title="قهاوي أونلاين" value={String(cafesOnlineNowCount)} helper="Presence حي من التطبيق" />
+                  <HeaderMiniStat title="مستخدمون أونلاين" value={String(onlineUsersTotal)} helper="آخر heartbeat خلال 90 ثانية" />
+                  <HeaderMiniStat title="شاشات مرئية" value={String(visibleRuntimeTotal)} helper="التطبيق مفتوح ومرئي" />
                   <HeaderMiniStat title="ينتهي قريبًا" value={String(expiringSoon.length)} helper="خلال 7 أيام" />
-                  <HeaderMiniStat title="رسائل جديدة" value={String(supportNewCount)} helper="تحتاج فتحًا سريعًا" />
-                  <HeaderMiniStat title="قهاوي معطلة" value={String(cafes.filter((item) => !item.is_active).length)} helper="يمكن إعادة تشغيلها" />
                 </div>
               </div>
             </header>
@@ -1295,6 +1349,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                                 </button>
                                 <div className="mt-2 flex flex-wrap gap-2 text-xs">
                                   <span className={`rounded-full border px-2 py-1 font-semibold ${cafeStatusBadgeClass(cafe.is_active)}`}>{cafe.is_active ? 'مفعلة' : 'معطلة'}</span>
+                                  <span className={`rounded-full border px-2 py-1 font-semibold ${presenceBadgeClass(cafe)}`}>{presenceLabel(cafe)}</span>
                                   {subscription ? <span className={`rounded-full border px-2 py-1 font-semibold ${subscriptionBadgeClass(subscription.effective_status)}`}>{subscription.effective_status}</span> : <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-1 font-semibold text-slate-600">بدون اشتراك</span>}
                                 </div>
                               </td>
@@ -1319,7 +1374,13 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                                   </>
                                 ) : '—'}
                               </td>
-                              <td className="px-3 py-4 text-slate-700">{formatDateTime(cafe.last_activity_at ?? cafe.created_at)}</td>
+                              <td className="px-3 py-4 text-slate-700">
+                                <div className="space-y-1 text-xs">
+                                  <div><span className="text-slate-500">آخر ظهور:</span> {formatDateTime(latestPresenceAt(cafe))}</div>
+                                  <div><span className="text-slate-500">فتح التطبيق:</span> {formatDateTime(cafe.last_app_opened_at)}</div>
+                                  <div><span className="text-slate-500">نشاط تشغيلي:</span> {formatDateTime(operationalActivityAt(cafe))}</div>
+                                </div>
+                              </td>
                               <td className="px-3 py-4">
                                 <div className="flex flex-wrap gap-2">
                                   <Link href={`/platform/cafes/${cafe.id}`} className="rounded-2xl border border-slate-300 px-3 py-2 text-xs font-medium text-slate-700">التفاصيل</Link>
