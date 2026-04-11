@@ -56,6 +56,25 @@ Apply migrations in this order:
 44. `0044_control_plane_owner_password_setup_preflight.sql`
 45. `0045_remove_service_station_code.sql`
 46. `0046_owner_phone_normalization_uniqueness.sql`
+47. `0047_ops_outbox_and_realtime_dispatch.sql`
+48. `0048_control_plane_scale_discipline.sql`
+49. `0049_ops_observability_snapshots.sql`
+50. `0050_restore_owner_activation_code_flow_after_scale_discipline.sql`
+51. `0051_ops_billing_extras_and_receipt_support.sql`
+52. `0052_ops_order_note_presets.sql`
+53. `0053_ops_menu_addons_foundation.sql`
+54. `0054_ops_incremental_rls_for_recent_tables.sql`
+55. `0055_search_path_linter_cleanup.sql`
+56. `0056_control_plane_runtime_activity_read_model.sql`
+57. `0057_branch_manager_and_american_waiter.sql`
+58. `0057_ops_runtime_status_snapshot_export.sql`
+59. `0060_owner_management_and_shift_role_expansion.sql`
+60. `0061_operational_branch_manager_owner_label.sql`
+61. `0062_control_plane_branch_manager_owner_functions.sql`
+62. `0063_ops_pwa_push_subscriptions.sql`
+63. `0064_ops_runtime_presence_platform_reality.sql`
+64. `0065_control_plane_runtime_presence_platform_reality.sql`
+65. `0066_control_plane_platform_last_open_order_summary.sql`
 
 ## Migration summary
 
@@ -115,6 +134,9 @@ Search-path security hardening for the remaining linter-reported functions. This
 ### 0034 - 0043
 Control-plane manual database selection, strict explicit bindings, platform response hardening, public SECURITY DEFINER readers, the canonical transactional create-cafe RPC/binding upsert flow, a saved control-plane operational-database registration contract, the atomic shift-open-plus-assignment runtime RPC, on-demand temporary support access grants tied to explicit support requests, runtime owner-password readiness for mirrored operational databases, and the control-plane one-time setup/reset code flow for owner passwords.
 
+### 0045 - 0065
+Operational/runtime cleanup and expansion for station identity removal, owner normalization, outbox-backed realtime dispatch, observability snapshots, billing extras and receipts, note presets, menu addons, recent-table RLS hardening, search-path cleanup, control-plane runtime activity mirrors, new branch manager and american waiter roles, runtime status export, owner/shift-role expansion, control-plane owner/branch-manager functions, PWA push subscriptions, and runtime presence/platform reality export.
+
 ## Current canonical boundaries
 
 - Daily runtime truth lives in `ops.*`
@@ -139,6 +161,18 @@ Control-plane manual database selection, strict explicit bindings, platform resp
 ## Phase 9 application binding note
 
 Phase 9 does not introduce a new SQL migration. The bug fixed in phase 9 was application-layer request binding, not control-plane data or schema shape. Keep the strict control-plane SQL contract from `0034` through `0037`, and fix runtime database selection only by explicit `databaseKey` propagation in application code.
+
+## Three-database topology
+
+- `db01`: the primary database that hosts **control-plane + operational** schemas. Apply the full historical migration chain here, including control-plane-only migrations such as `0034`, `0035`, `0036`, `0037`, `0038`, `0039`, `0041`, `0043`, `0044`, `0048`, `0050`, and `0065`.
+- `db02`: operational-only shard. Apply the historical operational chain here, including `0064`, but never the control-plane-only migrations.
+- `db03`: operational-only shard. Apply the historical operational chain here, including `0064`, but never the control-plane-only migrations.
+
+For the current platform-reality rollout on existing databases:
+
+1. Apply `0064_ops_runtime_presence_platform_reality.sql` to `db01`, `db02`, and `db03`.
+2. Apply `0065_control_plane_runtime_presence_platform_reality.sql` to `db01` only.
+3. Apply `0066_control_plane_platform_last_open_order_summary.sql` to `db01` only.
 
 ## Fresh database bootstrap bundles
 

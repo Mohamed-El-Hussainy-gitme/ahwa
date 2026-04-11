@@ -1,5 +1,6 @@
 import { actorRpcParams, callOpsRpc } from '@/app/api/ops/_rpc';
 import { jsonError, ok, kickOpsOutboxDispatch, requireBillingAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { triggerCafeRuntimeStatusSync } from '@/lib/control-plane/runtime-status-trigger';
 
 type CloseSessionRpcResult = {
   ok?: boolean;
@@ -25,6 +26,10 @@ export async function POST(req: Request) {
     }
 
     kickOpsOutboxDispatch(ctx);
+    triggerCafeRuntimeStatusSync(
+      { cafeId: ctx.cafeId, databaseKey: ctx.databaseKey },
+      { source: 'api/ops/sessions/close' },
+    );
 
     return ok({ ok: true });
   } catch (e) {

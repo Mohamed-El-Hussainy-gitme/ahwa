@@ -9,6 +9,7 @@ import {
 import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '../_station-events';
 import { persistOrderNotePreset } from '../../_order-note-presets';
 import { persistOrderItemAddons } from '../_addons';
+import { triggerCafeRuntimeStatusSync } from '@/lib/control-plane/runtime-status-trigger';
 
 type OpenAndCreateRequestBody = {
   label?: string;
@@ -111,6 +112,12 @@ export async function POST(req: Request) {
       })),
       productStationCodes,
     });
+
+    triggerCafeRuntimeStatusSync(
+      { cafeId: ctx.cafeId, databaseKey: ctx.databaseKey },
+      { source: 'api/ops/orders/open-and-create' },
+    );
+
     return ok({ ok: true, orderId, sessionId, label: sessionLabel });
   } catch (e) {
     return jsonError(e, 400);

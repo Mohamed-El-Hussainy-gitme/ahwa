@@ -49,6 +49,14 @@ type CafeRow = {
   online_users_count?: number;
   visible_runtime_count?: number;
   online_now?: boolean;
+  open_sessions_count?: number;
+  active_staff_count?: number;
+  last_open_order_at?: string | null;
+  last_open_order_id?: string | null;
+  last_open_order_session_id?: string | null;
+  last_open_order_session_label?: string | null;
+  last_open_order_status?: string | null;
+  last_open_order_items_count?: number;
   owner_count?: number;
   active_owner_count?: number;
   owners?: CafeOwnerRow[];
@@ -107,6 +115,14 @@ function isCafeRow(value: unknown): value is CafeRow {
     (typeof value.online_users_count === 'number' || typeof value.online_users_count === 'undefined') &&
     (typeof value.visible_runtime_count === 'number' || typeof value.visible_runtime_count === 'undefined') &&
     (typeof value.online_now === 'boolean' || typeof value.online_now === 'undefined') &&
+    (typeof value.open_sessions_count === 'number' || typeof value.open_sessions_count === 'undefined') &&
+    (typeof value.active_staff_count === 'number' || typeof value.active_staff_count === 'undefined') &&
+    (typeof value.last_open_order_at === 'string' || value.last_open_order_at === null || typeof value.last_open_order_at === 'undefined') &&
+    (typeof value.last_open_order_id === 'string' || value.last_open_order_id === null || typeof value.last_open_order_id === 'undefined') &&
+    (typeof value.last_open_order_session_id === 'string' || value.last_open_order_session_id === null || typeof value.last_open_order_session_id === 'undefined') &&
+    (typeof value.last_open_order_session_label === 'string' || value.last_open_order_session_label === null || typeof value.last_open_order_session_label === 'undefined') &&
+    (typeof value.last_open_order_status === 'string' || value.last_open_order_status === null || typeof value.last_open_order_status === 'undefined') &&
+    (typeof value.last_open_order_items_count === 'number' || typeof value.last_open_order_items_count === 'undefined') &&
     (typeof value.owner_count === 'number' || typeof value.owner_count === 'undefined') &&
     (typeof value.active_owner_count === 'number' || typeof value.active_owner_count === 'undefined') &&
     (typeof value.owners === 'undefined' || (Array.isArray(value.owners) && value.owners.every(isCafeOwnerRow))) &&
@@ -213,6 +229,13 @@ function presenceBadgeClass(cafe: CafeRow) {
     : (cafe.online_users_count ?? 0) > 0
       ? 'border-sky-200 bg-sky-50 text-sky-700'
       : 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
+function describeLastOpenOrder(cafe: Pick<CafeRow, 'last_open_order_id' | 'last_open_order_at' | 'last_open_order_session_label' | 'last_open_order_status' | 'last_open_order_items_count'>) {
+  if (!cafe.last_open_order_id) return 'لا يوجد طلب فعلي من جلسة مفتوحة الآن';
+  const sessionLabel = cafe.last_open_order_session_label ? ` • ${cafe.last_open_order_session_label}` : '';
+  const status = cafe.last_open_order_status ? ` • ${cafe.last_open_order_status}` : '';
+  return `${formatDateTime(cafe.last_open_order_at)} • ${cafe.last_open_order_items_count ?? 0} صنف${sessionLabel}${status}`;
 }
 
 function bindingBadgeClass(status: BindingStatus | undefined) {
@@ -405,7 +428,7 @@ export default function PlatformCafesPageClient() {
                   <th className="px-4 py-3">القهوة</th>
                   <th className="px-4 py-3">الاشتراك</th>
                   <th className="px-4 py-3">الملاك</th>
-                  <th className="px-4 py-3">آخر ظهور</th>
+                  <th className="px-4 py-3">الواقع الحي</th>
                   <th className="px-4 py-3">إجراءات</th>
                 </tr>
               </thead>
@@ -460,6 +483,9 @@ export default function PlatformCafesPageClient() {
                         </div>
                         <div className="mt-2 font-medium text-slate-900">{formatDateTime(latestPresenceAt(cafe))}</div>
                         <div className="mt-1 text-xs text-slate-500">فتح التطبيق: {formatDateTime(cafe.last_app_opened_at)}</div>
+                        <div className="mt-2 text-xs text-slate-500">{cafe.open_sessions_count ?? 0} جلسة مفتوحة • {cafe.active_staff_count ?? 0} مستخدم</div>
+                        <div className="mt-2 text-xs text-slate-500">آخر طلب: {cafe.last_open_order_id ?? '—'}</div>
+                        <div className="mt-1 text-xs text-slate-500">{describeLastOpenOrder(cafe)}</div>
                       </td>
                       <td className="px-4 py-4">
                         <div className="flex flex-wrap gap-2">
@@ -522,6 +548,9 @@ export default function PlatformCafesPageClient() {
                 <div className="text-xs text-slate-500">آخر ظهور</div>
                 <div className="mt-1 font-semibold text-slate-900">{formatDateTime(latestPresenceAt(selectedCafe))}</div>
                 <div className="mt-1 text-xs text-slate-500">فتح التطبيق: {formatDateTime(selectedCafe.last_app_opened_at)}</div>
+                <div className="mt-3 text-xs text-slate-500">الجلسات المفتوحة: {selectedCafe.open_sessions_count ?? 0} • المستخدمون التشغيليون: {selectedCafe.active_staff_count ?? 0}</div>
+                <div className="mt-2 text-xs text-slate-500">آخر طلب فعلي: {selectedCafe.last_open_order_id ?? '—'}</div>
+                <div className="mt-1 text-xs text-slate-500">{describeLastOpenOrder(selectedCafe)}</div>
               </div>
               <div className="rounded-[20px] border border-slate-200 bg-white p-4">
                 <div className="text-xs text-slate-500">الاشتراك</div>

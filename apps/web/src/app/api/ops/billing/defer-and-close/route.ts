@@ -13,6 +13,7 @@ import {
 } from '@/app/api/ops/_helpers';
 import { buildBillingReceiptUrl } from '@/lib/ops/billing';
 import { resolveBillingContext } from '@/app/api/ops/_billing';
+import { triggerCafeRuntimeStatusSync } from '@/lib/control-plane/runtime-status-trigger';
 
 type DeferAllocationInput = {
   orderItemId: string;
@@ -100,6 +101,10 @@ export async function POST(req: Request) {
     }
 
     kickOpsOutboxDispatch(ctx);
+    triggerCafeRuntimeStatusSync(
+      { cafeId: ctx.cafeId, databaseKey: ctx.databaseKey },
+      { source: 'api/ops/billing/defer-and-close' },
+    );
     const responseBody = {
       ok: true,
       sessionClosed,

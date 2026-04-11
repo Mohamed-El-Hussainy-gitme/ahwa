@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { adminOps } from '@/app/api/ops/_server';
 import { getEnrichedRuntimeMeFromCookie, isSupportRuntimeSessionError, isUnboundRuntimeSessionError } from '@/lib/runtime/me';
+import { triggerCafeRuntimeStatusSync } from '@/lib/control-plane/runtime-status-trigger';
 import type { ShiftRole } from '@/lib/authz/policy';
 
 type PresenceBody = {
@@ -100,6 +101,11 @@ export async function POST(request: Request) {
         throw insertError;
       }
     }
+
+    triggerCafeRuntimeStatusSync(
+      { cafeId: String(me.tenantId), databaseKey },
+      { source: 'api/runtime/presence' },
+    );
 
     return NextResponse.json({ ok: true });
   } catch (error) {

@@ -48,6 +48,14 @@ export type PlatformCafeListRow = {
   online_users_count?: number;
   visible_runtime_count?: number;
   online_now?: boolean;
+  open_sessions_count?: number;
+  active_staff_count?: number;
+  last_open_order_at?: string | null;
+  last_open_order_id?: string | null;
+  last_open_order_session_id?: string | null;
+  last_open_order_session_label?: string | null;
+  last_open_order_status?: string | null;
+  last_open_order_items_count?: number;
   owner_count?: number;
   active_owner_count?: number;
   owners?: PlatformCafeOwnerRow[];

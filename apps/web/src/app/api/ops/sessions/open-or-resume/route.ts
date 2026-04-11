@@ -1,5 +1,6 @@
 import { callOpsRpc, actorRpcParams } from '@/app/api/ops/_rpc';
 import { jsonError, ok, kickOpsOutboxDispatch, requireOpenOpsShift, requireOpsActorContext, requireSessionOrderAccess } from '@/app/api/ops/_helpers';
+import { triggerCafeRuntimeStatusSync } from '@/lib/control-plane/runtime-status-trigger';
 
 type OpenOrResumeSessionRpcResult = {
   service_session_id?: string;
@@ -28,6 +29,10 @@ export async function POST(req: Request) {
     }
 
     kickOpsOutboxDispatch(ctx);
+    triggerCafeRuntimeStatusSync(
+      { cafeId: ctx.cafeId, databaseKey: ctx.databaseKey },
+      { source: 'api/ops/sessions/open-or-resume' },
+    );
 
     return ok({ sessionId, label: sessionLabel });
   } catch (e) {

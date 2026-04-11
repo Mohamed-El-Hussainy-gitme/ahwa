@@ -42,6 +42,14 @@ type PortfolioCafeRow = {
   last_app_opened_at: string | null;
   online_users_count: number;
   visible_runtime_count: number;
+  open_sessions_count: number;
+  active_staff_count: number;
+  last_open_order_at: string | null;
+  last_open_order_id: string | null;
+  last_open_order_session_id: string | null;
+  last_open_order_session_label: string | null;
+  last_open_order_status: string | null;
+  last_open_order_items_count: number;
   has_open_shift: boolean;
   open_shift_business_date: string | null;
   open_shift_started_at: string | null;
@@ -152,6 +160,14 @@ function isPortfolioCafeRow(value: unknown): value is PortfolioCafeRow {
     (typeof value.last_app_opened_at === 'string' || value.last_app_opened_at === null) &&
     typeof value.online_users_count === 'number' &&
     typeof value.visible_runtime_count === 'number' &&
+    typeof value.open_sessions_count === 'number' &&
+    typeof value.active_staff_count === 'number' &&
+    (typeof value.last_open_order_at === 'string' || value.last_open_order_at === null) &&
+    (typeof value.last_open_order_id === 'string' || value.last_open_order_id === null) &&
+    (typeof value.last_open_order_session_id === 'string' || value.last_open_order_session_id === null) &&
+    (typeof value.last_open_order_session_label === 'string' || value.last_open_order_session_label === null) &&
+    (typeof value.last_open_order_status === 'string' || value.last_open_order_status === null) &&
+    typeof value.last_open_order_items_count === 'number' &&
     typeof value.has_open_shift === 'boolean' &&
     (typeof value.open_shift_business_date === 'string' || value.open_shift_business_date === null) &&
     (typeof value.open_shift_started_at === 'string' || value.open_shift_started_at === null) &&
@@ -332,6 +348,13 @@ function presenceBadgeClass(cafe: Pick<PortfolioCafeRow, 'online_users_count' | 
     : cafe.visible_runtime_count > 0
       ? 'border-sky-200 bg-sky-50 text-sky-700'
       : 'border-slate-200 bg-slate-50 text-slate-700';
+}
+
+function describeLastOpenOrder(cafe: Pick<PortfolioCafeRow, 'last_open_order_id' | 'last_open_order_at' | 'last_open_order_session_label' | 'last_open_order_status' | 'last_open_order_items_count'>) {
+  if (!cafe.last_open_order_id) return 'لا يوجد طلب فعلي من جلسة مفتوحة الآن';
+  const sessionLabel = cafe.last_open_order_session_label ? ` • ${cafe.last_open_order_session_label}` : '';
+  const status = cafe.last_open_order_status ? ` • ${cafe.last_open_order_status}` : '';
+  return `${formatDateTime(cafe.last_open_order_at)} • ${cafe.last_open_order_items_count} صنف${sessionLabel}${status}`;
 }
 
 
@@ -595,6 +618,15 @@ export default function PlatformPortfolioOverview({
                     <div className="text-xs text-slate-500">آخر نشاط تشغيلي</div>
                     <div className="mt-1 font-semibold text-slate-900">{formatDateTime(operationalActivityAt(selectedCafe))}</div>
                   </div>
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-4">
+                    <div className="text-xs text-slate-500">الجلسات المفتوحة</div>
+                    <div className="mt-1 font-semibold text-slate-900">{selectedCafe.open_sessions_count} جلسة • {selectedCafe.active_staff_count} مستخدم</div>
+                  </div>
+                  <div className="rounded-[20px] border border-slate-200 bg-white p-4 sm:col-span-2">
+                    <div className="text-xs text-slate-500">آخر طلب فعلي</div>
+                    <div className="mt-1 font-semibold text-slate-900">{selectedCafe.last_open_order_id ?? '—'}</div>
+                    <div className="mt-1 text-xs text-slate-500">{describeLastOpenOrder(selectedCafe)}</div>
+                  </div>
                 </div>
                 <div className="flex flex-wrap gap-2">
                   <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${presenceBadgeClass(selectedCafe)}`}>
@@ -659,7 +691,7 @@ export default function PlatformPortfolioOverview({
                 <th className="px-4 py-3">القهوة</th>
                 <th className="px-4 py-3">الاشتراك</th>
                 <th className="px-4 py-3">التشغيل</th>
-                <th className="px-4 py-3">آخر حركة</th>
+                <th className="px-4 py-3">الواقع الحي</th>
               </tr>
             </thead>
             <tbody>
@@ -691,6 +723,8 @@ export default function PlatformPortfolioOverview({
                       <div><span className="text-slate-500">آخر ظهور:</span> {formatDateTime(latestPresenceAt(cafe))}</div>
                       <div><span className="text-slate-500">فتح التطبيق:</span> {formatDateTime(cafe.last_app_opened_at)}</div>
                       <div><span className="text-slate-500">نشاط تشغيلي:</span> {formatDateTime(operationalActivityAt(cafe))}</div>
+                      <div><span className="text-slate-500">آخر طلب:</span> {cafe.last_open_order_id ?? '—'}</div>
+                      <div><span className="text-slate-500">التفصيل:</span> {describeLastOpenOrder(cafe)}</div>
                     </div>
                   </td>
                 </tr>

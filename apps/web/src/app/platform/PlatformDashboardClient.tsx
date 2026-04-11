@@ -51,6 +51,14 @@ type CafeRow = {
   online_users_count?: number;
   visible_runtime_count?: number;
   online_now?: boolean;
+  open_sessions_count?: number;
+  active_staff_count?: number;
+  last_open_order_at?: string | null;
+  last_open_order_id?: string | null;
+  last_open_order_session_id?: string | null;
+  last_open_order_session_label?: string | null;
+  last_open_order_status?: string | null;
+  last_open_order_items_count?: number;
   owner_count?: number;
   active_owner_count?: number;
   owners?: CafeOwnerRow[];
@@ -268,6 +276,14 @@ function isCafeRow(value: unknown): value is CafeRow {
     (typeof value.online_users_count === 'undefined' || typeof value.online_users_count === 'number') &&
     (typeof value.visible_runtime_count === 'undefined' || typeof value.visible_runtime_count === 'number') &&
     (typeof value.online_now === 'undefined' || typeof value.online_now === 'boolean') &&
+    (typeof value.open_sessions_count === 'undefined' || typeof value.open_sessions_count === 'number') &&
+    (typeof value.active_staff_count === 'undefined' || typeof value.active_staff_count === 'number') &&
+    (typeof value.last_open_order_at === 'undefined' || typeof value.last_open_order_at === 'string' || value.last_open_order_at === null) &&
+    (typeof value.last_open_order_id === 'undefined' || typeof value.last_open_order_id === 'string' || value.last_open_order_id === null) &&
+    (typeof value.last_open_order_session_id === 'undefined' || typeof value.last_open_order_session_id === 'string' || value.last_open_order_session_id === null) &&
+    (typeof value.last_open_order_session_label === 'undefined' || typeof value.last_open_order_session_label === 'string' || value.last_open_order_session_label === null) &&
+    (typeof value.last_open_order_status === 'undefined' || typeof value.last_open_order_status === 'string' || value.last_open_order_status === null) &&
+    (typeof value.last_open_order_items_count === 'undefined' || typeof value.last_open_order_items_count === 'number') &&
     (typeof value.owner_count === 'undefined' || typeof value.owner_count === 'number') &&
     (typeof value.active_owner_count === 'undefined' || typeof value.active_owner_count === 'number') &&
     (typeof value.owners === 'undefined' || (Array.isArray(value.owners) && value.owners.every(isCafeOwnerRow))) &&
@@ -440,6 +456,13 @@ function presenceBadgeClass(cafe: Pick<CafeRow, 'online_now' | 'online_users_cou
     : (cafe.online_users_count ?? 0) > 0
       ? 'border-sky-200 bg-sky-50 text-sky-700'
       : 'border-slate-200 bg-slate-50 text-slate-600';
+}
+
+function describeLastOpenOrder(cafe: Pick<CafeRow, 'last_open_order_id' | 'last_open_order_at' | 'last_open_order_session_label' | 'last_open_order_status' | 'last_open_order_items_count'>) {
+  if (!cafe.last_open_order_id) return 'لا يوجد طلب فعلي من جلسة مفتوحة الآن';
+  const sessionLabel = cafe.last_open_order_session_label ? ` • ${cafe.last_open_order_session_label}` : '';
+  const status = cafe.last_open_order_status ? ` • ${cafe.last_open_order_status}` : '';
+  return `${formatDateTime(cafe.last_open_order_at)} • ${cafe.last_open_order_items_count ?? 0} صنف${sessionLabel}${status}`;
 }
 
 function supportStatusClass(status: SupportMessageStatus) {
@@ -1210,7 +1233,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                 <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="font-semibold text-slate-900">{selectedCafe.display_name}</div>
                   <div className="mt-1 text-xs text-slate-500">{selectedCafe.slug}</div>
-                  <div className="mt-3 grid gap-3 text-xs text-slate-600 sm:grid-cols-2">
+                  <div className="mt-3 grid gap-3 text-xs text-slate-600 sm:grid-cols-2 xl:grid-cols-3">
                     <div className="rounded-2xl border border-slate-200 bg-white p-3">
                       <div className="text-[11px] text-slate-500">الحضور الآن</div>
                       <div className="mt-1 font-semibold text-slate-900">{selectedCafe.online_users_count ?? 0} مستخدم • {selectedCafe.visible_runtime_count ?? 0} شاشة</div>
@@ -1226,6 +1249,15 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                     <div className="rounded-2xl border border-slate-200 bg-white p-3">
                       <div className="text-[11px] text-slate-500">آخر نشاط تشغيلي</div>
                       <div className="mt-1 font-semibold text-slate-900">{formatDateTime(operationalActivityAt(selectedCafe))}</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3">
+                      <div className="text-[11px] text-slate-500">الجلسات المفتوحة</div>
+                      <div className="mt-1 font-semibold text-slate-900">{selectedCafe.open_sessions_count ?? 0} جلسة • {selectedCafe.active_staff_count ?? 0} مستخدم</div>
+                    </div>
+                    <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:col-span-2 xl:col-span-2">
+                      <div className="text-[11px] text-slate-500">آخر طلب فعلي</div>
+                      <div className="mt-1 font-semibold text-slate-900">{selectedCafe.last_open_order_id ?? '—'}</div>
+                      <div className="mt-1 text-[11px] text-slate-500">{describeLastOpenOrder(selectedCafe)}</div>
                     </div>
                   </div>
                   <div className="mt-3 space-y-1 text-xs text-slate-600">
@@ -1329,6 +1361,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                         <tr>
                           <th className="px-3 py-3 text-right font-medium">القهوة</th>
                           <th className="px-3 py-3 text-right font-medium">المالك</th>
+                          <th className="px-3 py-3 text-right font-medium">آخر طلب فعلي</th>
                           <th className="px-3 py-3 text-right font-medium">الاشتراك</th>
                           <th className="px-3 py-3 text-right font-medium">المدفوع</th>
                           <th className="px-3 py-3 text-right font-medium">آخر نشاط</th>
@@ -1357,6 +1390,11 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                                 <div className="font-medium text-slate-900">{primaryOwner?.full_name ?? '—'}</div>
                                 <div className="mt-1 text-xs text-slate-500">{primaryOwner?.phone ?? 'لا يوجد مالك محدد'}</div>
                                 <div className="mt-2 text-xs text-slate-500">{cafe.active_owner_count ?? 0}/{cafe.owner_count ?? 0} نشط</div>
+                              </td>
+                              <td className="px-3 py-4 text-slate-700">
+                                <div className="font-medium text-slate-900">{cafe.last_open_order_id ?? '—'}</div>
+                                <div className="mt-1 text-xs text-slate-500">{describeLastOpenOrder(cafe)}</div>
+                                <div className="mt-2 text-xs text-slate-500">{cafe.open_sessions_count ?? 0} جلسة مفتوحة • {cafe.active_staff_count ?? 0} مستخدم</div>
                               </td>
                               <td className="px-3 py-4 text-slate-700">
                                 {subscription ? (
@@ -1394,7 +1432,7 @@ export default function PlatformDashboardClient({ session }: { session: Platform
                         })}
                         {filteredCafes.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="px-3 py-10 text-center text-slate-500">لا توجد قهاوي مطابقة للبحث أو الفلاتر الحالية.</td>
+                            <td colSpan={7} className="px-3 py-10 text-center text-slate-500">لا توجد قهاوي مطابقة للبحث أو الفلاتر الحالية.</td>
                           </tr>
                         ) : null}
                       </tbody>
