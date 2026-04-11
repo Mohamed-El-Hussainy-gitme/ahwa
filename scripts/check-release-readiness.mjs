@@ -94,20 +94,14 @@ assertOperationalDatabaseGroups(webEnvExample, 'apps/web/.env.example');
 
 console.log('release-readiness: ok');
 
-for (const command of [
-  'node ./scripts/check-ops-authz-coverage.mjs',
-  'node ./scripts/check-final-1to1-lock.mjs',
-  'node ./scripts/check-batch4-admin-hygiene.mjs',
-  'node ./scripts/verify-reporting-maintenance-release.mjs',
-  'node ./scripts/verify-reporting-read-path.mjs',
-  'node ./scripts/verify-archive-hardening-release.mjs',
-  'node ./scripts/verify-control-plane-manual-db-selection.mjs',
-  'node ./scripts/verify-phase9-explicit-db-propagation.mjs',
-  'node ./scripts/verify-platform-response-hardening.mjs',
-  'node ./scripts/verify-runtime-public-freshness.mjs',
-  'node ./scripts/verify-operations-hardening.mjs',
-  'node ./scripts/verify-phase30-load-lab.mjs',
-  'node ./scripts/verify-login-entry-contract.mjs',
-]) {
-  execSync(command, { stdio: 'inherit' });
-}
+execSync('node ./scripts/check-ops-authz-coverage.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/check-final-1to1-lock.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/check-batch4-admin-hygiene.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-reporting-maintenance-release.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-reporting-read-path.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-archive-hardening-release.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-control-plane-manual-db-selection.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-phase9-explicit-db-propagation.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-platform-response-hardening.mjs', { stdio: 'inherit' });
+
+execSync('node ./scripts/verify-runtime-public-freshness.mjs', { stdio: 'inherit' });

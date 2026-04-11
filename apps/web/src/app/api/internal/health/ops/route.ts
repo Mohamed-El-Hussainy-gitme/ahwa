@@ -1,6 +1,4 @@
-import { NextRequest } from 'next/server';
-import { jsonWithRequestId, getRequestIdFromHeaders } from '@/lib/observability/http';
-import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
+import { NextResponse } from 'next/server';
 import { validateCriticalEnv, getOutboxDispatchPolicy } from '@/lib/platform/env-contract';
 import { getQStashConfig } from '@/lib/platform/qstash';
 import { listConfiguredOperationalDatabasesFromEnv } from '@/lib/supabase/env';
@@ -16,14 +14,10 @@ function isAuthorized(request: Request) {
   return request.headers.get('authorization') === `Bearer ${secret}` || request.headers.get('x-cron-secret') === secret;
 }
 
-export async function GET(request: NextRequest) {
-  const requestId = getRequestIdFromHeaders(request.headers);
-  const observation = beginServerObservation('internal.health.ops', undefined, requestId);
-
+export async function GET(request: Request) {
   try {
     if (!isAuthorized(request)) {
-      logServerObservation(observation, 'error', { status: 401, code: 'UNAUTHORIZED' });
-      return jsonWithRequestId({ ok: false, error: 'UNAUTHORIZED' }, requestId, { status: 401 });
+      return NextResponse.json({ ok: false, error: 'UNAUTHORIZED' }, { status: 401 });
     }
 
     const validation = validateCriticalEnv(true);
@@ -32,7 +26,7 @@ export async function GET(request: NextRequest) {
     const operationalDatabases = listConfiguredOperationalDatabasesFromEnv().map((item) => item.databaseKey);
     const qstash = getQStashConfig();
 
-    const body = {
+    return NextResponse.json({
       ok: validation.ok,
       checks: {
         env: validation,
@@ -55,19 +49,8 @@ export async function GET(request: NextRequest) {
         },
         operationalDatabases,
       },
-    };
-
-    logServerObservation(observation, validation.ok ? 'ok' : 'error', {
-      status: validation.ok ? 200 : 500,
-      envOk: validation.ok,
-      operationalDatabaseCount: operationalDatabases.length,
-      qstashEnabled: qstash.enabled,
-      redisConfigured: Boolean(redisUrl),
-    });
-    return jsonWithRequestId(body, requestId, { status: validation.ok ? 200 : 500 });
+    }, { status: validation.ok ? 200 : 500 });
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'OPS_HEALTH_FAILED';
-    logServerObservation(observation, 'error', { status: 500, code: 'OPS_HEALTH_FAILED', message });
-    return jsonWithRequestId({ ok: false, error: message }, requestId, { status: 500 });
+    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'OPS_HEALTH_FAILED' }, { status: 500 });
   }
 }

@@ -1,32 +1,19 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import LoginLandingClient from './LoginLandingClient';
-import { resolveRuntimeNextPath } from '@/lib/runtime/navigation';
 import { getRuntimeMe, getRuntimeResumePath } from '@/lib/runtime/server';
 
 export const dynamic = 'force-dynamic';
 
-type SearchParams = Record<string, string | string[] | undefined>;
-type PageProps = { searchParams?: Promise<SearchParams> | SearchParams };
-
-function isPromise<T>(value: unknown): value is Promise<T> {
-  return !!value && typeof (value as { then?: unknown }).then === 'function';
-}
-
-function getSearchParam(searchParams: SearchParams, key: string) {
-  const value = searchParams[key];
-  return Array.isArray(value) ? value[0] : value;
-}
-
-export default async function LoginPage({ searchParams }: PageProps) {
-  const resolvedSearchParams = isPromise<SearchParams>(searchParams) ? await searchParams : searchParams ?? {};
+export default async function LoginPage() {
   const me = await getRuntimeMe();
   const resumePath = await getRuntimeResumePath();
-  const nextPath = resolveRuntimeNextPath(getSearchParam(resolvedSearchParams, 'next'));
-
-  if (me && nextPath) {
-    redirect(resumePath ?? nextPath);
+  if (me) {
+    if (resumePath) redirect(resumePath);
+    if (me.accountKind === 'owner' || me.shiftRole === 'supervisor') redirect('/dashboard');
+    if (me.shiftRole === 'barista') redirect('/kitchen');
+    if (me.shiftRole === 'shisha') redirect('/shisha');
+    redirect('/orders');
   }
-
   return <Suspense fallback={<div className='min-h-dvh bg-neutral-50' />}><LoginLandingClient /></Suspense>;
 }

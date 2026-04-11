@@ -1,4 +1,3 @@
-import crypto from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { PLATFORM_ADMIN_COOKIE } from '@/lib/platform-auth/session';
 import { RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
@@ -6,7 +5,6 @@ import { RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 const RUNTIME_SESSION_COOKIE = 'ahwa_runtime_session';
 const LEGACY_PLATFORM_SESSION_COOKIE = 'ahwa_platform_session';
 const LAST_RUNTIME_PATH_COOKIE = 'ahwa_last_runtime_path';
-const REQUEST_ID_HEADER = 'x-request-id';
 
 function isPublicPath(path: string) {
   return (
@@ -47,7 +45,6 @@ function isRuntimeProtectedPath(path: string) {
     path.startsWith('/api/runtime/') ||
     path.startsWith('/api/owner/') ||
     path.startsWith('/api/authz/') ||
-    path.startsWith('/api/pwa/push/') ||
     path.startsWith('/dashboard') ||
     path.startsWith('/orders') ||
     path.startsWith('/billing') ||
@@ -62,25 +59,13 @@ function isRuntimeProtectedPath(path: string) {
   );
 }
 
-function applyRequestId(response: NextResponse, requestId: string) {
-  response.headers.set(REQUEST_ID_HEADER, requestId);
-  return response;
-}
-
 export function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
   const runtimeSessionToken = req.cookies.get(RUNTIME_SESSION_COOKIE)?.value ?? '';
   const hasRuntimeSession = runtimeSessionToken.length > 0;
   const hasPlatformSession = !!req.cookies.get(PLATFORM_ADMIN_COOKIE)?.value || !!req.cookies.get(LEGACY_PLATFORM_SESSION_COOKIE)?.value;
-  const requestId = req.headers.get(REQUEST_ID_HEADER)?.trim() || crypto.randomUUID();
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set(REQUEST_ID_HEADER, requestId);
-
-  const nextResponse = () => NextResponse.next({ request: { headers: requestHeaders } });
 
   const withRuntimeResume = (response: NextResponse) => {
-    applyRequestId(response, requestId);
-
     if (!hasRuntimeSession) return response;
 
     response.cookies.set(RUNTIME_SESSION_COOKIE, runtimeSessionToken, {
@@ -104,32 +89,32 @@ export function proxy(req: NextRequest) {
     return response;
   };
 
-  if (isPublicPath(path)) return withRuntimeResume(nextResponse());
+  if (isPublicPath(path)) return withRuntimeResume(NextResponse.next());
 
   if (isPlatformPath(path)) {
-    if (hasPlatformSession) return withRuntimeResume(nextResponse());
+    if (hasPlatformSession) return withRuntimeResume(NextResponse.next());
     const url = req.nextUrl.clone();
     url.pathname = '/platform/login';
     url.searchParams.set('next', path);
-    return withRuntimeResume(NextResponse.redirect(url));
+    return NextResponse.redirect(url);
   }
 
   if (isRuntimeProtectedPath(path)) {
-    if (hasRuntimeSession) return withRuntimeResume(nextResponse());
+    if (hasRuntimeSession) return withRuntimeResume(NextResponse.next());
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('next', path);
-    return withRuntimeResume(NextResponse.redirect(url));
+    return NextResponse.redirect(url);
   }
 
   if (!hasRuntimeSession && !hasPlatformSession) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('next', path);
-    return withRuntimeResume(NextResponse.redirect(url));
+    return NextResponse.redirect(url);
   }
 
-  return withRuntimeResume(nextResponse());
+  return withRuntimeResume(NextResponse.next());
 }
 
 export const config = {

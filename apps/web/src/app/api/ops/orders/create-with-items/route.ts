@@ -76,19 +76,20 @@ export async function POST(req: Request) {
       throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');
     }
 
-    await persistOrderItemAddons({
-      cafeId: ctx.cafeId,
-      orderId,
-      databaseKey: ctx.databaseKey,
-      items: requestedItems.map((item) => ({ productId: item.productId, quantity: item.quantity, addonIds: item.addonIds })),
-    });
-
-    await persistOrderNotePreset({
-      cafeId: ctx.cafeId,
-      databaseKey: ctx.databaseKey,
-      note: body.notes,
-      productStationCodes: stationCodes,
-    });
+    await Promise.all([
+      persistOrderItemAddons({
+        cafeId: ctx.cafeId,
+        orderId,
+        databaseKey: ctx.databaseKey,
+        items: requestedItems.map((item) => ({ productId: item.productId, quantity: item.quantity, addonIds: item.addonIds })),
+      }),
+      persistOrderNotePreset({
+        cafeId: ctx.cafeId,
+        databaseKey: ctx.databaseKey,
+        note: body.notes,
+        productStationCodes: stationCodes,
+      }),
+    ]);
     const serviceSessionId = String(rpc.service_session_id ?? body.serviceSessionId).trim();
     if (!serviceSessionId) {
       throw new Error('INVALID_RPC_RESPONSE:ops_create_order_with_items');

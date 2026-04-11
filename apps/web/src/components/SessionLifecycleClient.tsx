@@ -2,7 +2,6 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { getDefaultRuntimeHome, resolveRuntimeNextPath } from '@/lib/runtime/navigation';
 import {
   readRuntimeLastPath,
   readRuntimeResumeToken,
@@ -51,9 +50,7 @@ export default function SessionLifecycleClient() {
   useEffect(() => {
     if (isAuthPath(pathname)) {
       const token = readRuntimeResumeToken();
-      const nextPath = resolveRuntimeNextPath(searchParams?.get('next'));
-      const shouldResumeFromAuthPage = Boolean(nextPath);
-      if (!token || resumeBusyRef.current || !shouldResumeFromAuthPage) {
+      if (!token || resumeBusyRef.current) {
         return;
       }
 
@@ -73,14 +70,9 @@ export default function SessionLifecycleClient() {
           }
 
           writeRuntimeResumeToken(payload.resumeToken);
-          const fallback = readRuntimeLastPath() || getDefaultRuntimeHome({
-            accountKind: typeof payload.accountKind === 'string' ? payload.accountKind : null,
-            shiftRole: typeof payload.shiftRole === 'string' ? payload.shiftRole : null,
-          });
-          const target = nextPath ?? resolveRuntimeNextPath(fallback) ?? getDefaultRuntimeHome({
-            accountKind: typeof payload.accountKind === 'string' ? payload.accountKind : null,
-            shiftRole: typeof payload.shiftRole === 'string' ? payload.shiftRole : null,
-          });
+          const next = searchParams?.get('next');
+          const fallback = readRuntimeLastPath() || '/dashboard';
+          const target = next && next.startsWith('/') ? next : fallback;
           router.replace(target);
           router.refresh();
         } finally {

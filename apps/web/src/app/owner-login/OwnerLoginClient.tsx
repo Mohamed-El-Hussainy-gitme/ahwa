@@ -25,9 +25,7 @@ function writeLastCafeSlug(slug: string): void {
   window.localStorage.setItem(LAST_CAFE_SLUG_STORAGE_KEY, slug);
 }
 
-type OwnerLoginClientProps = { defaultRuntimeHome?: string }
-
-export default function OwnerLoginClient({ defaultRuntimeHome = '/dashboard' }: OwnerLoginClientProps) {
+export default function OwnerLoginClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [phone, setPhone] = useState('');
@@ -54,8 +52,8 @@ export default function OwnerLoginClient({ defaultRuntimeHome = '/dashboard' }: 
 
   function resolveSafeNext() {
     const next = searchParams.get('next');
-    if (!next || !next.startsWith('/')) return defaultRuntimeHome;
-    if (next === '/owner-password' || next.startsWith('/owner-password?') || next.startsWith('/owner-password/')) return defaultRuntimeHome;
+    if (!next || !next.startsWith('/')) return '/dashboard';
+    if (next === '/owner-password' || next.startsWith('/owner-password?') || next.startsWith('/owner-password/')) return '/dashboard';
     return next;
   }
 
