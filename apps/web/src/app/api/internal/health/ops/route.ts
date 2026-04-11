@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
 import { validateCriticalEnv, getOutboxDispatchPolicy } from '@/lib/platform/env-contract';
 import { getQStashConfig } from '@/lib/platform/qstash';
 import { listConfiguredOperationalDatabasesFromEnv } from '@/lib/supabase/env';
@@ -15,9 +16,17 @@ function isAuthorized(request: Request) {
 }
 
 export async function GET(request: Request) {
+  const observation = beginServerObservation('ops.health', {
+    path: new URL(request.url).pathname,
+    method: request.method,
+  }, request.headers.get('x-request-id'));
+
   try {
     if (!isAuthorized(request)) {
-      return NextResponse.json({ ok: false, error: 'UNAUTHORIZED' }, { status: 401 });
+      logServerObservation(observation, 'error', { status: 401, code: 'UNAUTHORIZED' });
+      const response = NextResponse.json({ ok: false, error: 'UNAUTHORIZED' }, { status: 401 });
+      response.headers.set('x-request-id', observation.requestId);
+      return response;
     }
 
     const validation = validateCriticalEnv(true);
@@ -26,7 +35,7 @@ export async function GET(request: Request) {
     const operationalDatabases = listConfiguredOperationalDatabasesFromEnv().map((item) => item.databaseKey);
     const qstash = getQStashConfig();
 
-    return NextResponse.json({
+    const response = NextResponse.json({
       ok: validation.ok,
       checks: {
         env: validation,
@@ -50,7 +59,20 @@ export async function GET(request: Request) {
         operationalDatabases,
       },
     }, { status: validation.ok ? 200 : 500 });
+
+    response.headers.set('x-request-id', observation.requestId);
+    logServerObservation(observation, validation.ok ? 'ok' : 'error', {
+      status: validation.ok ? 200 : 500,
+      databaseCount: operationalDatabases.length,
+      qstashEnabled: qstash.enabled,
+      outboxPolicy: getOutboxDispatchPolicy(),
+    });
+    return response;
   } catch (error) {
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'OPS_HEALTH_FAILED' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'OPS_HEALTH_FAILED';
+    logServerObservation(observation, 'error', { status: 500, message });
+    const response = NextResponse.json({ ok: false, error: message }, { status: 500 });
+    response.headers.set('x-request-id', observation.requestId);
+    return response;
   }
 }

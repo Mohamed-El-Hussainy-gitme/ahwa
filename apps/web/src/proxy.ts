@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { NextResponse, type NextRequest } from 'next/server';
 import { PLATFORM_ADMIN_COOKIE } from '@/lib/platform-auth/session';
 import { RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
@@ -64,57 +65,67 @@ export function proxy(req: NextRequest) {
   const runtimeSessionToken = req.cookies.get(RUNTIME_SESSION_COOKIE)?.value ?? '';
   const hasRuntimeSession = runtimeSessionToken.length > 0;
   const hasPlatformSession = !!req.cookies.get(PLATFORM_ADMIN_COOKIE)?.value || !!req.cookies.get(LEGACY_PLATFORM_SESSION_COOKIE)?.value;
+  const requestId = req.headers.get('x-request-id')?.trim() || crypto.randomUUID();
+  const requestHeaders = new Headers(req.headers);
+  requestHeaders.set('x-request-id', requestId);
 
-  const withRuntimeResume = (response: NextResponse) => {
-    if (!hasRuntimeSession) return response;
-
-    response.cookies.set(RUNTIME_SESSION_COOKIE, runtimeSessionToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      path: '/',
-      maxAge: RUNTIME_SESSION_MAX_AGE_SECONDS,
-    });
-
-    if (isRuntimeProtectedPath(path) && !path.startsWith('/api/')) {
-      response.cookies.set(LAST_RUNTIME_PATH_COOKIE, `${path}${req.nextUrl.search}`, {
-        httpOnly: false,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/',
-        maxAge: RUNTIME_SESSION_MAX_AGE_SECONDS,
-      });
-    }
-
+  const withRequestId = (response: NextResponse) => {
+    response.headers.set('x-request-id', requestId);
     return response;
   };
 
-  if (isPublicPath(path)) return withRuntimeResume(NextResponse.next());
+  const nextResponse = () => withRequestId(NextResponse.next({ request: { headers: requestHeaders } }));
+
+  const withRuntimeResume = (response: NextResponse) => {
+    if (hasRuntimeSession) {
+      response.cookies.set(RUNTIME_SESSION_COOKIE, runtimeSessionToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+        path: '/',
+        maxAge: RUNTIME_SESSION_MAX_AGE_SECONDS,
+      });
+
+      if (isRuntimeProtectedPath(path) && !path.startsWith('/api/')) {
+        response.cookies.set(LAST_RUNTIME_PATH_COOKIE, `${path}${req.nextUrl.search}`, {
+          httpOnly: false,
+          secure: process.env.NODE_ENV === 'production',
+          sameSite: 'lax',
+          path: '/',
+          maxAge: RUNTIME_SESSION_MAX_AGE_SECONDS,
+        });
+      }
+    }
+
+    return withRequestId(response);
+  };
+
+  if (isPublicPath(path)) return withRuntimeResume(nextResponse());
 
   if (isPlatformPath(path)) {
-    if (hasPlatformSession) return withRuntimeResume(NextResponse.next());
+    if (hasPlatformSession) return withRuntimeResume(nextResponse());
     const url = req.nextUrl.clone();
     url.pathname = '/platform/login';
     url.searchParams.set('next', path);
-    return NextResponse.redirect(url);
+    return withRequestId(NextResponse.redirect(url));
   }
 
   if (isRuntimeProtectedPath(path)) {
-    if (hasRuntimeSession) return withRuntimeResume(NextResponse.next());
+    if (hasRuntimeSession) return withRuntimeResume(nextResponse());
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('next', path);
-    return NextResponse.redirect(url);
+    return withRequestId(NextResponse.redirect(url));
   }
 
   if (!hasRuntimeSession && !hasPlatformSession) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('next', path);
-    return NextResponse.redirect(url);
+    return withRequestId(NextResponse.redirect(url));
   }
 
-  return withRuntimeResume(NextResponse.next());
+  return withRuntimeResume(nextResponse());
 }
 
 export const config = {

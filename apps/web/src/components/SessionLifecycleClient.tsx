@@ -8,6 +8,7 @@ import {
   writeRuntimeLastPath,
   writeRuntimeResumeToken,
 } from '@/lib/runtime/resume-storage';
+import { sanitizeRuntimeRelativePath, shouldAutoResumeAuthPage } from '@/lib/runtime/navigation';
 
 const AUTH_PREFIXES = ['/login', '/owner-login', '/owner-password'];
 const CAFE_AUTH_PATH_PATTERN = /^\/c\/[^/]+\/(?:login|activate)(?:\/|$)/;
@@ -49,6 +50,11 @@ export default function SessionLifecycleClient() {
 
   useEffect(() => {
     if (isAuthPath(pathname)) {
+      const nextPath = sanitizeRuntimeRelativePath(searchParams?.get('next'));
+      if (!shouldAutoResumeAuthPage(nextPath)) {
+        return;
+      }
+
       const token = readRuntimeResumeToken();
       if (!token || resumeBusyRef.current) {
         return;
@@ -70,9 +76,8 @@ export default function SessionLifecycleClient() {
           }
 
           writeRuntimeResumeToken(payload.resumeToken);
-          const next = searchParams?.get('next');
           const fallback = readRuntimeLastPath() || '/dashboard';
-          const target = next && next.startsWith('/') ? next : fallback;
+          const target = nextPath || fallback;
           router.replace(target);
           router.refresh();
         } finally {

@@ -72,9 +72,9 @@ const expected = new Map([
   ['apps/web/src/app/api/owner/shift/close/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
   ['apps/web/src/app/api/owner/shift/close-snapshot/route.ts', ['requireOpsActorContext', 'requireOwnerOrSupervisor']],
   ['apps/web/src/app/api/owner/shift/history/route.ts', ['requireOpsActorContext', 'requireOwnerOrSupervisor']],
-  ['apps/web/src/app/api/owner/shift/open/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
+  ['apps/web/src/app/api/owner/shift/open/route.ts', ['requireOpsActorContext', 'requireOwnerOrManager']],
   ['apps/web/src/app/api/owner/billing-settings/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
-  ['apps/web/src/app/api/owner/shift/assignable-actors/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
+  ['apps/web/src/app/api/owner/shift/assignable-actors/route.ts', ['requireOpsActorContext', 'requireOwnerOrManager']],
   ['apps/web/src/app/api/owner/onboarding/guide/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
   ['apps/web/src/app/api/owner/recovery/close-session/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
   ['apps/web/src/app/api/owner/recovery/release-stale-locks/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
@@ -85,6 +85,9 @@ const expected = new Map([
   ['apps/web/src/app/api/owner/staff/set-active/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
   ['apps/web/src/app/api/owner/staff/set-pin/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
   ['apps/web/src/app/api/owner/staff/set-status/route.ts', ['requireOpsActorContext', 'requireOwnerRole']],
+  ['apps/web/src/app/api/owner/management/create/route.ts', ['requireOpsActorContext', 'requireFullOwnerRole']],
+  ['apps/web/src/app/api/owner/management/list/route.ts', ['requireOpsActorContext', 'requireManagementAccess']],
+  ['apps/web/src/app/api/owner/shift/update-assignments/route.ts', ['requireOpsActorContext', 'requireOwnerOrManager']],
 ]);
 
 const actualRoutes = new Set([

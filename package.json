@@ -44,7 +44,9 @@
     "soak:ops": "node ./scripts/load/run-ops-soak.mjs",
     "failure:ops": "node ./scripts/load/run-ops-failure-lab.mjs",
     "report:capacity": "node ./scripts/load/build-capacity-report.mjs",
-    "verify:phase30": "node ./scripts/verify-phase30-load-lab.mjs"
+    "verify:phase30": "node ./scripts/verify-phase30-load-lab.mjs",
+    "verify:operations": "node ./scripts/verify-operations-hardening.mjs",
+    "smoke:ops:health": "node ./scripts/smoke-ops-health.mjs"
   },
   "packageManager": "npm@10.8.2"
 }

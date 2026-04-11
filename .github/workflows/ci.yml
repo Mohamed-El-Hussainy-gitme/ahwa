@@ -6,11 +6,14 @@ on:
       - main
       - master
   pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '17 4 * * *'
 
 jobs:
   build-and-verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
 
     steps:
       - name: Checkout
@@ -28,6 +31,12 @@ jobs:
       - name: Verify release readiness
         run: npm run verify:release
 
+      - name: Verify operations hardening
+        run: npm run verify:operations
+
+      - name: Verify phase 30 load lab assets
+        run: npm run verify:phase30
+
       - name: Verify runtime/public freshness
         run: npm run verify:runtime-public-freshness
 
@@ -42,3 +51,10 @@ jobs:
 
       - name: Build web
         run: npm run build:web
+
+      - name: Smoke ops health
+        if: ${{ secrets.SMOKE_BASE_URL != '' && secrets.CRON_SECRET != '' }}
+        env:
+          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        run: npm run smoke:ops:health
