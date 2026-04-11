@@ -1,24 +1,19 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { clearAuthCookies } from '@/lib/auth/cookies';
+import { jsonWithRequestId, getRequestIdFromHeaders } from '@/lib/observability/http';
 import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
 
-export async function POST(request: Request) {
-  const observation = beginServerObservation('auth.logout', {
-    path: new URL(request.url).pathname,
-    method: request.method,
-  }, request.headers.get('x-request-id'));
+export async function POST(req: NextRequest) {
+  const requestId = getRequestIdFromHeaders(req.headers);
+  const observation = beginServerObservation('auth.logout', undefined, requestId);
 
   try {
-    const response = NextResponse.json({ ok: true });
+    const response = jsonWithRequestId({ ok: true }, requestId);
     clearAuthCookies(response);
-    response.headers.set('x-request-id', observation.requestId);
-    logServerObservation(observation, 'ok', { status: 200 });
+    logServerObservation(observation, 'ok');
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'LOGOUT_FAILED';
-    logServerObservation(observation, 'error', { status: 500, message });
-    const response = NextResponse.json({ ok: false, error: 'LOGOUT_FAILED' }, { status: 500 });
-    response.headers.set('x-request-id', observation.requestId);
-    return response;
+    logServerObservation(observation, 'error', { status: 500, code: 'LOGOUT_FAILED', message: error instanceof Error ? error.message : 'LOGOUT_FAILED' });
+    return jsonWithRequestId({ ok: false, error: 'LOGOUT_FAILED' }, requestId, { status: 500 });
   }
 }

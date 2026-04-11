@@ -41,3 +41,8 @@ Ops routes, workspace loaders, and mutation helpers must receive `databaseKey` e
 ## Platform response hardening
 
 Platform list/create flows now normalize control-plane payloads defensively on both the server and the client. Cafe rows must be rendered even when optional aggregates such as `owners` arrive as `null`, and platform API errors should surface the underlying PostgREST message/details instead of collapsing to `REQUEST_FAILED`.
+
+## Additional runtime verification
+- `npm run verify:operations` for operations hardening and release gate validation.
+- `npm run verify:login-entry` to prevent login-gate regressions for `/login` and cafe auth pages.
+- `npm run smoke:ops:health` to check `/api/internal/health/ops` against a live deployment.

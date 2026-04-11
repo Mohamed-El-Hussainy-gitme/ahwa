@@ -8,7 +8,7 @@ on:
   pull_request:
   workflow_dispatch:
   schedule:
-    - cron: '17 4 * * *'
+    - cron: '0 6 * * 1'
 
 jobs:
   build-and-verify:
@@ -34,11 +34,14 @@ jobs:
       - name: Verify operations hardening
         run: npm run verify:operations
 
-      - name: Verify phase 30 load lab assets
-        run: npm run verify:phase30
+      - name: Verify login entry contract
+        run: npm run verify:login-entry
 
       - name: Verify runtime/public freshness
         run: npm run verify:runtime-public-freshness
+
+      - name: Verify phase 30 load lab
+        run: npm run verify:phase30
 
       - name: Build shared
         run: npm run build:shared
@@ -53,8 +56,8 @@ jobs:
         run: npm run build:web
 
       - name: Smoke ops health
-        if: ${{ secrets.SMOKE_BASE_URL != '' && secrets.CRON_SECRET != '' }}
-        env:
-          SMOKE_BASE_URL: ${{ secrets.SMOKE_BASE_URL }}
-          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+        if: ${{ env.AHWA_SMOKE_BASE_URL != '' && env.CRON_SECRET != '' }}
         run: npm run smoke:ops:health
+        env:
+          AHWA_SMOKE_BASE_URL: ${{ secrets.AHWA_SMOKE_BASE_URL }}
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}

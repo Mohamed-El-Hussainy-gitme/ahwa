@@ -1,8 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { adminOps } from '@/app/api/ops/_server';
-import { getEnrichedRuntimeMeFromCookie, isSupportRuntimeSessionError, isUnboundRuntimeSessionError } from '@/lib/runtime/me';
+import { jsonWithRequestId, getRequestIdFromHeaders } from '@/lib/observability/http';
+import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
 import { readCurrentShiftState } from '@/lib/ops/owner-admin';
 import type { ShiftRole } from '@/lib/authz/policy';
+import { getEnrichedRuntimeMeFromCookie, isSupportRuntimeSessionError, isUnboundRuntimeSessionError } from '@/lib/runtime/me';
 
 type PushSubscriptionBody = { endpoint?: string; keys?: { p256dh?: string; auth?: string } };
 type SubscribeRequestBody = { role?: ShiftRole; shiftId?: string; subscription?: PushSubscriptionBody };
@@ -23,10 +25,16 @@ async function deactivateCurrentUserSubscriptions(databaseKey: string, cafeId: s
   await adminOps(databaseKey).from('pwa_push_subscriptions').update({ is_active: false, updated_at: new Date().toISOString() }).eq('cafe_id', cafeId).eq('user_id', userId);
 }
 
-export async function POST(req: Request) {
+export async function POST(req: NextRequest) {
+  const requestId = getRequestIdFromHeaders(req.headers);
+  const observation = beginServerObservation('pwa.push.subscription.upsert', undefined, requestId);
+
   try {
     const runtime = await resolveRuntimeContext();
-    if (!runtime) return NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
+    if (!runtime) {
+      logServerObservation(observation, 'error', { status: 401, code: 'UNAUTHENTICATED' });
+      return jsonWithRequestId({ ok: false, error: 'UNAUTHENTICATED' }, requestId, { status: 401 });
+    }
     const body = (await req.json().catch(() => ({}))) as SubscribeRequestBody;
     const requestedRole = body.role ?? null;
     const requestedShiftId = String(body.shiftId ?? '').trim();
@@ -34,11 +42,20 @@ export async function POST(req: Request) {
     const p256dh = String(body.subscription?.keys?.p256dh ?? '').trim();
     const auth = String(body.subscription?.keys?.auth ?? '').trim();
     if (!requestedRole || !ELIGIBLE_ROLES.has(requestedRole) || !requestedShiftId || !endpoint || !p256dh || !auth) {
-      return NextResponse.json({ ok: false, error: 'INVALID_INPUT' }, { status: 400 });
+      logServerObservation(observation, 'error', { status: 400, code: 'INVALID_INPUT' });
+      return jsonWithRequestId({ ok: false, error: 'INVALID_INPUT' }, requestId, { status: 400 });
     }
     if (!runtime.currentShiftId || runtime.currentShiftId !== requestedShiftId || runtime.currentRole !== requestedRole) {
       await deactivateCurrentUserSubscriptions(runtime.databaseKey, String(runtime.me.tenantId), String(runtime.me.userId));
-      return NextResponse.json({ ok: true, active: false });
+      logServerObservation(observation, 'ok', {
+        active: false,
+        databaseKey: runtime.databaseKey,
+        requestedRole,
+        requestedShiftId,
+        tenantId: runtime.me.tenantId,
+        userId: runtime.me.userId,
+      });
+      return jsonWithRequestId({ ok: true, active: false }, requestId);
     }
     const { error } = await adminOps(runtime.databaseKey).from('pwa_push_subscriptions').upsert({
       cafe_id: String(runtime.me.tenantId), user_id: String(runtime.me.userId), shift_id: requestedShiftId, role_code: requestedRole,
@@ -46,25 +63,50 @@ export async function POST(req: Request) {
       user_agent: req.headers.get('user-agent')?.slice(0, 512) ?? null,
     }, { onConflict: 'cafe_id,endpoint' });
     if (error) throw error;
-    return NextResponse.json({ ok: true, active: true });
+    logServerObservation(observation, 'ok', {
+      active: true,
+      databaseKey: runtime.databaseKey,
+      requestedRole,
+      requestedShiftId,
+      tenantId: runtime.me.tenantId,
+      userId: runtime.me.userId,
+    });
+    return jsonWithRequestId({ ok: true, active: true }, requestId);
   } catch (error) {
     if (isUnboundRuntimeSessionError(error) || isSupportRuntimeSessionError(error)) {
-      return NextResponse.json({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
+      logServerObservation(observation, 'error', { status: 409, code: 'UNBOUND_RUNTIME_SESSION' });
+      return jsonWithRequestId({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, requestId, { status: 409 });
     }
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'PUSH_SUBSCRIPTION_SAVE_FAILED' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'PUSH_SUBSCRIPTION_SAVE_FAILED';
+    logServerObservation(observation, 'error', { status: 500, code: 'PUSH_SUBSCRIPTION_SAVE_FAILED', message });
+    return jsonWithRequestId({ ok: false, error: message }, requestId, { status: 500 });
   }
 }
 
-export async function DELETE() {
+export async function DELETE(req: NextRequest) {
+  const requestId = getRequestIdFromHeaders(req.headers);
+  const observation = beginServerObservation('pwa.push.subscription.delete', undefined, requestId);
+
   try {
     const runtime = await resolveRuntimeContext();
-    if (!runtime) return NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
+    if (!runtime) {
+      logServerObservation(observation, 'error', { status: 401, code: 'UNAUTHENTICATED' });
+      return jsonWithRequestId({ ok: false, error: 'UNAUTHENTICATED' }, requestId, { status: 401 });
+    }
     await deactivateCurrentUserSubscriptions(runtime.databaseKey, String(runtime.me.tenantId), String(runtime.me.userId));
-    return NextResponse.json({ ok: true });
+    logServerObservation(observation, 'ok', {
+      databaseKey: runtime.databaseKey,
+      tenantId: runtime.me.tenantId,
+      userId: runtime.me.userId,
+    });
+    return jsonWithRequestId({ ok: true }, requestId);
   } catch (error) {
     if (isUnboundRuntimeSessionError(error) || isSupportRuntimeSessionError(error)) {
-      return NextResponse.json({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, { status: 409 });
+      logServerObservation(observation, 'error', { status: 409, code: 'UNBOUND_RUNTIME_SESSION' });
+      return jsonWithRequestId({ ok: false, error: 'UNBOUND_RUNTIME_SESSION' }, requestId, { status: 409 });
     }
-    return NextResponse.json({ ok: false, error: error instanceof Error ? error.message : 'PUSH_SUBSCRIPTION_DELETE_FAILED' }, { status: 500 });
+    const message = error instanceof Error ? error.message : 'PUSH_SUBSCRIPTION_DELETE_FAILED';
+    logServerObservation(observation, 'error', { status: 500, code: 'PUSH_SUBSCRIPTION_DELETE_FAILED', message });
+    return jsonWithRequestId({ ok: false, error: message }, requestId, { status: 500 });
   }
 }

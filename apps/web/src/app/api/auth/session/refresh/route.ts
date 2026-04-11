@@ -1,46 +1,44 @@
-import { NextResponse } from 'next/server';
-import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
+import { NextRequest } from 'next/server';
 import { getCookieValue, RUNTIME_SESSION_COOKIE, setRuntimeSessionCookie } from '@/lib/auth/cookies';
+import { jsonWithRequestId, getRequestIdFromHeaders } from '@/lib/observability/http';
+import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
 import { encodeRuntimeResumeToken, RUNTIME_RESUME_MAX_AGE_SECONDS } from '@/lib/runtime/resume';
 import { decodeRuntimeSession, encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 
-export async function GET(request: Request) {
-  const observation = beginServerObservation('auth.session-refresh', {
-    path: new URL(request.url).pathname,
-    method: request.method,
-  }, request.headers.get('x-request-id'));
+function fail(status: number, error: string, requestId: string) {
+  return jsonWithRequestId({ ok: false, error }, requestId, { status });
+}
+
+export async function GET(req: NextRequest) {
+  const requestId = getRequestIdFromHeaders(req.headers);
+  const observation = beginServerObservation('auth.session.refresh', undefined, requestId);
 
   try {
     const token = await getCookieValue(RUNTIME_SESSION_COOKIE);
     const session = decodeRuntimeSession(token);
     if (!session) {
       logServerObservation(observation, 'error', { status: 401, code: 'UNAUTHENTICATED' });
-      const response = NextResponse.json({ ok: false, error: 'UNAUTHENTICATED' }, { status: 401 });
-      response.headers.set('x-request-id', observation.requestId);
-      return response;
+      return fail(401, 'UNAUTHENTICATED', requestId);
     }
 
     const refreshedSessionToken = encodeRuntimeSession(session);
     const resumeToken = encodeRuntimeResumeToken(session);
-    const response = NextResponse.json({
+    const response = jsonWithRequestId({
       ok: true,
       resumeToken,
       resumeExpiresInSeconds: RUNTIME_RESUME_MAX_AGE_SECONDS,
       sessionExpiresInSeconds: RUNTIME_SESSION_MAX_AGE_SECONDS,
-    });
+    }, requestId);
     setRuntimeSessionCookie(response, refreshedSessionToken, RUNTIME_SESSION_MAX_AGE_SECONDS);
-    response.headers.set('x-request-id', observation.requestId);
     logServerObservation(observation, 'ok', {
-      status: 200,
       accountKind: session.accountKind,
       shiftRole: session.shiftRole ?? null,
+      tenantId: session.tenantId,
+      userId: session.userId,
     });
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'SESSION_REFRESH_FAILED';
-    logServerObservation(observation, 'error', { status: 500, message });
-    const response = NextResponse.json({ ok: false, error: 'SESSION_REFRESH_FAILED' }, { status: 500 });
-    response.headers.set('x-request-id', observation.requestId);
-    return response;
+    logServerObservation(observation, 'error', { status: 500, code: 'SESSION_REFRESH_FAILED', message: error instanceof Error ? error.message : 'SESSION_REFRESH_FAILED' });
+    return fail(500, 'SESSION_REFRESH_FAILED', requestId);
   }
 }

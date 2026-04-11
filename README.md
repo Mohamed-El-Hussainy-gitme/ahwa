@@ -73,7 +73,12 @@ The platform surface should not expose detailed per-cafe operating sales, compla
 - GitHub CI: `.github/workflows/ci.yml`
 - Release readiness check: `npm run verify:release`
 - GitHub/Vercel checklist: `docs/deployment/github-vercel-checklist.md`
-- First production runbook: `docs/deployment/first-production-release-runbook.md`
-- Secret handling and key rotation notes: `docs/security/secrets-and-key-rotation.md`
 - Production release gate: `docs/deployment/production-release-gate.md`
 - Platform operations runbook: `docs/execution/platform-operations-runbook.md`
+- First production runbook: `docs/deployment/first-production-release-runbook.md`
+- Secret handling and key rotation notes: `docs/security/secrets-and-key-rotation.md`
+
+## Additional runtime verification
+- `npm run verify:operations` for operations hardening and release gate validation.
+- `npm run verify:login-entry` to prevent login-gate regressions for `/login` and cafe auth pages.
+- `npm run smoke:ops:health` to check `/api/internal/health/ops` against a live deployment.

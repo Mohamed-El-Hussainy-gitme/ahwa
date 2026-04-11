@@ -1,4 +1,5 @@
-import { NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
+import { jsonWithRequestId, getRequestIdFromHeaders } from '@/lib/observability/http';
 import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
 import { validateCriticalEnv, getOutboxDispatchPolicy } from '@/lib/platform/env-contract';
 import { getQStashConfig } from '@/lib/platform/qstash';
@@ -15,18 +16,14 @@ function isAuthorized(request: Request) {
   return request.headers.get('authorization') === `Bearer ${secret}` || request.headers.get('x-cron-secret') === secret;
 }
 
-export async function GET(request: Request) {
-  const observation = beginServerObservation('ops.health', {
-    path: new URL(request.url).pathname,
-    method: request.method,
-  }, request.headers.get('x-request-id'));
+export async function GET(request: NextRequest) {
+  const requestId = getRequestIdFromHeaders(request.headers);
+  const observation = beginServerObservation('internal.health.ops', undefined, requestId);
 
   try {
     if (!isAuthorized(request)) {
       logServerObservation(observation, 'error', { status: 401, code: 'UNAUTHORIZED' });
-      const response = NextResponse.json({ ok: false, error: 'UNAUTHORIZED' }, { status: 401 });
-      response.headers.set('x-request-id', observation.requestId);
-      return response;
+      return jsonWithRequestId({ ok: false, error: 'UNAUTHORIZED' }, requestId, { status: 401 });
     }
 
     const validation = validateCriticalEnv(true);
@@ -35,7 +32,7 @@ export async function GET(request: Request) {
     const operationalDatabases = listConfiguredOperationalDatabasesFromEnv().map((item) => item.databaseKey);
     const qstash = getQStashConfig();
 
-    const response = NextResponse.json({
+    const body = {
       ok: validation.ok,
       checks: {
         env: validation,
@@ -58,21 +55,19 @@ export async function GET(request: Request) {
         },
         operationalDatabases,
       },
-    }, { status: validation.ok ? 200 : 500 });
+    };
 
-    response.headers.set('x-request-id', observation.requestId);
     logServerObservation(observation, validation.ok ? 'ok' : 'error', {
       status: validation.ok ? 200 : 500,
-      databaseCount: operationalDatabases.length,
+      envOk: validation.ok,
+      operationalDatabaseCount: operationalDatabases.length,
       qstashEnabled: qstash.enabled,
-      outboxPolicy: getOutboxDispatchPolicy(),
+      redisConfigured: Boolean(redisUrl),
     });
-    return response;
+    return jsonWithRequestId(body, requestId, { status: validation.ok ? 200 : 500 });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'OPS_HEALTH_FAILED';
-    logServerObservation(observation, 'error', { status: 500, message });
-    const response = NextResponse.json({ ok: false, error: message }, { status: 500 });
-    response.headers.set('x-request-id', observation.requestId);
-    return response;
+    logServerObservation(observation, 'error', { status: 500, code: 'OPS_HEALTH_FAILED', message });
+    return jsonWithRequestId({ ok: false, error: message }, requestId, { status: 500 });
   }
 }

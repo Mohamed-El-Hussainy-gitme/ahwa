@@ -6,6 +6,7 @@ import { RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 const RUNTIME_SESSION_COOKIE = 'ahwa_runtime_session';
 const LEGACY_PLATFORM_SESSION_COOKIE = 'ahwa_platform_session';
 const LAST_RUNTIME_PATH_COOKIE = 'ahwa_last_runtime_path';
+const REQUEST_ID_HEADER = 'x-request-id';
 
 function isPublicPath(path: string) {
   return (
@@ -46,6 +47,7 @@ function isRuntimeProtectedPath(path: string) {
     path.startsWith('/api/runtime/') ||
     path.startsWith('/api/owner/') ||
     path.startsWith('/api/authz/') ||
+    path.startsWith('/api/pwa/push/') ||
     path.startsWith('/dashboard') ||
     path.startsWith('/orders') ||
     path.startsWith('/billing') ||
@@ -60,44 +62,46 @@ function isRuntimeProtectedPath(path: string) {
   );
 }
 
+function applyRequestId(response: NextResponse, requestId: string) {
+  response.headers.set(REQUEST_ID_HEADER, requestId);
+  return response;
+}
+
 export function proxy(req: NextRequest) {
   const path = req.nextUrl.pathname;
   const runtimeSessionToken = req.cookies.get(RUNTIME_SESSION_COOKIE)?.value ?? '';
   const hasRuntimeSession = runtimeSessionToken.length > 0;
   const hasPlatformSession = !!req.cookies.get(PLATFORM_ADMIN_COOKIE)?.value || !!req.cookies.get(LEGACY_PLATFORM_SESSION_COOKIE)?.value;
-  const requestId = req.headers.get('x-request-id')?.trim() || crypto.randomUUID();
+  const requestId = req.headers.get(REQUEST_ID_HEADER)?.trim() || crypto.randomUUID();
   const requestHeaders = new Headers(req.headers);
-  requestHeaders.set('x-request-id', requestId);
+  requestHeaders.set(REQUEST_ID_HEADER, requestId);
 
-  const withRequestId = (response: NextResponse) => {
-    response.headers.set('x-request-id', requestId);
-    return response;
-  };
-
-  const nextResponse = () => withRequestId(NextResponse.next({ request: { headers: requestHeaders } }));
+  const nextResponse = () => NextResponse.next({ request: { headers: requestHeaders } });
 
   const withRuntimeResume = (response: NextResponse) => {
-    if (hasRuntimeSession) {
-      response.cookies.set(RUNTIME_SESSION_COOKIE, runtimeSessionToken, {
-        httpOnly: true,
+    applyRequestId(response, requestId);
+
+    if (!hasRuntimeSession) return response;
+
+    response.cookies.set(RUNTIME_SESSION_COOKIE, runtimeSessionToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      path: '/',
+      maxAge: RUNTIME_SESSION_MAX_AGE_SECONDS,
+    });
+
+    if (isRuntimeProtectedPath(path) && !path.startsWith('/api/')) {
+      response.cookies.set(LAST_RUNTIME_PATH_COOKIE, `${path}${req.nextUrl.search}`, {
+        httpOnly: false,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax',
         path: '/',
         maxAge: RUNTIME_SESSION_MAX_AGE_SECONDS,
       });
-
-      if (isRuntimeProtectedPath(path) && !path.startsWith('/api/')) {
-        response.cookies.set(LAST_RUNTIME_PATH_COOKIE, `${path}${req.nextUrl.search}`, {
-          httpOnly: false,
-          secure: process.env.NODE_ENV === 'production',
-          sameSite: 'lax',
-          path: '/',
-          maxAge: RUNTIME_SESSION_MAX_AGE_SECONDS,
-        });
-      }
     }
 
-    return withRequestId(response);
+    return response;
   };
 
   if (isPublicPath(path)) return withRuntimeResume(nextResponse());
@@ -107,7 +111,7 @@ export function proxy(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = '/platform/login';
     url.searchParams.set('next', path);
-    return withRequestId(NextResponse.redirect(url));
+    return withRuntimeResume(NextResponse.redirect(url));
   }
 
   if (isRuntimeProtectedPath(path)) {
@@ -115,14 +119,14 @@ export function proxy(req: NextRequest) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('next', path);
-    return withRequestId(NextResponse.redirect(url));
+    return withRuntimeResume(NextResponse.redirect(url));
   }
 
   if (!hasRuntimeSession && !hasPlatformSession) {
     const url = req.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('next', path);
-    return withRequestId(NextResponse.redirect(url));
+    return withRuntimeResume(NextResponse.redirect(url));
   }
 
   return withRuntimeResume(nextResponse());

@@ -1,7 +1,8 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
 import { cafeSlugEquals, normalizeCafeSlug } from '@/lib/cafes/slug';
+import { jsonWithRequestId, getRequestIdFromHeaders } from '@/lib/observability/http';
 import { beginServerObservation, logServerObservation } from '@/lib/observability/server';
 import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
 import { encodeRuntimeResumeToken, RUNTIME_RESUME_MAX_AGE_SECONDS } from '@/lib/runtime/resume';
@@ -15,44 +16,48 @@ const Input = z.object({
   slug: z.string().min(1).optional(),
 });
 
-export async function POST(req: NextRequest) {
-  const observation = beginServerObservation('auth.owner-login', {
-    path: req.nextUrl.pathname,
-    method: req.method,
-  }, req.headers.get('x-request-id'));
+function fail(status: number, error: string, requestId: string) {
+  return jsonWithRequestId({ ok: false, error }, requestId, { status });
+}
 
-  const fail = (status: number, code: string) => {
-    logServerObservation(observation, 'error', { status, code });
-    const response = NextResponse.json({ ok: false, error: code }, { status });
-    response.headers.set('x-request-id', observation.requestId);
-    return response;
-  };
+export async function POST(req: NextRequest) {
+  const requestId = getRequestIdFromHeaders(req.headers);
+  const body = await req.json().catch(() => ({}));
+  const inputSlug = normalizeCafeSlug(typeof body?.slug === 'string' ? body.slug : '');
+  const observation = beginServerObservation('auth.owner-login', {
+    slug: inputSlug || null,
+    hasPhone: typeof body?.phone === 'string' && body.phone.trim().length > 0,
+  }, requestId);
 
   try {
-    const body = await req.json().catch(() => ({}));
     const parsed = Input.safeParse(body);
     if (!parsed.success) {
-      return fail(400, 'INVALID_INPUT');
+      logServerObservation(observation, 'error', { status: 400, code: 'INVALID_INPUT' });
+      return fail(400, 'INVALID_INPUT', requestId);
     }
 
     const slug = normalizeCafeSlug(parsed.data.slug ?? '');
     if (!slug) {
-      return fail(400, 'MISSING_CAFE_SLUG');
+      logServerObservation(observation, 'error', { status: 400, code: 'MISSING_CAFE_SLUG' });
+      return fail(400, 'MISSING_CAFE_SLUG', requestId);
     }
 
     let binding = null;
     try {
       binding = await resolveCafeBindingBySlug(slug);
     } catch {
-      return fail(404, 'CAFE_NOT_FOUND');
+      logServerObservation(observation, 'error', { status: 404, code: 'CAFE_NOT_FOUND' });
+      return fail(404, 'CAFE_NOT_FOUND', requestId);
     }
 
     if (!binding || !binding.isActive) {
-      return fail(404, 'CAFE_NOT_FOUND');
+      logServerObservation(observation, 'error', { status: 404, code: 'CAFE_NOT_FOUND' });
+      return fail(404, 'CAFE_NOT_FOUND', requestId);
     }
 
     if (!isOperationalDatabaseConfigured(binding.databaseKey)) {
-      return fail(409, 'CAFE_DATABASE_UNAVAILABLE');
+      logServerObservation(observation, 'error', { status: 409, code: 'CAFE_DATABASE_UNAVAILABLE', databaseKey: binding.databaseKey });
+      return fail(409, 'CAFE_DATABASE_UNAVAILABLE', requestId);
     }
 
     const rpc = await supabaseAdminForDatabase(binding.databaseKey).rpc('ops_verify_owner_login', {
@@ -62,22 +67,26 @@ export async function POST(req: NextRequest) {
     });
 
     if (rpc.error) {
-      return fail(401, 'LOGIN_FAILED');
+      logServerObservation(observation, 'error', { status: 401, code: 'LOGIN_FAILED', databaseKey: binding.databaseKey, message: rpc.error.message || 'LOGIN_FAILED' });
+      return fail(401, 'LOGIN_FAILED', requestId);
     }
 
     const row = Array.isArray(rpc.data) ? rpc.data[0] : null;
     if (!row?.owner_user_id) {
-      return fail(401, 'BAD_CREDENTIALS');
+      logServerObservation(observation, 'error', { status: 401, code: 'BAD_CREDENTIALS', databaseKey: binding.databaseKey });
+      return fail(401, 'BAD_CREDENTIALS', requestId);
     }
 
     const resolvedCafeId = String(row.cafe_id ?? '');
     if (!resolvedCafeId || resolvedCafeId !== binding.id) {
-      return fail(409, 'CAFE_BINDING_MISMATCH');
+      logServerObservation(observation, 'error', { status: 409, code: 'CAFE_BINDING_MISMATCH', databaseKey: binding.databaseKey });
+      return fail(409, 'CAFE_BINDING_MISMATCH', requestId);
     }
 
     const resolvedCafeSlug = normalizeCafeSlug(String(row.cafe_slug ?? binding.slug));
     if (!cafeSlugEquals(resolvedCafeSlug, binding.slug)) {
-      return fail(409, 'CAFE_SLUG_MISMATCH');
+      logServerObservation(observation, 'error', { status: 409, code: 'CAFE_SLUG_MISMATCH', databaseKey: binding.databaseKey });
+      return fail(409, 'CAFE_SLUG_MISMATCH', requestId);
     }
 
     const ownerLabel: 'owner' | 'partner' | 'branch_manager' =
@@ -100,39 +109,27 @@ export async function POST(req: NextRequest) {
 
     const token = encodeRuntimeSession(session);
     const resumeToken = encodeRuntimeResumeToken(session);
-
-    const response = NextResponse.json({
+    const response = jsonWithRequestId({
       ok: true,
       resumeToken,
       resumeExpiresInSeconds: RUNTIME_RESUME_MAX_AGE_SECONDS,
       sessionExpiresInSeconds: RUNTIME_SESSION_MAX_AGE_SECONDS,
       tenant: { id: binding.id, slug: binding.slug },
-      binding: {
-        databaseKey: binding.databaseKey,
-        bindingSource: binding.bindingSource,
-      },
-      user: {
-        id: String(row.owner_user_id),
-        fullName: String(row.full_name ?? ''),
-        accountKind: 'owner',
-        ownerLabel,
-      },
-    });
+      binding: { databaseKey: binding.databaseKey, bindingSource: binding.bindingSource },
+      user: { id: String(row.owner_user_id), fullName: String(row.full_name ?? ''), accountKind: 'owner', ownerLabel },
+    }, requestId);
     setRuntimeSessionCookie(response, token, RUNTIME_SESSION_MAX_AGE_SECONDS);
     setGateSlugCookie(response, binding.slug);
-    response.headers.set('x-request-id', observation.requestId);
     logServerObservation(observation, 'ok', {
-      status: 200,
-      cafeSlug: binding.slug,
       databaseKey: binding.databaseKey,
+      accountKind: 'owner',
       ownerLabel,
+      tenantId: binding.id,
+      userId: String(row.owner_user_id),
     });
     return response;
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'OWNER_LOGIN_FAILED';
-    logServerObservation(observation, 'error', { status: 500, message });
-    const response = NextResponse.json({ ok: false, error: 'LOGIN_FAILED' }, { status: 500 });
-    response.headers.set('x-request-id', observation.requestId);
-    return response;
+    logServerObservation(observation, 'error', { status: 500, code: 'OWNER_LOGIN_FAILED', message: error instanceof Error ? error.message : 'OWNER_LOGIN_FAILED' });
+    return fail(500, 'OWNER_LOGIN_FAILED', requestId);
   }
 }

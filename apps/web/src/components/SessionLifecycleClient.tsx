@@ -2,13 +2,13 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { getDefaultRuntimeHome, resolveRuntimeNextPath } from '@/lib/runtime/navigation';
 import {
   readRuntimeLastPath,
   readRuntimeResumeToken,
   writeRuntimeLastPath,
   writeRuntimeResumeToken,
 } from '@/lib/runtime/resume-storage';
-import { sanitizeRuntimeRelativePath, shouldAutoResumeAuthPage } from '@/lib/runtime/navigation';
 
 const AUTH_PREFIXES = ['/login', '/owner-login', '/owner-password'];
 const CAFE_AUTH_PATH_PATTERN = /^\/c\/[^/]+\/(?:login|activate)(?:\/|$)/;
@@ -50,13 +50,10 @@ export default function SessionLifecycleClient() {
 
   useEffect(() => {
     if (isAuthPath(pathname)) {
-      const nextPath = sanitizeRuntimeRelativePath(searchParams?.get('next'));
-      if (!shouldAutoResumeAuthPage(nextPath)) {
-        return;
-      }
-
       const token = readRuntimeResumeToken();
-      if (!token || resumeBusyRef.current) {
+      const nextPath = resolveRuntimeNextPath(searchParams?.get('next'));
+      const shouldResumeFromAuthPage = Boolean(nextPath);
+      if (!token || resumeBusyRef.current || !shouldResumeFromAuthPage) {
         return;
       }
 
@@ -76,8 +73,14 @@ export default function SessionLifecycleClient() {
           }
 
           writeRuntimeResumeToken(payload.resumeToken);
-          const fallback = readRuntimeLastPath() || '/dashboard';
-          const target = nextPath || fallback;
+          const fallback = readRuntimeLastPath() || getDefaultRuntimeHome({
+            accountKind: typeof payload.accountKind === 'string' ? payload.accountKind : null,
+            shiftRole: typeof payload.shiftRole === 'string' ? payload.shiftRole : null,
+          });
+          const target = nextPath ?? resolveRuntimeNextPath(fallback) ?? getDefaultRuntimeHome({
+            accountKind: typeof payload.accountKind === 'string' ? payload.accountKind : null,
+            shiftRole: typeof payload.shiftRole === 'string' ? payload.shiftRole : null,
+          });
           router.replace(target);
           router.refresh();
         } finally {

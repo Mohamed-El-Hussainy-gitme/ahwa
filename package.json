@@ -29,6 +29,9 @@
     "verify:authz": "node ./scripts/check-ops-authz-coverage.mjs",
     "verify:1to1-lock": "node ./scripts/check-final-1to1-lock.mjs",
     "verify:release": "node ./scripts/check-release-readiness.mjs",
+    "verify:operations": "node ./scripts/verify-operations-hardening.mjs",
+    "verify:login-entry": "node ./scripts/verify-login-entry-contract.mjs",
+    "smoke:ops:health": "node ./scripts/smoke-ops-health.mjs",
     "verify:control-plane-manual-db-selection": "node ./scripts/verify-control-plane-manual-db-selection.mjs",
     "verify:batch4": "node ./scripts/check-batch4-admin-hygiene.mjs",
     "verify:reporting-maintenance": "node ./scripts/verify-reporting-maintenance-release.mjs",
@@ -44,9 +47,7 @@
     "soak:ops": "node ./scripts/load/run-ops-soak.mjs",
     "failure:ops": "node ./scripts/load/run-ops-failure-lab.mjs",
     "report:capacity": "node ./scripts/load/build-capacity-report.mjs",
-    "verify:phase30": "node ./scripts/verify-phase30-load-lab.mjs",
-    "verify:operations": "node ./scripts/verify-operations-hardening.mjs",
-    "smoke:ops:health": "node ./scripts/smoke-ops-health.mjs"
+    "verify:phase30": "node ./scripts/verify-phase30-load-lab.mjs"
   },
   "packageManager": "npm@10.8.2"
 }
