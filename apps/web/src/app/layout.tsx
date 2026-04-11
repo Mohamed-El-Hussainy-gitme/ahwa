@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { Suspense } from 'react';
 import './globals.css';
 import ServiceWorkerRegistrar from '@/components/ServiceWorkerRegistrar';
 import SessionLifecycleClient from '@/components/SessionLifecycleClient';
@@ -63,7 +64,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="ar" dir="rtl">
       <body className="antialiased">
         <ServiceWorkerRegistrar />
-        <SessionLifecycleClient />
+        <Suspense fallback={null}>
+          <SessionLifecycleClient />
+        </Suspense>
         {children}
       </body>
     </html>
