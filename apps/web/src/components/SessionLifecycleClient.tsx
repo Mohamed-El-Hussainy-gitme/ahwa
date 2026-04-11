@@ -2,29 +2,32 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
-import { RUNTIME_LAST_PATH_STORAGE_KEY, RUNTIME_RESUME_STORAGE_KEY } from '@/lib/runtime/resume';
+import {
+  readRuntimeLastPath,
+  readRuntimeResumeToken,
+  writeRuntimeLastPath,
+  writeRuntimeResumeToken,
+} from '@/lib/runtime/resume-storage';
 
 const AUTH_PREFIXES = ['/login', '/owner-login', '/owner-password'];
+const CAFE_AUTH_PATH_PATTERN = /^\/c\/[^/]+\/(?:login|activate)(?:\/|$)/;
 
 function isAuthPath(pathname: string) {
-  return AUTH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
-}
-
-function persistResumeToken(token: string | null) {
-  if (typeof window === 'undefined') return;
-  if (!token) {
-    localStorage.removeItem(RUNTIME_RESUME_STORAGE_KEY);
-    return;
-  }
-  localStorage.setItem(RUNTIME_RESUME_STORAGE_KEY, token);
+  return AUTH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || CAFE_AUTH_PATH_PATTERN.test(pathname);
 }
 
 async function refreshResumeSession() {
   try {
-    const res = await fetch('/api/auth/session/refresh', { cache: 'no-store', credentials: 'include' });
-    const json = await res.json().catch(() => ({}));
-    if (!res.ok || !json.ok || typeof json.resumeToken !== 'string') return false;
-    persistResumeToken(json.resumeToken);
+    const response = await fetch('/api/auth/session/refresh', {
+      cache: 'no-store',
+      credentials: 'include',
+    });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload.ok || typeof payload.resumeToken !== 'string') {
+      return false;
+    }
+
+    writeRuntimeResumeToken(payload.resumeToken);
     return true;
   } catch {
     return false;
@@ -40,31 +43,35 @@ export default function SessionLifecycleClient() {
   useEffect(() => {
     const currentPath = `${pathname}${searchParams?.toString() ? `?${searchParams.toString()}` : ''}`;
     if (!isAuthPath(pathname) && !pathname.startsWith('/api')) {
-      localStorage.setItem(RUNTIME_LAST_PATH_STORAGE_KEY, currentPath || '/');
+      writeRuntimeLastPath(currentPath || '/');
     }
   }, [pathname, searchParams]);
 
   useEffect(() => {
     if (isAuthPath(pathname)) {
-      const token = localStorage.getItem(RUNTIME_RESUME_STORAGE_KEY);
-      if (!token || resumeBusyRef.current) return;
+      const token = readRuntimeResumeToken();
+      if (!token || resumeBusyRef.current) {
+        return;
+      }
+
       resumeBusyRef.current = true;
       void (async () => {
         try {
-          const res = await fetch('/api/auth/session/resume', {
+          const response = await fetch('/api/auth/session/resume', {
             method: 'POST',
             credentials: 'include',
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ token }),
           });
-          const json = await res.json().catch(() => ({}));
-          if (!res.ok || !json.ok || typeof json.resumeToken !== 'string') {
-            persistResumeToken(null);
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || !payload.ok || typeof payload.resumeToken !== 'string') {
+            writeRuntimeResumeToken(null);
             return;
           }
-          persistResumeToken(json.resumeToken);
+
+          writeRuntimeResumeToken(payload.resumeToken);
           const next = searchParams?.get('next');
-          const fallback = localStorage.getItem(RUNTIME_LAST_PATH_STORAGE_KEY) || '/dashboard';
+          const fallback = readRuntimeLastPath() || '/dashboard';
           const target = next && next.startsWith('/') ? next : fallback;
           router.replace(target);
           router.refresh();
@@ -72,15 +79,18 @@ export default function SessionLifecycleClient() {
           resumeBusyRef.current = false;
         }
       })();
+
       return;
     }
 
-    let interval: number | null = null;
+    let intervalId: number | null = null;
+
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         void refreshResumeSession();
       }
     };
+
     const onFocus = () => {
       void refreshResumeSession();
     };
@@ -88,7 +98,7 @@ export default function SessionLifecycleClient() {
     void refreshResumeSession();
     document.addEventListener('visibilitychange', onVisible);
     window.addEventListener('focus', onFocus);
-    interval = window.setInterval(() => {
+    intervalId = window.setInterval(() => {
       if (document.visibilityState === 'visible') {
         void refreshResumeSession();
       }
@@ -97,7 +107,9 @@ export default function SessionLifecycleClient() {
     return () => {
       document.removeEventListener('visibilitychange', onVisible);
       window.removeEventListener('focus', onFocus);
-      if (interval) window.clearInterval(interval);
+      if (intervalId !== null) {
+        window.clearInterval(intervalId);
+      }
     };
   }, [pathname, router, searchParams]);
 

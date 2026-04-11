@@ -5,6 +5,7 @@ import { controlPlaneAdmin } from '@/lib/control-plane/admin';
 import { mirrorOwnerToOperationalDatabase } from '@/lib/control-plane/runtime-provisioning';
 import { normalizeCafeSlug } from '@/lib/cafes/slug';
 import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
+import { encodeRuntimeResumeToken, RUNTIME_RESUME_MAX_AGE_SECONDS } from '@/lib/runtime/resume';
 import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 
@@ -99,7 +100,7 @@ export async function POST(req: NextRequest) {
   const cafeId = String(row?.cafe_id ?? preflightCafeId);
   const ownerUserId = String(row?.owner_user_id ?? preflightOwnerUserId);
   const fullName = String(row?.full_name ?? preflightFullName);
-  const ownerLabel = row?.owner_label === 'partner' ? 'partner' : preflightOwnerLabel;
+  const ownerLabel: 'owner' | 'partner' | 'branch_manager' = row?.owner_label === 'partner' ? 'partner' : preflightOwnerLabel;
   const confirmedSlug = normalizeCafeSlug(String(row?.cafe_slug ?? resolvedSlug));
 
   if (!cafeId || !ownerUserId || !confirmedSlug) {
@@ -124,23 +125,29 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const token = encodeRuntimeSession({
-    sessionVersion: 2,
+  const session = {
+    sessionVersion: 2 as const,
     databaseKey: binding.databaseKey,
     tenantId: binding.id,
     tenantSlug: binding.slug,
     userId: ownerUserId,
     fullName,
-    accountKind: 'owner',
+    accountKind: 'owner' as const,
     ownerLabel,
     actorOwnerId: ownerUserId,
     actorStaffId: null,
     shiftId: null,
     shiftRole: null,
-  });
+  };
+
+  const token = encodeRuntimeSession(session);
+  const resumeToken = encodeRuntimeResumeToken(session);
 
   const response = NextResponse.json({
     ok: true,
+    resumeToken,
+    resumeExpiresInSeconds: RUNTIME_RESUME_MAX_AGE_SECONDS,
+    sessionExpiresInSeconds: RUNTIME_SESSION_MAX_AGE_SECONDS,
     tenant: { id: binding.id, slug: binding.slug },
     binding: { databaseKey: binding.databaseKey, bindingSource: binding.bindingSource },
     user: { id: ownerUserId, fullName, accountKind: 'owner', ownerLabel },

@@ -1,9 +1,9 @@
 import { createHmac, timingSafeEqual } from 'crypto';
 import type { RuntimeSessionPayload } from '@/lib/runtime/session';
+import { RUNTIME_LAST_PATH_STORAGE_KEY, RUNTIME_RESUME_STORAGE_KEY } from '@/lib/runtime/resume-storage';
 
 export const RUNTIME_RESUME_MAX_AGE_SECONDS = 60 * 60 * 3;
-export const RUNTIME_RESUME_STORAGE_KEY = 'ahwa.runtime.resume.v1';
-export const RUNTIME_LAST_PATH_STORAGE_KEY = 'ahwa.runtime.last-path.v1';
+export { RUNTIME_LAST_PATH_STORAGE_KEY, RUNTIME_RESUME_STORAGE_KEY };
 
 export type RuntimeResumePayload = {
   session: RuntimeSessionPayload;

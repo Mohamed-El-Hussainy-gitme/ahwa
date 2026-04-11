@@ -2,8 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
 import { cafeSlugEquals, normalizeCafeSlug } from '@/lib/cafes/slug';
-import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
+import { encodeRuntimeResumeToken, RUNTIME_RESUME_MAX_AGE_SECONDS } from '@/lib/runtime/resume';
+import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
 
@@ -68,23 +69,32 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: false, error: 'CAFE_SLUG_MISMATCH' }, { status: 409 });
   }
 
-  const token = encodeRuntimeSession({
-    sessionVersion: 2,
+  const ownerLabel: 'owner' | 'partner' | 'branch_manager' =
+    row.owner_label === 'partner' ? 'partner' : row.owner_label === 'branch_manager' ? 'branch_manager' : 'owner';
+
+  const session = {
+    sessionVersion: 2 as const,
     databaseKey: binding.databaseKey,
     tenantId: binding.id,
     tenantSlug: binding.slug,
     userId: String(row.owner_user_id),
     fullName: String(row.full_name ?? ''),
-    accountKind: 'owner',
-    ownerLabel: row.owner_label === 'partner' ? 'partner' : row.owner_label === 'branch_manager' ? 'branch_manager' : 'owner',
+    accountKind: 'owner' as const,
+    ownerLabel,
     actorOwnerId: String(row.owner_user_id),
     actorStaffId: null,
     shiftId: null,
     shiftRole: null,
-  });
+  };
+
+  const token = encodeRuntimeSession(session);
+  const resumeToken = encodeRuntimeResumeToken(session);
 
   const response = NextResponse.json({
     ok: true,
+    resumeToken,
+    resumeExpiresInSeconds: RUNTIME_RESUME_MAX_AGE_SECONDS,
+    sessionExpiresInSeconds: RUNTIME_SESSION_MAX_AGE_SECONDS,
     tenant: { id: binding.id, slug: binding.slug },
     binding: {
       databaseKey: binding.databaseKey,
@@ -94,7 +104,7 @@ export async function POST(req: NextRequest) {
       id: String(row.owner_user_id),
       fullName: String(row.full_name ?? ''),
       accountKind: 'owner',
-      ownerLabel: row.owner_label === 'partner' ? 'partner' : row.owner_label === 'branch_manager' ? 'branch_manager' : 'owner',
+      ownerLabel,
     },
   });
   setRuntimeSessionCookie(response, token, RUNTIME_SESSION_MAX_AGE_SECONDS);

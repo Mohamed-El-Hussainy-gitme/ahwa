@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { setGateSlugCookie, setRuntimeSessionCookie } from '@/lib/auth/cookies';
 import { cafeSlugEquals, normalizeCafeSlug } from '@/lib/cafes/slug';
 import { resolveCafeBindingBySlug } from '@/lib/ops/cafes';
+import { encodeRuntimeResumeToken, RUNTIME_RESUME_MAX_AGE_SECONDS } from '@/lib/runtime/resume';
 import { encodeRuntimeSession, RUNTIME_SESSION_MAX_AGE_SECONDS } from '@/lib/runtime/session';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { isOperationalDatabaseConfigured } from '@/lib/supabase/env';
@@ -91,22 +92,27 @@ export async function POST(req: NextRequest) {
     return fail(401, 'LOGIN_FAILED');
   }
 
-  const token = encodeRuntimeSession({
-    sessionVersion: 2,
+  const session = {
+    sessionVersion: 2 as const,
     databaseKey: binding.databaseKey,
     tenantId: binding.id,
     tenantSlug: binding.slug,
     userId: String(row.staff_member_id),
     fullName: String(row.full_name ?? ''),
-    accountKind: 'employee',
+    accountKind: 'employee' as const,
     shiftId: String(row.shift_id),
     shiftRole: String(row.shift_role) as 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter',
     actorOwnerId: null,
     actorStaffId: String(row.staff_member_id),
-  });
+  };
 
+  const token = encodeRuntimeSession(session);
+  const resumeToken = encodeRuntimeResumeToken(session);
   const response = NextResponse.json({
     ok: true,
+    resumeToken,
+    resumeExpiresInSeconds: RUNTIME_RESUME_MAX_AGE_SECONDS,
+    sessionExpiresInSeconds: RUNTIME_SESSION_MAX_AGE_SECONDS,
     tenant: { id: binding.id, slug: binding.slug },
     binding: {
       databaseKey: binding.databaseKey,
