@@ -1,5 +1,5 @@
 export type RuntimeAuthViewer = {
-  accountKind?: 'owner' | 'staff' | null;
+  accountKind?: 'owner' | 'employee' | 'staff' | null;
   shiftRole?: 'supervisor' | 'waiter' | 'american_waiter' | 'barista' | 'shisha' | null;
 };
 
