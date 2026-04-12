@@ -8,15 +8,17 @@ export const dynamic = 'force-dynamic';
 
 type SearchParams = Record<string, string | string[] | undefined>;
 
+function isPromise<T>(value: unknown): value is Promise<T> {
+  return !!value && typeof (value as { then?: unknown }).then === 'function';
+}
+
 function readSearchParam(searchParams: SearchParams | undefined, key: string): string | null {
   const value = searchParams?.[key];
   return typeof value === 'string' ? value : Array.isArray(value) ? value[0] ?? null : null;
 }
 
 export default async function OwnerLoginPage({ searchParams }: { searchParams?: Promise<SearchParams> | SearchParams }) {
-  const resolvedSearchParams = searchParams && typeof (searchParams as Promise<SearchParams>).then === 'function'
-    ? await searchParams
-    : searchParams;
+  const resolvedSearchParams = isPromise<SearchParams>(searchParams) ? await searchParams : searchParams;
   const next = normalizeRuntimeNext(readSearchParam(resolvedSearchParams, 'next'));
   const me = await getRuntimeMe();
   if (me && next) {
