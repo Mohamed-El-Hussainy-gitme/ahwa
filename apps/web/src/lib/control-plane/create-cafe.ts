@@ -96,6 +96,10 @@ function isMissingCreateCafeRpc(error: unknown): boolean {
   return message.includes('platform_create_cafe_with_owner') && (message.includes('not found') || message.includes('does not exist') || message.includes('could not find'));
 }
 
+function isRpcFirstCompatibleOwnerLabel(ownerLabel: CreateCafeWithOwnerInput['ownerLabel']): boolean {
+  return (ownerLabel ?? 'owner') === 'owner';
+}
+
 function normalizeInvite(payload: { password_setup_code?: string | null; password_setup_expires_at?: string | null; password_state?: string | null } | null | undefined): PasswordSetupInvite {
   return {
     passwordSetupCode: normalizeText(payload?.password_setup_code) || null,
@@ -396,7 +400,15 @@ export async function createCafeWithOwnerOnControlPlane(
   try {
     input.databaseKey = await resolveDatabaseKeyForCreate(session, input);
 
-    // Force the explicit application-managed create path to keep the initial account label narrow and predictable.
+    if (isRpcFirstCompatibleOwnerLabel(input.ownerLabel)) {
+      try {
+        return await createCafeWithOwnerViaRpc(session, input);
+      } catch (error) {
+        if (!isMissingCreateCafeRpc(error)) {
+          throw error;
+        }
+      }
+    }
 
     const createdCafe = await insertCafe(input.cafeSlug, input.cafeDisplayName);
     createdCafeId = createdCafe.id;
