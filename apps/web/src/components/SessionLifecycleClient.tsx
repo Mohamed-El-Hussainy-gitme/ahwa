@@ -2,19 +2,13 @@
 
 import { useEffect, useRef } from 'react';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { isRuntimeAuthPath, normalizeRuntimeNext } from '@/lib/runtime/auth-entry';
 import {
   readRuntimeLastPath,
   readRuntimeResumeToken,
   writeRuntimeLastPath,
   writeRuntimeResumeToken,
 } from '@/lib/runtime/resume-storage';
-
-const AUTH_PREFIXES = ['/login', '/owner-login', '/owner-password'];
-const CAFE_AUTH_PATH_PATTERN = /^\/c\/[^/]+\/(?:login|activate)(?:\/|$)/;
-
-function isAuthPath(pathname: string) {
-  return AUTH_PREFIXES.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`)) || CAFE_AUTH_PATH_PATTERN.test(pathname);
-}
 
 async function refreshResumeSession() {
   try {
@@ -42,15 +36,16 @@ export default function SessionLifecycleClient() {
 
   useEffect(() => {
     const currentPath = `${pathname}${searchParams?.toString() ? `?${searchParams.toString()}` : ''}`;
-    if (!isAuthPath(pathname) && !pathname.startsWith('/api')) {
+    if (!isRuntimeAuthPath(pathname) && !pathname.startsWith('/api')) {
       writeRuntimeLastPath(currentPath || '/');
     }
   }, [pathname, searchParams]);
 
   useEffect(() => {
-    if (isAuthPath(pathname)) {
+    if (isRuntimeAuthPath(pathname)) {
       const token = readRuntimeResumeToken();
-      if (!token || resumeBusyRef.current) {
+      const next = normalizeRuntimeNext(searchParams?.get('next'));
+      if (!token || !next || resumeBusyRef.current) {
         return;
       }
 
@@ -70,9 +65,8 @@ export default function SessionLifecycleClient() {
           }
 
           writeRuntimeResumeToken(payload.resumeToken);
-          const next = searchParams?.get('next');
           const fallback = readRuntimeLastPath() || '/dashboard';
-          const target = next && next.startsWith('/') ? next : fallback;
+          const target = next ?? fallback;
           router.replace(target);
           router.refresh();
         } finally {

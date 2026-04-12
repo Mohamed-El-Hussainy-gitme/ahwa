@@ -1,19 +1,27 @@
 import { Suspense } from 'react';
 import { redirect } from 'next/navigation';
 import OwnerLoginClient from './OwnerLoginClient';
+import { normalizeRuntimeNext, resolveRuntimeHomePath } from '@/lib/runtime/auth-entry';
 import { getRuntimeMe, getRuntimeResumePath } from '@/lib/runtime/server';
 
 export const dynamic = 'force-dynamic';
 
-export default async function OwnerLoginPage() {
+type SearchParams = Record<string, string | string[] | undefined>;
+
+function readSearchParam(searchParams: SearchParams | undefined, key: string): string | null {
+  const value = searchParams?.[key];
+  return typeof value === 'string' ? value : Array.isArray(value) ? value[0] ?? null : null;
+}
+
+export default async function OwnerLoginPage({ searchParams }: { searchParams?: Promise<SearchParams> | SearchParams }) {
+  const resolvedSearchParams = searchParams && typeof (searchParams as Promise<SearchParams>).then === 'function'
+    ? await searchParams
+    : searchParams;
+  const next = normalizeRuntimeNext(readSearchParam(resolvedSearchParams, 'next'));
   const me = await getRuntimeMe();
-  const resumePath = await getRuntimeResumePath();
-  if (me) {
-    if (resumePath) redirect(resumePath);
-    if (me.accountKind === 'owner' || me.shiftRole === 'supervisor') redirect('/dashboard');
-    if (me.shiftRole === 'barista') redirect('/kitchen');
-    if (me.shiftRole === 'shisha') redirect('/shisha');
-    redirect('/orders');
+  if (me && next) {
+    const resumePath = await getRuntimeResumePath();
+    redirect(resumePath ?? next ?? resolveRuntimeHomePath(me));
   }
   return <Suspense fallback={<div className='min-h-dvh bg-neutral-50' />}><OwnerLoginClient /></Suspense>;
 }
