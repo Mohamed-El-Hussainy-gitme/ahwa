@@ -135,15 +135,15 @@ function BillingReceiptPageContent() {
           }
 
           .receipt-print-shell {
-            width: 72mm !important;
-            max-width: 72mm !important;
+            width: 64mm !important;
+            max-width: 64mm !important;
             padding: 0 !important;
             margin: 0 auto !important;
           }
 
           .receipt-print-root {
-            width: 72mm !important;
-            max-width: 72mm !important;
+            width: 64mm !important;
+            max-width: 64mm !important;
             border: 0 !important;
             border-radius: 0 !important;
             box-shadow: none !important;
@@ -157,8 +157,8 @@ function BillingReceiptPageContent() {
         title={isPreview ? 'Guest Check' : 'Sales Receipt'}
         exportFilename={data ? `${data.mode === 'preview' ? 'guest-check' : 'sales-receipt'}-${data.paymentId ?? data.sessionId}` : isPreview ? 'guest-check' : 'sales-receipt'}
         subtitle={data ? `${data.cafeName} • ${data.sessionLabel}` : isPreview ? 'Loading guest check...' : 'Loading sales receipt...'}
-        shellClassName="receipt-print-shell w-full max-w-[26rem]"
-        contentClassName="receipt-print-root rounded-[28px] px-5 py-5"
+        shellClassName="receipt-print-shell w-full max-w-[22rem]"
+        contentClassName="receipt-print-root rounded-[28px] px-4 py-4"
         titleClassName="text-center"
         subtitleClassName="text-center"
         backHref={billingReturnHref}
@@ -167,10 +167,10 @@ function BillingReceiptPageContent() {
         {error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div> : null}
         {!data && !error && (paymentId || previewSessionId) ? <div className="rounded-2xl border border-dashed p-4 text-center text-sm text-neutral-500">{isPreview ? 'Loading guest check...' : 'Loading sales receipt...'}</div> : null}
         {data ? (
-          <div className="space-y-4 text-[13px] leading-6 text-neutral-900">
+          <div className="space-y-4 text-[12px] leading-5 text-neutral-900">
             <section className="border-b border-dashed pb-3 text-center">
-              <div className="text-xl font-black tracking-tight">{data.cafeName}</div>
-              <div className="mt-1 text-[12px] font-semibold uppercase tracking-[0.16em] text-neutral-500">{data.mode === 'preview' ? 'Guest Check' : 'Sales Receipt'}</div>
+              <div className="text-[19px] font-black leading-tight tracking-[0.01em] text-[#1e1712] break-words">{data.cafeName}</div>
+              <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8d7967]">{data.mode === 'preview' ? 'Guest Check' : 'Sales Receipt'}</div>
             </section>
 
             <section className="space-y-1 border-b border-dashed pb-3 text-[12px]">
