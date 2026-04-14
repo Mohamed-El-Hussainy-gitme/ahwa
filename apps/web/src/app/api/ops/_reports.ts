@@ -9,6 +9,7 @@ import type {
   ReportComplaintEntry,
   ReportItemIssueEntry,
   ReportPeriodKey,
+  CustomRangeReport,
   ReportsWorkspace,
   ReportShiftRow,
   ReportTotals,
@@ -185,6 +186,7 @@ function emptyTotals(): ReportTotals {
     salesReconciliationGap: 0,
     cashSales: 0,
     deferredSales: 0,
+    addonSales: 0,
     taxTotal: 0,
     serviceTotal: 0,
     extrasTotal: 0,
@@ -237,6 +239,7 @@ function addTotals(target: ReportTotals, source: ReportTotals) {
   target.salesReconciliationGap += source.salesReconciliationGap;
   target.cashSales += source.cashSales;
   target.deferredSales += source.deferredSales;
+  target.addonSales += source.addonSales;
   target.taxTotal += source.taxTotal;
   target.serviceTotal += source.serviceTotal;
   target.extrasTotal += source.extrasTotal;
@@ -421,6 +424,24 @@ function createEmptyDayRow(businessDate: string): ReportBusinessDayRow {
   return { businessDate, ...emptyTotals() };
 }
 
+function sumAddonSales(addons: Iterable<AddonReportRow>): number {
+  let total = 0;
+  for (const addon of addons) {
+    total += addon.netSales;
+  }
+  return roundMoney(total);
+}
+
+function hydrateAddonSalesForShiftRows(
+  shiftRowsById: Map<string, ReportShiftRow>,
+  addonsByShift: Map<string, Map<string, AddonReportRow>>,
+) {
+  for (const [shiftId, shiftRow] of shiftRowsById.entries()) {
+    const addonSales = sumAddonSales(addonsByShift.get(shiftId)?.values() ?? []);
+    shiftRow.addonSales = addonSales;
+  }
+}
+
 function buildPeriodReport(input: {
   key: ReportPeriodKey;
   label: string;
@@ -553,6 +574,7 @@ function parseSnapshotShiftRow(snapshot: any, fallback: ShiftRow): ReportShiftRo
     salesReconciliationGap: toNumber(totals.sales_gap),
     cashSales: toNumber(totals.cash_total),
     deferredSales: toNumber(totals.deferred_total),
+    addonSales: toNumber(totals.addon_sales),
     taxTotal: toNumber(totals.tax_total),
     serviceTotal: toNumber(totals.service_total),
     extrasTotal: toNumber(totals.extras_total ?? (toNumber(totals.tax_total) + toNumber(totals.service_total))),
@@ -1137,6 +1159,7 @@ function parseSummaryTotals(summaryLike: any): ReportTotals {
     salesReconciliationGap: toNumber(summary?.sales_gap),
     cashSales: toNumber(summary?.cash_total),
     deferredSales: toNumber(summary?.deferred_total),
+    addonSales: toNumber(summary?.addon_sales),
     taxTotal: toNumber(summary?.tax_total),
     serviceTotal: toNumber(summary?.service_total),
     extrasTotal: toNumber(summary?.extras_total ?? (toNumber(summary?.tax_total) + toNumber(summary?.service_total))),
@@ -1332,6 +1355,7 @@ function totalsCompatible(left: ReportTotals, right: ReportTotals): boolean {
     numbersRoughlyEqual(left.salesReconciliationGap, right.salesReconciliationGap) &&
     numbersRoughlyEqual(left.cashSales, right.cashSales) &&
     numbersRoughlyEqual(left.deferredSales, right.deferredSales) &&
+    numbersRoughlyEqual(left.addonSales, right.addonSales) &&
     numbersRoughlyEqual(left.taxTotal, right.taxTotal) &&
     numbersRoughlyEqual(left.serviceTotal, right.serviceTotal) &&
     numbersRoughlyEqual(left.extrasTotal, right.extrasTotal) &&
@@ -1484,16 +1508,26 @@ function buildValidatedSummaryBackedPeriod(input: {
   return summaryBacked;
 }
 
-export async function buildReportsWorkspace(cafeId: string, databaseKey: string): Promise<ReportsWorkspace> {
+export async function buildReportsWorkspace(
+  cafeId: string,
+  databaseKey: string,
+  input: { startDate?: string; endDate?: string } = {},
+): Promise<ReportsWorkspace> {
   await ensureRuntimeContract('reporting', databaseKey);
 
   const referenceDate = cairoToday();
+  const customStartDate = typeof input.startDate === 'string' && input.startDate ? input.startDate : null;
+  const customEndDate = typeof input.endDate === 'string' && input.endDate ? input.endDate : null;
+  const hasCustomRange = Boolean(customStartDate && customEndDate);
   const ranges = {
     day: { key: 'day' as const, label: 'اليوم', startDate: referenceDate, endDate: referenceDate },
     week: { key: 'week' as const, label: 'الأسبوع', startDate: startOfWeek(referenceDate), endDate: referenceDate },
     month: { key: 'month' as const, label: 'الشهر', startDate: startOfMonth(referenceDate), endDate: referenceDate },
     year: { key: 'year' as const, label: 'السنة', startDate: startOfYear(referenceDate), endDate: referenceDate },
   };
+
+  const shiftsStartDate = hasCustomRange && customStartDate && customStartDate < ranges.year.startDate ? customStartDate : ranges.year.startDate;
+  const shiftsEndDate = hasCustomRange && customEndDate && customEndDate > ranges.year.endDate ? customEndDate : ranges.year.endDate;
 
   const [actorMaps, deferredCustomers, shiftsResponse] = await Promise.all([
     loadActorMaps(cafeId, databaseKey),
@@ -1502,8 +1536,8 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
       .from('shifts')
       .select('id, shift_kind, status, opened_at, closed_at, business_date')
       .eq('cafe_id', cafeId)
-      .gte('business_date', ranges.year.startDate)
-      .lte('business_date', ranges.year.endDate)
+      .gte('business_date', shiftsStartDate)
+      .lte('business_date', shiftsEndDate)
       .order('business_date', { ascending: false })
       .order('opened_at', { ascending: false }),
   ]);
@@ -1545,6 +1579,13 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
         month: buildPeriodReport({ ...ranges.month, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
         year: buildPeriodReport({ ...ranges.year, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
       },
+      customRange: hasCustomRange && customStartDate && customEndDate
+        ? ({
+            ...buildPeriodReport({ ...ranges.day, key: 'day', label: 'فترة مخصصة', startDate: customStartDate, endDate: customEndDate, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+            key: 'range',
+            label: 'فترة مخصصة',
+          } as CustomRangeReport)
+        : null,
       deferredCustomers: deferredCustomers as DeferredCustomerSummary[],
     };
   }
@@ -1567,6 +1608,8 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
       itemIssuesByShift: new Map(),
     },
   );
+
+  hydrateAddonSalesForShiftRows(combinedAggregates.shiftRowsById, combinedAggregates.addonsByShift);
 
   const shiftRows = reportableShifts
     .map((row) => combinedAggregates.shiftRowsById.get(row.id))
@@ -1596,6 +1639,25 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
     year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift }),
   };
 
+  const customRange = hasCustomRange && customStartDate && customEndDate
+    ? ({
+        ...buildPeriodReport({
+          key: 'day',
+          label: 'فترة مخصصة',
+          startDate: customStartDate,
+          endDate: customEndDate,
+          shiftRows,
+          productsByShift: combinedAggregates.productsByShift,
+          addonsByShift: combinedAggregates.addonsByShift,
+          staffByShift: combinedAggregates.staffByShift,
+          complaintsByShift: combinedAggregates.complaintsByShift,
+          itemIssuesByShift: combinedAggregates.itemIssuesByShift,
+        }),
+        key: 'range',
+        label: 'فترة مخصصة',
+      } as CustomRangeReport)
+    : null;
+
   return {
     referenceDate,
     currentShift,
@@ -1605,6 +1667,7 @@ export async function buildReportsWorkspace(cafeId: string, databaseKey: string)
     currentComplaints,
     currentItemIssues,
     periods,
+    customRange,
     deferredCustomers: deferredCustomers as DeferredCustomerSummary[],
   };
 }

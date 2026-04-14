@@ -47,7 +47,8 @@ export type StationWorkspace = { shift: OpsShift | null; stationCode: StationCod
 export type BillableItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; unitPrice: number; qtyBillable: number; qtyDelivered: number; qtyPaid: number; qtyDeferred: number; qtyWaived: number; notes?: string | null };
 export type BillingExtrasSettings = { taxEnabled: boolean; taxRate: number; serviceEnabled: boolean; serviceRate: number };
 export type BillingTotals = { subtotal: number; taxAmount: number; serviceAmount: number; total: number };
-export type BillingReceiptLine = { orderItemId: string; productName: string; quantity: number; unitPrice: number; lineAmount: number; notes?: string | null };
+export type BillingReceiptLineAddon = { addonName: string; quantity: number; unitPrice: number; lineAmount: number };
+export type BillingReceiptLine = { orderItemId: string; productName: string; quantity: number; unitPrice: number; baseUnitPrice: number; baseLineAmount: number; lineAmount: number; addons: BillingReceiptLineAddon[]; notes?: string | null };
 export type BillingReceipt = { mode: 'preview' | 'final'; paymentId: string | null; paymentKind: 'cash' | 'deferred' | 'mixed' | 'repayment' | 'adjustment' | 'preview'; sessionId: string; sessionLabel: string; cafeName: string; debtorName: string | null; notes: string | null; createdAt: string; actorLabel: string; totals: BillingTotals; settings: BillingExtrasSettings; lines: BillingReceiptLine[] };
 export type BillingSession = { sessionId: string; sessionLabel: string; items: BillableItem[]; totalBillableAmount: number; totalBillableQty: number };
 export type BillingWorkspace = { shift: OpsShift | null; sessions: BillingSession[]; deferredNames: string[]; billingSettings: BillingExtrasSettings };
@@ -161,6 +162,7 @@ export type DeferredCustomerLedgerWorkspace = {
 };
 
 export type ReportPeriodKey = 'day' | 'week' | 'month' | 'year';
+export type CustomReportPeriodKey = 'range';
 
 export type ReportTotals = {
   shiftCount: number;
@@ -179,6 +181,7 @@ export type ReportTotals = {
   salesReconciliationGap: number;
   cashSales: number;
   deferredSales: number;
+  addonSales: number;
   taxTotal: number;
   serviceTotal: number;
   extrasTotal: number;
@@ -273,6 +276,11 @@ export type PeriodReport = {
   itemIssues: ReportItemIssueEntry[];
 };
 
+export type CustomRangeReport = Omit<PeriodReport, 'key' | 'label'> & {
+  key: CustomReportPeriodKey;
+  label: string;
+};
+
 export type ReportsWorkspace = {
   referenceDate: string;
   currentShift: ReportShiftRow | null;
@@ -282,6 +290,7 @@ export type ReportsWorkspace = {
   currentComplaints: ReportComplaintEntry[];
   currentItemIssues: ReportItemIssueEntry[];
   periods: Record<ReportPeriodKey, PeriodReport>;
+  customRange: CustomRangeReport | null;
   deferredCustomers: DeferredCustomerSummary[];
 };
 

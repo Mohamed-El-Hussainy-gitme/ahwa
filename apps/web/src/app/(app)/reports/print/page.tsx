@@ -6,7 +6,7 @@ import { useCallback, useMemo } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { AddonReportRow, DeferredCustomerSummary, ProductReportRow, ReportsWorkspace, StaffPerformanceRow, ReportTotals, ReportComplaintEntry, ReportItemIssueEntry } from '@/lib/ops/types';
+import type { AddonReportRow, CustomRangeReport, DeferredCustomerSummary, ProductReportRow, ReportsWorkspace, StaffPerformanceRow, ReportTotals, ReportComplaintEntry, ReportItemIssueEntry } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
 import { AccessDenied } from '@/ui/AccessState';
 import { PrintPageFrame } from '@/ui/print/PrintPageFrame';
@@ -15,16 +15,12 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
 }
 
-function salesHint(totals: ReportTotals) {
-  return totals.extrasTotal > 0 ? `+${formatMoney(totals.extrasTotal)} ج ضريبة + خدمة` : null;
-}
-
 function shiftKindLabel(kind: string) {
   return kind === 'morning' ? 'صباحي' : kind === 'evening' ? 'مسائي' : kind;
 }
 
 function periodLabel(key: string) {
-  return key === 'day' ? 'اليوم' : key === 'week' ? 'الأسبوع' : key === 'month' ? 'الشهر' : key === 'year' ? 'السنة' : 'الوردية الحالية';
+  return key === 'day' ? 'اليوم' : key === 'week' ? 'الأسبوع' : key === 'month' ? 'الشهر' : key === 'year' ? 'السنة' : key === 'range' ? 'فترة مخصصة' : 'الوردية الحالية';
 }
 
 function sortProducts(items: ProductReportRow[]) {
@@ -95,22 +91,29 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-7">
         <Card label="إجمالي البيع" value={`${formatMoney(period.totals.netSales)} ج`} />
+        <Card label="الضريبة" value={`${formatMoney(period.totals.taxTotal)} ج`} />
+        <Card label="الخدمة" value={`${formatMoney(period.totals.serviceTotal)} ج`} />
+        <Card label="الإضافات" value={`${formatMoney(period.totals.addonSales)} ج`} />
         <Card label="الكاش" value={`${formatMoney(period.totals.cashSales)} ج`} />
         <Card label="الآجل" value={`${formatMoney(period.totals.deferredSales)} ج`} />
-        <Card label="عدد الجلسات" value={String(period.totals.totalSessions)} />
-        <Card label="البنود المسلمة" value={String(period.totals.deliveredQty)} />
-        <Card label="إعادة مجانية" value={String(period.totals.remadeQty)} />
+        <Card label="سداد الآجل" value={`${formatMoney(period.totals.repaymentTotal)} ج`} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-5">
+        <Card label="الجلسات التشغيلية" value={String(period.totals.totalSessions)} />
+        <Card label="طلبات تم تسليمها" value={String(period.totals.deliveredQty)} />
+        <Card label="طلبات أُعيد تجهيزها" value={String(period.totals.remadeQty)} />
         <Card label="الإلغاء/الإسقاط" value={`${period.totals.cancelledQty}/${period.totals.waivedQty}`} />
-        <Card label="الشكاوى والملاحظات" value={String(period.totals.complaintTotal + period.totals.itemIssueTotal)} />
+        <Card label="فجوة المطابقة" value={`${formatMoney(period.totals.salesReconciliationGap)} ج`} />
       </div>
 
       <section>
         <div className="mb-2 text-sm font-bold">تفصيل {title}</div>
         <div className="rounded-2xl border p-3 text-sm text-neutral-700">
           من {period.startDate} إلى {period.endDate}
-          {salesHint(period.totals) ? <div className="mt-2 text-xs text-amber-700">{salesHint(period.totals)}</div> : null}
+          <div className="mt-2 text-xs text-neutral-600">الضريبة {formatMoney(period.totals.taxTotal)} ج • الخدمة {formatMoney(period.totals.serviceTotal)} ج • الإضافات {formatMoney(period.totals.addonSales)} ج</div>
         </div>
       </section>
 
@@ -163,13 +166,16 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
       </section>
 
       <section>
-        <div className="mb-2 text-sm font-bold">العاملون</div>
+        <div className="mb-2 text-sm font-bold">تقرير العاملين التشغيلي</div>
         <table className="w-full border-collapse text-sm">
           <thead>
             <tr className="border-b bg-neutral-50 text-right">
               <th className="px-3 py-2">العامل</th>
-              <th className="px-3 py-2">التسليم</th>
-              <th className="px-3 py-2">البيع</th>
+              <th className="px-3 py-2">أخذ أوردرات</th>
+              <th className="px-3 py-2">جهز طلبات</th>
+              <th className="px-3 py-2">سلّم طلبات</th>
+              <th className="px-3 py-2">حاسب العملاء</th>
+              <th className="px-3 py-2">كاش/آجل/سداد</th>
               <th className="px-3 py-2">الشكاوى/الملاحظات</th>
             </tr>
           </thead>
@@ -177,8 +183,11 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
             {topStaff.map((row) => (
               <tr key={row.actorKey} className="border-b">
                 <td className="px-3 py-2">{row.actorLabel}</td>
+                <td className="px-3 py-2">{row.submittedQty}</td>
+                <td className="px-3 py-2">{row.readyQty}</td>
                 <td className="px-3 py-2">{row.deliveredQty}</td>
                 <td className="px-3 py-2">{formatMoney(row.paymentTotal)} ج</td>
+                <td className="px-3 py-2">{formatMoney(row.cashSales)} / {formatMoney(row.deferredSales)} / {formatMoney(row.repaymentTotal)}</td>
                 <td className="px-3 py-2">{row.complaintCount + row.itemIssueCount}</td>
               </tr>
             ))}
@@ -207,17 +216,19 @@ function ReportsPrintPageContent() {
   const { user } = useAuthz();
   const searchParams = useSearchParams();
   const rawTab = searchParams.get('tab') ?? 'current';
+  const startDate = searchParams.get('startDate') ?? '';
+  const endDate = searchParams.get('endDate') ?? '';
   const isBranchManager = user?.ownerLabel === 'branch_manager';
-  const tab = isBranchManager ? 'week' : rawTab;
-  const loader = useCallback(() => opsClient.reportsWorkspace(), []);
+  const tab = isBranchManager && rawTab === 'deferred' ? 'current' : rawTab;
+  const loader = useCallback(() => opsClient.reportsWorkspace(startDate && endDate ? { startDate, endDate } : undefined), [endDate, startDate]);
   const { data, error } = useOpsWorkspace<ReportsWorkspace>(loader, {
-    cacheKey: 'workspace:reports:print',
+    cacheKey: `workspace:reports:print:${startDate}:${endDate}:${tab}`,
     staleTimeMs: 60_000,
     enabled: user?.baseRole === 'owner',
     shouldReloadOnEvent: () => false,
   });
 
-  const selectedPeriod = useMemo(() => {
+  const selectedPeriod = useMemo<PrintableReport | CustomRangeReport | null>(() => {
     if (!data) return null;
     if (tab === 'current') {
       return data.currentShift
@@ -239,6 +250,9 @@ function ReportsPrintPageContent() {
     }
     if (tab === 'day' || tab === 'week' || tab === 'month' || tab === 'year') {
       return data.periods[tab] as PrintableReport;
+    }
+    if (tab === 'range') {
+      return data.customRange as PrintableReport | null;
     }
     return null;
   }, [data, tab]);

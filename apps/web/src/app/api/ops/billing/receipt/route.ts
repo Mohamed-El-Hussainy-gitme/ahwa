@@ -34,6 +34,21 @@ type OrderItemRow = {
   menu_products?: { product_name?: string | null } | Array<{ product_name?: string | null }> | null;
 };
 
+type OrderItemAddonRow = {
+  order_item_id: string;
+  addon_name_snapshot: string | null;
+  unit_price: number | string | null;
+  quantity: number | string | null;
+  line_total: number | string | null;
+  created_at: string;
+};
+
+type ReceiptLineInput = {
+  orderItemId: string;
+  quantity: number;
+  amount?: number | null;
+};
+
 async function resolveActorLabel(
   admin: ReturnType<typeof adminOps>,
   cafeId: string,
@@ -102,6 +117,65 @@ async function loadOrderItems(admin: ReturnType<typeof adminOps>, cafeId: string
   return (result.data ?? []) as OrderItemRow[];
 }
 
+async function loadOrderItemAddons(admin: ReturnType<typeof adminOps>, cafeId: string, orderItemIds: string[]) {
+  if (!orderItemIds.length) return [] as OrderItemAddonRow[];
+
+  const result = await admin
+    .from('order_item_addons')
+    .select('order_item_id, addon_name_snapshot, unit_price, quantity, line_total, created_at')
+    .eq('cafe_id', cafeId)
+    .in('order_item_id', orderItemIds)
+    .order('created_at', { ascending: true });
+
+  if (result.error) throw result.error;
+  return (result.data ?? []) as OrderItemAddonRow[];
+}
+
+function buildReceiptLines(
+  allocations: ReceiptLineInput[],
+  itemMap: Map<string, OrderItemRow>,
+  addonsByOrderItemId: Map<string, OrderItemAddonRow[]>,
+) {
+  return allocations.map((allocation) => {
+    const item = itemMap.get(String(allocation.orderItemId));
+    if (!item?.id) {
+      throw new Error('ORDER_ITEM_NOT_FOUND');
+    }
+
+    const relation = Array.isArray(item.menu_products) ? item.menu_products[0] : item.menu_products;
+    const unitPrice = Number(item.unit_price ?? 0);
+    const quantity = Number(allocation.quantity ?? 0);
+    const sourceAddons = addonsByOrderItemId.get(String(allocation.orderItemId)) ?? [];
+    const addons = sourceAddons.map((addon) => {
+      const addonUnitPrice = Number(addon.unit_price ?? 0);
+      return {
+        addonName: String(addon.addon_name_snapshot ?? 'إضافة'),
+        quantity,
+        unitPrice: addonUnitPrice,
+        lineAmount: addonUnitPrice * quantity,
+      };
+    });
+
+    const addonUnitTotal = addons.reduce((sum, addon) => sum + addon.unitPrice, 0);
+    const addonLineAmount = addons.reduce((sum, addon) => sum + addon.lineAmount, 0);
+    const computedLineAmount = Number.isFinite(allocation.amount ?? NaN) ? Number(allocation.amount ?? 0) : unitPrice * quantity;
+    const baseUnitPrice = Math.max(unitPrice - addonUnitTotal, 0);
+    const baseLineAmount = Math.max(computedLineAmount - addonLineAmount, 0);
+
+    return {
+      orderItemId: String(allocation.orderItemId),
+      productName: String(relation?.product_name ?? 'صنف'),
+      quantity,
+      unitPrice,
+      baseUnitPrice,
+      baseLineAmount,
+      lineAmount: computedLineAmount,
+      addons,
+      notes: item.notes ? String(item.notes) : null,
+    };
+  });
+}
+
 export async function GET(req: Request) {
   try {
     const ctx = requireBillingAccess(await requireOpsActorContext());
@@ -137,20 +211,31 @@ export async function GET(req: Request) {
       if (allocationsError) throw allocationsError;
 
       const allocationRows = (allocations ?? []) as AllocationRow[];
-      const orderItems = await loadOrderItems(admin, ctx.cafeId, allocationRows.map((row) => String(row.order_item_id)).filter(Boolean));
+      const orderItemIds = allocationRows.map((row) => String(row.order_item_id)).filter(Boolean);
+      const [orderItems, orderItemAddons] = await Promise.all([
+        loadOrderItems(admin, ctx.cafeId, orderItemIds),
+        loadOrderItemAddons(admin, ctx.cafeId, orderItemIds),
+      ]);
+
       const itemMap = new Map(orderItems.map((row) => [String(row.id), row]));
-      const lines = allocationRows.map((row) => {
-        const item = itemMap.get(String(row.order_item_id));
-        const relation = Array.isArray(item?.menu_products) ? item?.menu_products[0] : item?.menu_products;
-        return {
+      const addonsByOrderItemId = new Map<string, OrderItemAddonRow[]>();
+      for (const addon of orderItemAddons) {
+        const orderItemId = String(addon.order_item_id ?? '');
+        if (!orderItemId) continue;
+        const current = addonsByOrderItemId.get(orderItemId) ?? [];
+        current.push(addon);
+        addonsByOrderItemId.set(orderItemId, current);
+      }
+
+      const lines = buildReceiptLines(
+        allocationRows.map((row) => ({
           orderItemId: String(row.order_item_id),
-          productName: String(relation?.product_name ?? 'صنف'),
           quantity: Number(row.quantity ?? 0),
-          unitPrice: Number(item?.unit_price ?? 0),
-          lineAmount: Number(row.amount ?? 0),
-          notes: item?.notes ? String(item.notes) : null,
-        };
-      });
+          amount: row.amount == null ? null : Number(row.amount),
+        })),
+        itemMap,
+        addonsByOrderItemId,
+      );
 
       const subtotal = Number(paymentRow.subtotal_amount ?? lines.reduce((sum, line) => sum + line.lineAmount, 0));
       const taxAmount = Number(paymentRow.tax_amount ?? 0);
@@ -194,30 +279,33 @@ export async function GET(req: Request) {
       throw new Error('BILLING_ALLOCATIONS_MUST_SHARE_SESSION');
     }
 
-    const [sessionMeta, settings, actorLabel, orderItems] = await Promise.all([
+    const orderItemIds = allocations.map((allocation) => allocation.orderItemId);
+    const [sessionMeta, settings, actorLabel, orderItems, orderItemAddons] = await Promise.all([
       loadSessionAndCafeMeta(admin, ctx.cafeId, billing.serviceSessionId),
       loadBillingSettings(ctx.cafeId, ctx.databaseKey),
       resolveActorLabel(admin, ctx.cafeId, ctx.actorStaffId, ctx.actorOwnerId),
-      loadOrderItems(admin, ctx.cafeId, allocations.map((allocation) => allocation.orderItemId)),
+      loadOrderItems(admin, ctx.cafeId, orderItemIds),
+      loadOrderItemAddons(admin, ctx.cafeId, orderItemIds),
     ]);
 
     const orderItemMap = new Map(orderItems.map((row) => [String(row.id), row]));
-    const lines = allocations.map((allocation) => {
-      const item = orderItemMap.get(allocation.orderItemId);
-      if (!item?.id) {
-        throw new Error('ORDER_ITEM_NOT_FOUND');
-      }
-      const relation = Array.isArray(item.menu_products) ? item.menu_products[0] : item.menu_products;
-      const unitPrice = Number(item.unit_price ?? 0);
-      return {
+    const addonsByOrderItemId = new Map<string, OrderItemAddonRow[]>();
+    for (const addon of orderItemAddons) {
+      const orderItemId = String(addon.order_item_id ?? '');
+      if (!orderItemId) continue;
+      const current = addonsByOrderItemId.get(orderItemId) ?? [];
+      current.push(addon);
+      addonsByOrderItemId.set(orderItemId, current);
+    }
+
+    const lines = buildReceiptLines(
+      allocations.map((allocation) => ({
         orderItemId: allocation.orderItemId,
-        productName: String(relation?.product_name ?? 'صنف'),
         quantity: allocation.quantity,
-        unitPrice,
-        lineAmount: unitPrice * allocation.quantity,
-        notes: item.notes ? String(item.notes) : null,
-      };
-    });
+      })),
+      orderItemMap,
+      addonsByOrderItemId,
+    );
 
     const totals = computeBillingTotals(
       lines.reduce((sum, line) => sum + line.lineAmount, 0),

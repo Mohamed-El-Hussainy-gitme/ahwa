@@ -52,8 +52,9 @@ function appendReturnSessionId(url: string, sessionId: string) {
     return normalizedUrl;
   }
 
-  const [pathWithQuery, hash = ''] = normalizedUrl.split('#');
-  const [pathname, query = ''] = pathWithQuery.split('?');
+  const [rawPathWithQuery = '', hash = ''] = normalizedUrl.split('#');
+  const pathWithQuery = rawPathWithQuery ?? '';
+  const [pathname = '', query = ''] = pathWithQuery.split('?');
   const params = new URLSearchParams(query);
   params.set('returnSessionId', normalizedSessionId);
   const nextQuery = params.toString();

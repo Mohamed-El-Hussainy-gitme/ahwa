@@ -192,16 +192,47 @@ function BillingReceiptPageContent() {
                 {data.lines.map((line) => {
                   const parsedNotes = parseOrderItemNotes(line.notes);
                   return (
-                    <div key={`${line.orderItemId}-${line.quantity}`} className="flex items-start justify-between gap-3 border-b border-dashed py-2 last:border-b-0">
-                      <div className="min-w-0 flex-1 text-right">
-                        <div className="font-semibold break-words">{line.productName}</div>
-                        <div className="text-[11px] text-neutral-500">
-                          {line.quantity} x {formatMoney(line.unitPrice)}
+                    <div key={`${line.orderItemId}-${line.quantity}`} className="border-b border-dashed py-2 last:border-b-0">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1 text-right">
+                          <div className="font-semibold break-words">{line.productName}</div>
+                          <div className="mt-1 text-[11px] text-neutral-500">
+                            الإجمالي {line.quantity} x {formatMoney(line.unitPrice)}
+                          </div>
                         </div>
-                        {parsedNotes.addonSummary ? <div className="mt-1 text-[11px] font-semibold text-neutral-700">إضافات: {parsedNotes.addonSummary}</div> : null}
-                        {parsedNotes.freeformNotes ? <div className="mt-1 text-[11px] text-neutral-500">{parsedNotes.freeformNotes}</div> : null}
+                        <div className="shrink-0 whitespace-nowrap font-semibold tabular-nums">{formatMoney(line.lineAmount)}</div>
                       </div>
-                      <div className="shrink-0 whitespace-nowrap font-semibold tabular-nums">{formatMoney(line.lineAmount)}</div>
+
+                      {line.addons.length > 0 ? (
+                        <div className="mt-2 space-y-1 border-r border-dashed pr-3 text-[11px] text-neutral-700">
+                          <div className="flex items-center justify-between gap-3">
+                            <span className="font-medium text-neutral-500">أصل الصنف</span>
+                            <span className="tabular-nums">{formatMoney(line.baseLineAmount)}</span>
+                          </div>
+                          <div className="text-[10px] text-neutral-500">
+                            {line.quantity} x {formatMoney(line.baseUnitPrice)}
+                          </div>
+                          {line.addons.map((addon, index) => (
+                            <div key={`${line.orderItemId}-addon-${index}`} className="flex items-center justify-between gap-3">
+                              <div className="min-w-0 flex-1 break-words">+ {addon.addonName}</div>
+                              <div className="shrink-0 tabular-nums">{formatMoney(addon.lineAmount)}</div>
+                            </div>
+                          ))}
+                          {line.addons.map((addon, index) => (
+                            <div key={`${line.orderItemId}-addon-unit-${index}`} className="text-[10px] text-neutral-500">
+                              {addon.addonName}: {addon.quantity} x {formatMoney(addon.unitPrice)}
+                            </div>
+                          ))}
+                        </div>
+                      ) : null}
+
+                      {line.addons.length === 0 ? (
+                        <div className="mt-1 text-[11px] text-neutral-500">
+                          {line.quantity} x {formatMoney(line.baseUnitPrice)}
+                        </div>
+                      ) : null}
+
+                      {parsedNotes.freeformNotes ? <div className="mt-1 text-[11px] text-neutral-500">{parsedNotes.freeformNotes}</div> : null}
                     </div>
                   );
                 })}

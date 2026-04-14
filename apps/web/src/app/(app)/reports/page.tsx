@@ -9,6 +9,7 @@ import { opsClient } from '@/lib/ops/client';
 import type {
   AddonReportRow,
   DeferredCustomerSummary,
+  CustomRangeReport,
   PeriodReport,
   ProductReportRow,
   ReportComplaintEntry,
@@ -20,7 +21,8 @@ import type {
 } from '@/lib/ops/types';
 import { useOpsWorkspace } from '@/lib/ops/hooks';
 
-type ReportTab = 'current' | 'day' | 'week' | 'month' | 'year' | 'deferred';
+type ReportTab = 'current' | 'range' | 'deferred';
+type RangePreset = 'day' | 'yesterday' | 'last7' | 'month' | 'year' | 'custom';
 type DetailTab = 'overview' | 'products' | 'staff' | 'issues';
 
 function formatMoney(value: number) {
@@ -37,6 +39,50 @@ function shiftKindLabel(kind: string) {
 
 function periodLabel(key: PeriodReport['key']) {
   return key === 'day' ? 'اليوم' : key === 'week' ? 'الأسبوع' : key === 'month' ? 'الشهر' : 'السنة';
+}
+
+function todayIsoDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function shiftIsoDate(value: string, days: number) {
+  const date = new Date(`${value}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function rangePresetLabel(value: RangePreset) {
+  switch (value) {
+    case 'day':
+      return 'اليوم';
+    case 'yesterday':
+      return 'أمس';
+    case 'last7':
+      return 'آخر 7 أيام';
+    case 'month':
+      return 'هذا الشهر';
+    case 'year':
+      return 'هذه السنة';
+    default:
+      return 'فترة مخصصة';
+  }
+}
+
+function buildRangeRequest(preset: RangePreset, referenceDate: string, rangeStart: string, rangeEnd: string) {
+  switch (preset) {
+    case 'day':
+    case 'month':
+    case 'year':
+      return null;
+    case 'yesterday':
+      return { startDate: shiftIsoDate(referenceDate, -1), endDate: shiftIsoDate(referenceDate, -1) };
+    case 'last7':
+      return { startDate: shiftIsoDate(referenceDate, -6), endDate: referenceDate };
+    case 'custom':
+      return rangeStart && rangeEnd ? { startDate: rangeStart, endDate: rangeEnd } : null;
+    default:
+      return null;
+  }
 }
 
 function complaintKindLabel(kind: ReportComplaintEntry['complaintKind'] | ReportItemIssueEntry['issueKind']) {
@@ -144,26 +190,30 @@ function TotalsHero({
         {leadStatus ? <div className="ahwa-pill-neutral shrink-0">{leadStatus}</div> : null}
       </div>
 
-      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="إجمالي البيع" value={`${formatMoney(totals.netSales)} ج`} tone="success" hint={salesHint(totals)} />
+      <div className="mt-4 grid grid-cols-2 gap-2 lg:grid-cols-4 2xl:grid-cols-7">
+        <MetricCard label="إجمالي البيع" value={`${formatMoney(totals.netSales)} ج`} tone="success" />
+        <MetricCard label="الضريبة" value={`${formatMoney(totals.taxTotal)} ج`} />
+        <MetricCard label="الخدمة" value={`${formatMoney(totals.serviceTotal)} ج`} />
+        <MetricCard label="الإضافات" value={`${formatMoney(totals.addonSales)} ج`} />
         <MetricCard label="الكاش" value={`${formatMoney(totals.cashSales)} ج`} />
-        <MetricCard label="الآجل المرحل" value={`${formatMoney(totals.deferredSales)} ج`} />
+        <MetricCard label="الآجل" value={`${formatMoney(totals.deferredSales)} ج`} />
         <MetricCard label="سداد الآجل" value={`${formatMoney(totals.repaymentTotal)} ج`} />
       </div>
 
       <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="الجلسات" value={String(totals.totalSessions)} hint={`مفتوحة ${totals.openSessions} • مغلقة ${totals.closedSessions}`} />
-        <MetricCard label="البنود المسلّمة" value={String(totals.deliveredQty)} hint={`بديل مجاني ${totals.replacementDeliveredQty}`} />
-        <MetricCard label="الجاهز" value={String(totals.readyQty)} hint={`المدفوع ${totals.paidQty} • الآجل ${totals.deferredQty}`} />
+        <MetricCard label="الجلسات التشغيلية" value={String(totals.totalSessions)} hint={`مفتوحة ${totals.openSessions} • مغلقة ${totals.closedSessions}`} />
+        <MetricCard label="طلبات تم تسليمها" value={String(totals.deliveredQty)} hint={`بدائل مجانية ${totals.replacementDeliveredQty}`} />
+        <MetricCard label="طلبات تم تجهيزها" value={String(totals.readyQty)} hint={`بنود محصلة ${totals.paidQty} • بنود آجل ${totals.deferredQty}`} />
         <MetricCard
-          label="إعادة مجانية"
+          label="طلبات أُعيد تجهيزها"
           value={String(totals.remadeQty)}
           tone={totals.remadeQty > 0 ? 'warning' : 'default'}
           hint={`إلغاء ${totals.cancelledQty} • إسقاط ${totals.waivedQty}`}
         />
         <MetricCard
-          label="الجودة والملاحظات والشكاوى"
-          value={String(totals.complaintTotal + totals.itemIssueTotal)}
+          label="فجوة المطابقة"
+          value={`${formatMoney(totals.salesReconciliationGap)} ج`}
+          tone={totals.salesReconciliationGap > 0 ? 'warning' : 'default'}
           hint={`شكاوى ${totals.complaintTotal} • أصناف ${totals.itemIssueTotal}`}
         />
       </div>
@@ -182,7 +232,7 @@ function InsightStrip({
 }) {
   const chips = [
     topProduct ? `الأعلى بيعًا: ${topProduct.productName} (${formatMoney(topProduct.netSales)} ج)` : 'لا يوجد منتج متصدر بعد',
-    topStaff ? `الأعلى بيعًا: ${topStaff.actorLabel} (${formatMoney(topStaff.paymentTotal)} ج)` : 'لا يوجد بيع مسجل بعد',
+    topStaff ? `الأعلى تحصيلًا: ${topStaff.actorLabel} (${formatMoney(topStaff.paymentTotal)} ج)` : 'لا يوجد بيع مسجل بعد',
     `الجودة والملاحظات: ${totals.itemIssueNote} • إعادة مجانية: ${totals.remadeQty} • شكاوى عامة مفتوحة: ${totals.complaintOpen}`,
   ];
 
@@ -311,17 +361,22 @@ function StaffList({ items }: { items: StaffPerformanceRow[] }) {
                 </span>
                 <div className="min-w-0 break-words font-semibold [overflow-wrap:anywhere]">{row.actorLabel}</div>
               </div>
-              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
-                تسليم {row.deliveredQty} • بدائل مجانية {row.replacementDeliveredQty} • تجهيز {row.readyQty}
+
+              <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
+                <MetricCard label="أخذ أوردرات" value={String(row.submittedQty)} />
+                <MetricCard label="جهز طلبات" value={String(row.readyQty)} />
+                <MetricCard label="سلّم طلبات" value={String(row.deliveredQty)} />
+                <MetricCard label="حاسب العملاء" value={`${formatMoney(row.paymentTotal)} ج`} tone="success" />
+              </div>
+
+              <div className="mt-2 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+                كاش {formatMoney(row.cashSales)} • آجل {formatMoney(row.deferredSales)} • سداد آجل {formatMoney(row.repaymentTotal)}
               </div>
               <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
-                إعادة مجانية {row.remadeQty} • إلغاء {row.cancelledQty} • شكاوى {row.complaintCount} • ملاحظات أصناف {row.itemIssueCount}
+                بدائل مجانية {row.replacementDeliveredQty} • أُعيد تجهيزها {row.remadeQty} • إلغاء {row.cancelledQty} • إسقاط {row.waivedQty}
               </div>
-            </div>
-            <div className="shrink-0 text-left">
-              <div className="text-base font-bold">{formatMoney(row.paymentTotal)} ج</div>
-              <div className="mt-1 text-xs text-[#8a7763]">
-                كاش {formatMoney(row.cashSales)} • آجل {formatMoney(row.deferredSales)} • سداد {formatMoney(row.repaymentTotal)}
+              <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
+                شكاوى {row.complaintCount} • ملاحظات أصناف {row.itemIssueCount}
               </div>
             </div>
           </div>
@@ -348,7 +403,7 @@ function ShiftList({ items }: { items: ReportShiftRow[] }) {
             </div>
             <div className="shrink-0 text-left">
               <div className="text-base font-bold">{formatMoney(row.netSales)} ج</div>
-              <div className="mt-1 text-xs text-[#8a7763]">مسلّم {row.deliveredQty} • بدائل مجانية {row.replacementDeliveredQty}</div>
+              <div className="mt-1 text-xs text-[#8a7763]">طلبات سُلّمت {row.deliveredQty} • بدائل مجانية {row.replacementDeliveredQty}</div>
             </div>
           </div>
         </div>
@@ -374,7 +429,7 @@ function DayBreakdown({ period }: { period: PeriodReport }) {
             <div className="shrink-0 text-left">
               <div className="text-base font-bold">{formatMoney(row.netSales)} ج</div>
               <div className="mt-1 text-xs text-[#8a7763]">
-                مسلّم {row.deliveredQty} • إعادات مجانية {row.remadeQty} • بدائل مجانية {row.replacementDeliveredQty}
+                طلبات سُلّمت {row.deliveredQty} • أُعيد تجهيزها {row.remadeQty} • بدائل مجانية {row.replacementDeliveredQty}
               </div>
             </div>
           </div>
@@ -487,7 +542,7 @@ function OverviewPanel({
   staff,
 }: {
   currentShift?: ReportShiftRow | null;
-  period?: PeriodReport | null;
+  period?: PeriodReport | CustomRangeReport | null;
   products: ProductReportRow[];
   addons: AddonReportRow[];
   staff: StaffPerformanceRow[];
@@ -560,6 +615,7 @@ const EMPTY_TOTALS: ReportTotals = {
   salesReconciliationGap: 0,
   cashSales: 0,
   deferredSales: 0,
+  addonSales: 0,
   taxTotal: 0,
   serviceTotal: 0,
   extrasTotal: 0,
@@ -585,21 +641,32 @@ export default function ReportsPage() {
   const session = useAuthz();
   const [tab, setTab] = useState<ReportTab>('current');
   const [detailTab, setDetailTab] = useState<DetailTab>('overview');
-  const loader = useCallback(() => opsClient.reportsWorkspace(), []);
+  const [rangePreset, setRangePreset] = useState<RangePreset>('day');
+  const [rangeStart, setRangeStart] = useState(todayIsoDate());
+  const [rangeEnd, setRangeEnd] = useState(todayIsoDate());
+  const referenceDateSeed = todayIsoDate();
+  const initialRangeRequest = buildRangeRequest(rangePreset, referenceDateSeed, rangeStart, rangeEnd);
+  const loader = useCallback(
+    () => opsClient.reportsWorkspace(initialRangeRequest ?? undefined),
+    [initialRangeRequest?.endDate, initialRangeRequest?.startDate],
+  );
   const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, {
     enabled: session.user?.baseRole === 'owner',
-    cacheKey: 'workspace:reports',
+    cacheKey: `workspace:reports:${initialRangeRequest?.startDate ?? ''}:${initialRangeRequest?.endDate ?? ''}`,
     staleTimeMs: 60_000,
   });
 
   const isBranchManager = session.user?.ownerLabel === 'branch_manager';
-  const allowedManagerTabs: ReportTab[] = ['current', 'day', 'week'];
-  const safeTab: ReportTab = isBranchManager ? (allowedManagerTabs.includes(tab) ? tab : 'current') : tab;
-
-  const selectedPeriod = useMemo(
-    () => data && (safeTab === 'day' || safeTab === 'week' || safeTab === 'month' || safeTab === 'year') ? data.periods[safeTab] : null,
-    [data, safeTab],
-  );
+  const safeTab: ReportTab = isBranchManager ? (tab === 'deferred' ? 'current' : tab) : tab;
+  const effectiveReferenceDate = data?.referenceDate ?? referenceDateSeed;
+  const effectiveRangeRequest = buildRangeRequest(rangePreset, effectiveReferenceDate, rangeStart, rangeEnd);
+  const selectedPeriod = useMemo<PeriodReport | CustomRangeReport | null>(() => {
+    if (!data || safeTab !== 'range') return null;
+    if (rangePreset === 'day') return data.periods.day;
+    if (rangePreset === 'month') return data.periods.month;
+    if (rangePreset === 'year') return data.periods.year;
+    return data.customRange;
+  }, [data, rangePreset, safeTab]);
 
   if (session.user?.baseRole !== 'owner') {
     return <AccessDenied title="التقارير" message="هذه الصفحة للإدارة فقط." />;
@@ -618,6 +685,23 @@ export default function ReportsPage() {
   const periodTopProduct = selectedPeriod?.products.length ? (sortProducts(selectedPeriod.products)[0] ?? null) : null;
   const periodTopStaff = selectedPeriod?.staff.length ? (sortStaff(selectedPeriod.staff)[0] ?? null) : null;
 
+  const exportHref = safeTab === 'deferred'
+    ? '/customers/print'
+    : safeTab === 'range' && effectiveRangeRequest
+      ? `/reports/print?tab=range&startDate=${effectiveRangeRequest.startDate}&endDate=${effectiveRangeRequest.endDate}`
+      : safeTab === 'range'
+        ? `/reports/print?tab=${rangePreset === 'month' ? 'month' : rangePreset === 'year' ? 'year' : 'day'}`
+        : `/reports/print?tab=${safeTab}`;
+
+  const rangePresets: { key: RangePreset; label: string }[] = [
+    { key: 'day', label: 'اليوم' },
+    { key: 'yesterday', label: 'أمس' },
+    { key: 'last7', label: 'آخر 7 أيام' },
+    { key: 'month', label: 'هذا الشهر' },
+    { key: 'year', label: 'هذه السنة' },
+    { key: 'custom', label: 'فترة مخصصة' },
+  ];
+
   return (
     <MobileShell title="التقارير" backHref="/dashboard" desktopMode="wide">
       {error ? <div className="mb-3 ahwa-alert-danger p-3 text-sm">{error}</div> : null}
@@ -630,37 +714,21 @@ export default function ReportsPage() {
           </div>
 
           <div className="flex items-center gap-2">
-            <Link
-              href={safeTab === 'deferred' ? '/customers/print' : `/reports/print?tab=${safeTab}`}
-              className="rounded-xl border bg-[#fffdf9] px-3 py-2 text-xs font-semibold text-[#5e4d3f]"
-            >
+            <Link href={exportHref} className="rounded-xl border bg-[#fffdf9] px-3 py-2 text-xs font-semibold text-[#5e4d3f]">
               تصدير PDF
             </Link>
-            <button
-              onClick={() => void reload()}
-              disabled={loading}
-              className="rounded-xl border bg-[#fffdf9] px-3 py-2 text-xs disabled:opacity-60"
-            >
+            <button onClick={() => void reload()} disabled={loading} className="rounded-xl border bg-[#fffdf9] px-3 py-2 text-xs disabled:opacity-60">
               {loading ? '...' : 'تحديث'}
             </button>
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-3 gap-2 md:grid-cols-6">
-          {(isBranchManager
-            ? [
-                { key: 'current', label: 'الوردية الحالية' },
-                { key: 'day', label: 'اليوم' },
-                { key: 'week', label: 'الأسبوع' },
-              ]
-            : [
-                { key: 'current', label: 'الوردية الحالية' },
-                { key: 'day', label: 'اليوم' },
-                { key: 'week', label: 'الأسبوع' },
-                { key: 'month', label: 'الشهر' },
-                { key: 'year', label: 'السنة' },
-                { key: 'deferred', label: 'الآجل' },
-              ]).map((item) => (
+        <div className={`mt-3 grid gap-2 ${isBranchManager ? 'grid-cols-2' : 'grid-cols-3'}`}>
+          {[
+            { key: 'current', label: 'الوردية الحالية' },
+            { key: 'range', label: 'التاريخ' },
+            ...(!isBranchManager ? [{ key: 'deferred', label: 'الآجل' }] : []),
+          ].map((item) => (
             <button
               key={item.key}
               onClick={() => {
@@ -676,6 +744,41 @@ export default function ReportsPage() {
             </button>
           ))}
         </div>
+
+        {safeTab === 'range' ? (
+          <div className="mt-3 space-y-3 rounded-2xl border border-[#eadfce] bg-[#f8f1e7] p-3">
+            <div className="text-sm font-semibold text-[#2f241b]">فلتر التاريخ</div>
+            <div className="grid grid-cols-2 gap-2 lg:grid-cols-6">
+              {rangePresets.map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => setRangePreset(item.key)}
+                  className={[
+                    'rounded-2xl border px-2 py-2 text-xs font-semibold',
+                    rangePreset === item.key ? 'border-neutral-900 bg-[#1e1712] text-white' : 'bg-white text-[#5e4d3f]',
+                  ].join(' ')}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              <label className="rounded-2xl border bg-white p-3 text-xs text-[#5e4d3f]">
+                <div className="mb-2 font-semibold">من تاريخ</div>
+                <input type="date" value={rangeStart} onChange={(event) => setRangeStart(event.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm" />
+              </label>
+              <label className="rounded-2xl border bg-white p-3 text-xs text-[#5e4d3f]">
+                <div className="mb-2 font-semibold">إلى تاريخ</div>
+                <input type="date" value={rangeEnd} onChange={(event) => setRangeEnd(event.target.value)} className="w-full rounded-xl border px-3 py-2 text-sm" />
+              </label>
+            </div>
+            <div className="text-xs text-[#8a7763]">
+              {effectiveRangeRequest
+                ? `الفترة المختارة: ${effectiveRangeRequest.startDate} ← ${effectiveRangeRequest.endDate}`
+                : `العرض الحالي: ${rangePresetLabel(rangePreset)}`}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       {safeTab === 'current' ? (
@@ -686,112 +789,46 @@ export default function ReportsPage() {
             totals={currentShift ?? EMPTY_TOTALS}
             leadStatus={currentShift ? (currentShift.status === 'open' ? 'مفتوحة الآن' : 'مقفولة') : 'بدون وردية'}
           />
-
           <InsightStrip topProduct={currentTopProduct} topStaff={currentTopStaff} totals={currentShift ?? EMPTY_TOTALS} />
-
           <DetailTabs value={detailTab} onChange={setDetailTab} />
-
           {detailTab === 'overview' ? <OverviewPanel currentShift={currentShift} products={currentProducts} addons={currentAddons} staff={currentStaff} /> : null}
-
           {detailTab === 'products' ? (
             <div className="space-y-3">
-              <div className="ahwa-card p-3">
-                <div className="font-semibold">كل المنتجات</div>
-                <div className="mt-3">
-                  <ProductList items={currentProducts} />
-                </div>
-              </div>
-              <div className="ahwa-card p-3">
-                <div className="font-semibold">كل الإضافات</div>
-                <div className="mt-3">
-                  <AddonList items={currentAddons} />
-                </div>
-              </div>
+              <div className="ahwa-card p-3"><div className="font-semibold">كل المنتجات</div><div className="mt-3"><ProductList items={currentProducts} /></div></div>
+              <div className="ahwa-card p-3"><div className="font-semibold">كل الإضافات</div><div className="mt-3"><AddonList items={currentAddons} /></div></div>
             </div>
           ) : null}
-
-          {detailTab === 'staff' ? (
-            <div className="ahwa-card p-3">
-              <div className="font-semibold">كل العاملين</div>
-              <div className="mt-3">
-                <StaffList items={currentStaff} />
-              </div>
-            </div>
-          ) : null}
-
+          {detailTab === 'staff' ? <div className="ahwa-card p-3"><div className="font-semibold">كل العاملين</div><div className="mt-3"><StaffList items={currentStaff} /></div></div> : null}
           {detailTab === 'issues' ? (
             <div className="space-y-3">
-              <div className="ahwa-card p-3">
-                <div className="font-semibold">الشكاوى العامة</div>
-                <div className="mt-3">
-                  <ComplaintTimeline items={currentComplaints} />
-                </div>
-              </div>
-              <div className="ahwa-card p-3">
-                <div className="font-semibold">ملاحظات وإجراءات الأصناف</div>
-                <div className="mt-3">
-                  <ItemIssueTimeline items={currentItemIssues} />
-                </div>
-              </div>
+              <div className="ahwa-card p-3"><div className="font-semibold">الشكاوى العامة</div><div className="mt-3"><ComplaintTimeline items={currentComplaints} /></div></div>
+              <div className="ahwa-card p-3"><div className="font-semibold">ملاحظات وإجراءات الأصناف</div><div className="mt-3"><ItemIssueTimeline items={currentItemIssues} /></div></div>
             </div>
           ) : null}
         </section>
       ) : null}
 
-      {selectedPeriod ? (
+      {safeTab === 'range' && selectedPeriod ? (
         <section className="mt-3 space-y-3">
           <TotalsHero
-            title={periodLabel(selectedPeriod.key)}
+            title={selectedPeriod.key === 'range' ? rangePresetLabel(rangePreset) : periodLabel(selectedPeriod.key)}
             subtitle={`${selectedPeriod.startDate} ← ${selectedPeriod.endDate}`}
             totals={selectedPeriod.totals}
           />
-
           <InsightStrip topProduct={periodTopProduct} topStaff={periodTopStaff} totals={selectedPeriod.totals} />
-
           <DetailTabs value={detailTab} onChange={setDetailTab} />
-
           {detailTab === 'overview' ? <OverviewPanel period={selectedPeriod} products={selectedPeriod.products} addons={selectedPeriod.addons} staff={selectedPeriod.staff} /> : null}
-
           {detailTab === 'products' ? (
             <div className="space-y-3">
-              <div className="ahwa-card p-3">
-                <div className="font-semibold">كل المنتجات في {periodLabel(selectedPeriod.key)}</div>
-                <div className="mt-3">
-                  <ProductList items={selectedPeriod.products} />
-                </div>
-              </div>
-              <div className="ahwa-card p-3">
-                <div className="font-semibold">كل الإضافات في {periodLabel(selectedPeriod.key)}</div>
-                <div className="mt-3">
-                  <AddonList items={selectedPeriod.addons} />
-                </div>
-              </div>
+              <div className="ahwa-card p-3"><div className="font-semibold">كل المنتجات</div><div className="mt-3"><ProductList items={selectedPeriod.products} /></div></div>
+              <div className="ahwa-card p-3"><div className="font-semibold">كل الإضافات</div><div className="mt-3"><AddonList items={selectedPeriod.addons} /></div></div>
             </div>
           ) : null}
-
-          {detailTab === 'staff' ? (
-            <div className="ahwa-card p-3">
-              <div className="font-semibold">كل العاملين في {periodLabel(selectedPeriod.key)}</div>
-              <div className="mt-3">
-                <StaffList items={selectedPeriod.staff} />
-              </div>
-            </div>
-          ) : null}
-
+          {detailTab === 'staff' ? <div className="ahwa-card p-3"><div className="font-semibold">كل العاملين</div><div className="mt-3"><StaffList items={selectedPeriod.staff} /></div></div> : null}
           {detailTab === 'issues' ? (
             <div className="space-y-3">
-              <div className="ahwa-card p-3">
-                <div className="font-semibold">الشكاوى العامة في {periodLabel(selectedPeriod.key)}</div>
-                <div className="mt-3">
-                  <ComplaintTimeline items={selectedPeriod.complaints} />
-                </div>
-              </div>
-              <div className="ahwa-card p-3">
-                <div className="font-semibold">ملاحظات وإجراءات الأصناف في {periodLabel(selectedPeriod.key)}</div>
-                <div className="mt-3">
-                  <ItemIssueTimeline items={selectedPeriod.itemIssues} />
-                </div>
-              </div>
+              <div className="ahwa-card p-3"><div className="font-semibold">الشكاوى العامة</div><div className="mt-3"><ComplaintTimeline items={selectedPeriod.complaints} /></div></div>
+              <div className="ahwa-card p-3"><div className="font-semibold">ملاحظات وإجراءات الأصناف</div><div className="mt-3"><ItemIssueTimeline items={selectedPeriod.itemIssues} /></div></div>
             </div>
           ) : null}
         </section>
@@ -805,12 +842,11 @@ export default function ReportsPage() {
           </div>
           <div className="ahwa-card p-3">
             <div className="font-semibold">أرصدة الآجل</div>
-            <div className="mt-3">
-              <DeferredList items={deferredCustomers} />
-            </div>
+            <div className="mt-3"><DeferredList items={deferredCustomers} /></div>
           </div>
         </section>
       ) : null}
     </MobileShell>
   );
 }
+

@@ -78,7 +78,8 @@ export const opsClient = {
   complaintsWorkspace: (options?: ReadCacheOverride) => post<ComplaintsWorkspace>('/api/ops/workspaces/complaints', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.complaints, key: 'ops:complaints' }, options) }),
   menuWorkspace: (options?: ReadCacheOverride) => post<MenuWorkspace>('/api/ops/workspaces/menu', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.menu, key: 'ops:menu' }, options) }),
   billingReceipt: (input: { paymentId?: string | null; sessionId?: string | null; allocations?: BillingAllocationInput[]; debtorName?: string | null }) => get<BillingReceipt>(buildBillingReceiptApiUrl(input), { readCache: { ttlMs: READ_CACHE_TTL_MS.receipt } }),
-  reportsWorkspace: (options?: ReadCacheOverride) => post<ReportsWorkspace>('/api/ops/workspaces/reports', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.reports, key: 'ops:reports' }, options) }),
+  reportsWorkspace: (input?: { startDate?: string; endDate?: string }, options?: ReadCacheOverride) =>
+    post<ReportsWorkspace>('/api/ops/workspaces/reports', input ?? {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.reports, key: `ops:reports:${input?.startDate ?? ''}:${input?.endDate ?? ''}` }, options) }),
   deferredCustomersWorkspace: (options?: ReadCacheOverride) => post<{ items: DeferredCustomerSummary[] }>('/api/ops/workspaces/deferred-customers', {}, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.deferredCustomers, key: 'ops:deferred-customers' }, options) }),
   deferredCustomerLedger: (debtorName: string, options?: ReadCacheOverride) => post<DeferredCustomerLedgerWorkspace>('/api/ops/workspaces/deferred-customer-ledger', { debtorName }, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.deferredLedger, key: `ops:deferred-ledger:${debtorName.trim()}` }, options) }),
 
