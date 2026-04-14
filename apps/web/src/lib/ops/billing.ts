@@ -83,23 +83,6 @@ export function buildBillingReceiptUrl(paymentId: string) {
   return normalized ? `/billing/receipt?paymentId=${encodeURIComponent(normalized)}` : '';
 }
 
-export function buildBillingPageUrl(sessionId?: string | null) {
-  const normalized = String(sessionId ?? '').trim();
-  return normalized ? `/billing?sessionId=${encodeURIComponent(normalized)}` : '/billing';
-}
-
-export function appendBillingReturnSessionId(url: string, sessionId?: string | null) {
-  const normalizedUrl = String(url ?? '').trim();
-  const normalizedSessionId = String(sessionId ?? '').trim();
-
-  if (!normalizedUrl || !normalizedSessionId) {
-    return normalizedUrl;
-  }
-
-  const separator = normalizedUrl.includes('?') ? '&' : '?';
-  return `${normalizedUrl}${separator}returnSessionId=${encodeURIComponent(normalizedSessionId)}`;
-}
-
 export function buildBillingReceiptApiUrl(input: {
   paymentId?: string | null;
   sessionId?: string | null;
@@ -122,7 +105,7 @@ export function buildBillingReceiptApiUrl(input: {
   return `/api/ops/billing/receipt?${params.toString()}`;
 }
 
-export function buildBillingPreviewUrl(sessionId: string, allocations: BillingAllocationInput[], debtorName?: string | null, returnSessionId?: string | null) {
+export function buildBillingPreviewUrl(sessionId: string, allocations: BillingAllocationInput[], debtorName?: string | null) {
   const normalizedSessionId = String(sessionId ?? '').trim();
   const serializedAllocations = serializeBillingAllocations(allocations);
   if (!normalizedSessionId || !serializedAllocations) return '';
@@ -136,11 +119,6 @@ export function buildBillingPreviewUrl(sessionId: string, allocations: BillingAl
   const normalizedDebtorName = String(debtorName ?? '').trim();
   if (normalizedDebtorName) {
     params.set('debtorName', normalizedDebtorName);
-  }
-
-  const normalizedReturnSessionId = String(returnSessionId ?? '').trim();
-  if (normalizedReturnSessionId) {
-    params.set('returnSessionId', normalizedReturnSessionId);
   }
 
   return `/billing/receipt?${params.toString()}`;

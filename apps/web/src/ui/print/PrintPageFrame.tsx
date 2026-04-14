@@ -1,6 +1,6 @@
 'use client';
 
-import Link, { type LinkProps } from 'next/link';
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 type PrintPageFrameProps = {
@@ -12,7 +12,7 @@ type PrintPageFrameProps = {
   contentClassName?: string;
   titleClassName?: string;
   subtitleClassName?: string;
-  backHref?: LinkProps['href'];
+  backHref?: string;
   backLabel?: string;
 };
 
@@ -30,7 +30,7 @@ export function PrintPageFrame({
   titleClassName,
   subtitleClassName,
   backHref,
-  backLabel = 'رجوع',
+  backLabel = 'العودة إلى الحساب',
 }: PrintPageFrameProps) {
   void exportFilename;
 
@@ -44,11 +44,17 @@ export function PrintPageFrame({
               {subtitle ? <div className={mergeClassNames('mt-1 text-xs text-neutral-500', subtitleClassName)}>{subtitle}</div> : null}
             </div>
             <div className="flex gap-2">
-              <button type="button" onClick={() => window.print()} className="rounded-2xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">طباعة</button>
+              <button type="button" onClick={() => window.print()} className="rounded-2xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">
+                طباعة
+              </button>
               {backHref ? (
-                <Link href={backHref} className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-neutral-700">{backLabel}</Link>
+                <Link href={backHref} className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-neutral-700">
+                  {backLabel}
+                </Link>
               ) : (
-                <button type="button" onClick={() => window.history.back()} className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-neutral-700">{backLabel}</button>
+                <button type="button" onClick={() => window.history.back()} className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-neutral-700">
+                  رجوع
+                </button>
               )}
             </div>
           </div>
