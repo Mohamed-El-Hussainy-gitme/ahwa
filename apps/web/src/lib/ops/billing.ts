@@ -78,9 +78,20 @@ export function parseBillingAllocations(serialized: string | null | undefined): 
   return Array.from(byOrderItemId.entries()).map(([orderItemId, quantity]) => ({ orderItemId, quantity }));
 }
 
-export function buildBillingReceiptUrl(paymentId: string) {
+export function buildBillingReceiptUrl(paymentId: string, returnSessionId?: string | null) {
   const normalized = String(paymentId ?? '').trim();
-  return normalized ? `/billing/receipt?paymentId=${encodeURIComponent(normalized)}` : '';
+  if (!normalized) return '';
+
+  const params = new URLSearchParams({
+    paymentId: normalized,
+  });
+
+  const normalizedReturnSessionId = String(returnSessionId ?? '').trim();
+  if (normalizedReturnSessionId) {
+    params.set('returnSessionId', normalizedReturnSessionId);
+  }
+
+  return `/billing/receipt?${params.toString()}`;
 }
 
 export function buildBillingReceiptApiUrl(input: {
@@ -105,7 +116,12 @@ export function buildBillingReceiptApiUrl(input: {
   return `/api/ops/billing/receipt?${params.toString()}`;
 }
 
-export function buildBillingPreviewUrl(sessionId: string, allocations: BillingAllocationInput[], debtorName?: string | null) {
+export function buildBillingPreviewUrl(
+  sessionId: string,
+  allocations: BillingAllocationInput[],
+  debtorName?: string | null,
+  returnSessionId?: string | null,
+) {
   const normalizedSessionId = String(sessionId ?? '').trim();
   const serializedAllocations = serializeBillingAllocations(allocations);
   if (!normalizedSessionId || !serializedAllocations) return '';
@@ -119,6 +135,11 @@ export function buildBillingPreviewUrl(sessionId: string, allocations: BillingAl
   const normalizedDebtorName = String(debtorName ?? '').trim();
   if (normalizedDebtorName) {
     params.set('debtorName', normalizedDebtorName);
+  }
+
+  const normalizedReturnSessionId = String(returnSessionId ?? '').trim();
+  if (normalizedReturnSessionId) {
+    params.set('returnSessionId', normalizedReturnSessionId);
   }
 
   return `/billing/receipt?${params.toString()}`;

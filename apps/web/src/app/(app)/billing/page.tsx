@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
@@ -33,15 +33,56 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
 }
 
+function buildBillingPageUrl(sessionId?: string | null) {
+  const normalizedSessionId = String(sessionId ?? '').trim();
+  return normalizedSessionId ? `/billing?sessionId=${encodeURIComponent(normalizedSessionId)}` : '/billing';
+}
+
+function appendReturnSessionIdToUrl(url: string | null, returnSessionId: string) {
+  const normalizedUrl = String(url ?? '').trim();
+  const normalizedReturnSessionId = String(returnSessionId ?? '').trim();
+  if (!normalizedUrl) return null;
+  if (!normalizedReturnSessionId) return normalizedUrl;
+
+  const parsed = new URL(normalizedUrl, 'http://localhost');
+  parsed.searchParams.set('returnSessionId', normalizedReturnSessionId);
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
+}
+
 export default function BillingPage() {
   const { can, shift } = useAuthz();
   const router = useRouter();
-  const [sessionId, setSessionId] = useState('');
+  const searchParams = useSearchParams();
+  const sessionIdFromQuery = String(searchParams.get('sessionId') ?? '').trim();
+  const [sessionId, setSessionId] = useState(sessionIdFromQuery);
   const [debtorName, setDebtorName] = useState('');
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
   const [localError, setLocalError] = useState<string | null>(null);
   const [lastReceiptUrl, setLastReceiptUrl] = useState<string | null>(null);
   const [lastTotals, setLastTotals] = useState<BillingTotals | null>(null);
+
+  const syncSelectedSessionUrl = useCallback(
+    (nextSessionId?: string | null) => {
+      const normalizedNextSessionId = String(nextSessionId ?? '').trim();
+      const currentSessionId = String(searchParams.get('sessionId') ?? '').trim();
+      if (normalizedNextSessionId === currentSessionId) {
+        return;
+      }
+      router.replace(buildBillingPageUrl(normalizedNextSessionId), { scroll: false });
+    },
+    [router, searchParams],
+  );
+
+  const selectSession = useCallback(
+    (nextSessionId: string) => {
+      const normalizedNextSessionId = String(nextSessionId ?? '').trim();
+      setSessionId(normalizedNextSessionId);
+      setLastReceiptUrl(null);
+      setLastTotals(null);
+      syncSelectedSessionUrl(normalizedNextSessionId);
+    },
+    [syncSelectedSessionUrl],
+  );
 
   const loader = useCallback(() => opsClient.billingWorkspace(), []);
   const billingEnabled = Boolean(shift) && (can.billing || can.owner);
@@ -52,6 +93,12 @@ export default function BillingPage() {
     pollIntervalMs: billingEnabled ? 4000 : undefined,
     shouldReloadOnEvent: shouldReloadBillingWorkspace,
   });
+
+  useEffect(() => {
+    if (sessionIdFromQuery !== sessionId) {
+      setSessionId(sessionIdFromQuery);
+    }
+  }, [sessionIdFromQuery, sessionId]);
 
   const effectiveSessionId = sessionId || data?.sessions[0]?.sessionId || '';
   const current = useMemo(
@@ -66,16 +113,22 @@ export default function BillingPage() {
       if (sessionId) {
         setSessionId('');
       }
+      if (sessionIdFromQuery) {
+        syncSelectedSessionUrl('');
+      }
       return;
     }
 
-    if (sessionId && !sessions.some((session) => session.sessionId === sessionId)) {
-      setSessionId(sessions[0]?.sessionId ?? '');
+    const requestedSessionId = sessionId || sessionIdFromQuery;
+    if (requestedSessionId && !sessions.some((session) => session.sessionId === requestedSessionId)) {
+      const fallbackSessionId = sessions[0]?.sessionId ?? '';
+      setSessionId(fallbackSessionId);
       setSelectedQty({});
       setLastReceiptUrl(null);
       setLastTotals(null);
+      syncSelectedSessionUrl(fallbackSessionId);
     }
-  }, [data?.sessions, sessionId]);
+  }, [data?.sessions, sessionId, sessionIdFromQuery, syncSelectedSessionUrl]);
 
   const allocations = useCallback(() => {
     return (current?.items ?? [])
@@ -143,7 +196,8 @@ export default function BillingPage() {
     return sum + item.quantity * Number(match?.unitPrice ?? 0);
   }, 0);
   const printableTotals = computeBillingTotals(printableSubtotal, data?.billingSettings);
-  const previewReceiptUrl = buildBillingPreviewUrl(effectiveSessionId, printableAllocations, debtorName);
+  const previewReceiptUrl = buildBillingPreviewUrl(effectiveSessionId, printableAllocations, debtorName, effectiveSessionId);
+  const receiptDocumentUrl = appendReturnSessionIdToUrl(lastReceiptUrl, effectiveSessionId);
 
   return (
     <MobileShell
@@ -193,12 +247,8 @@ export default function BillingPage() {
                   <div className="font-semibold">تم تسجيل العملية.</div>
                   <div className="mt-1 text-xs">الإجمالي النهائي {formatMoney(lastTotals.total)} ج</div>
                 </div>
-                {lastReceiptUrl ? (
-                  <Link
-                    href={lastReceiptUrl}
-                   
-                    className="rounded-[18px] border border-[#c0d8cb] px-4 py-2 text-sm font-semibold text-[#2e6a4e]"
-                  >
+                {receiptDocumentUrl ? (
+                  <Link href={receiptDocumentUrl} className="rounded-[18px] border border-[#c0d8cb] px-4 py-2 text-sm font-semibold text-[#2e6a4e]">
                     عرض المستند النهائي
                   </Link>
                 ) : null}
@@ -268,11 +318,7 @@ export default function BillingPage() {
             {(data?.sessions ?? []).map((session) => (
               <button
                 key={session.sessionId}
-                onClick={() => {
-                  setSessionId(session.sessionId);
-                  setLastReceiptUrl(null);
-                  setLastTotals(null);
-                }}
+                onClick={() => selectSession(session.sessionId)}
                 className={[
                   'rounded-[20px] border px-3 py-3 text-right transition',
                   effectiveSessionId === session.sessionId
