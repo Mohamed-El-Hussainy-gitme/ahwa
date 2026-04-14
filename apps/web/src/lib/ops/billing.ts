@@ -78,20 +78,26 @@ export function parseBillingAllocations(serialized: string | null | undefined): 
   return Array.from(byOrderItemId.entries()).map(([orderItemId, quantity]) => ({ orderItemId, quantity }));
 }
 
-export function buildBillingReceiptUrl(paymentId: string, returnSessionId?: string | null) {
+export function buildBillingReceiptUrl(paymentId: string) {
   const normalized = String(paymentId ?? '').trim();
-  if (!normalized) return '';
+  return normalized ? `/billing/receipt?paymentId=${encodeURIComponent(normalized)}` : '';
+}
 
-  const params = new URLSearchParams({
-    paymentId: normalized,
-  });
+export function buildBillingPageUrl(sessionId?: string | null) {
+  const normalized = String(sessionId ?? '').trim();
+  return normalized ? `/billing?sessionId=${encodeURIComponent(normalized)}` : '/billing';
+}
 
-  const normalizedReturnSessionId = String(returnSessionId ?? '').trim();
-  if (normalizedReturnSessionId) {
-    params.set('returnSessionId', normalizedReturnSessionId);
+export function appendBillingReturnSessionId(url: string, sessionId?: string | null) {
+  const normalizedUrl = String(url ?? '').trim();
+  const normalizedSessionId = String(sessionId ?? '').trim();
+
+  if (!normalizedUrl || !normalizedSessionId) {
+    return normalizedUrl;
   }
 
-  return `/billing/receipt?${params.toString()}`;
+  const separator = normalizedUrl.includes('?') ? '&' : '?';
+  return `${normalizedUrl}${separator}returnSessionId=${encodeURIComponent(normalizedSessionId)}`;
 }
 
 export function buildBillingReceiptApiUrl(input: {
@@ -116,12 +122,7 @@ export function buildBillingReceiptApiUrl(input: {
   return `/api/ops/billing/receipt?${params.toString()}`;
 }
 
-export function buildBillingPreviewUrl(
-  sessionId: string,
-  allocations: BillingAllocationInput[],
-  debtorName?: string | null,
-  returnSessionId?: string | null,
-) {
+export function buildBillingPreviewUrl(sessionId: string, allocations: BillingAllocationInput[], debtorName?: string | null, returnSessionId?: string | null) {
   const normalizedSessionId = String(sessionId ?? '').trim();
   const serializedAllocations = serializeBillingAllocations(allocations);
   if (!normalizedSessionId || !serializedAllocations) return '';

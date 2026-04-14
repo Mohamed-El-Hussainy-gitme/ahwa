@@ -12,7 +12,7 @@ import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { applyBillingToWorkspace } from '@/lib/ops/workspacePatches';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
-import { buildBillingPreviewUrl, computeBillingTotals } from '@/lib/ops/billing';
+import { appendBillingReturnSessionId, buildBillingPageUrl, buildBillingPreviewUrl, computeBillingTotals, type BillingAllocationInput } from '@/lib/ops/billing';
 import { saveBillingReceiptPreviewDraft } from '@/lib/ops/receipt-preview';
 import { parseOrderItemNotes } from '@/lib/ops/orderItemNotes';
 import { shouldReloadBillingWorkspace } from '@/lib/ops/reload-rules';
@@ -33,56 +33,19 @@ function formatMoney(value: number) {
   return new Intl.NumberFormat('ar-EG', { maximumFractionDigits: 2 }).format(value ?? 0);
 }
 
-function buildBillingPageUrl(sessionId?: string | null) {
-  const normalizedSessionId = String(sessionId ?? '').trim();
-  return normalizedSessionId ? `/billing?sessionId=${encodeURIComponent(normalizedSessionId)}` : '/billing';
-}
-
-function appendReturnSessionIdToUrl(url: string | null, returnSessionId: string) {
-  const normalizedUrl = String(url ?? '').trim();
-  const normalizedReturnSessionId = String(returnSessionId ?? '').trim();
-  if (!normalizedUrl) return null;
-  if (!normalizedReturnSessionId) return normalizedUrl;
-
-  const parsed = new URL(normalizedUrl, 'http://localhost');
-  parsed.searchParams.set('returnSessionId', normalizedReturnSessionId);
-  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
-}
+type BillingMutationMode = 'settle' | 'defer';
 
 export default function BillingPage() {
   const { can, shift } = useAuthz();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const sessionIdFromQuery = String(searchParams.get('sessionId') ?? '').trim();
-  const [sessionId, setSessionId] = useState(sessionIdFromQuery);
+  const requestedSessionId = String(searchParams.get('sessionId') ?? '').trim();
+  const [sessionId, setSessionId] = useState(requestedSessionId);
   const [debtorName, setDebtorName] = useState('');
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
   const [localError, setLocalError] = useState<string | null>(null);
   const [lastReceiptUrl, setLastReceiptUrl] = useState<string | null>(null);
   const [lastTotals, setLastTotals] = useState<BillingTotals | null>(null);
-
-  const syncSelectedSessionUrl = useCallback(
-    (nextSessionId?: string | null) => {
-      const normalizedNextSessionId = String(nextSessionId ?? '').trim();
-      const currentSessionId = String(searchParams.get('sessionId') ?? '').trim();
-      if (normalizedNextSessionId === currentSessionId) {
-        return;
-      }
-      router.replace(buildBillingPageUrl(normalizedNextSessionId), { scroll: false });
-    },
-    [router, searchParams],
-  );
-
-  const selectSession = useCallback(
-    (nextSessionId: string) => {
-      const normalizedNextSessionId = String(nextSessionId ?? '').trim();
-      setSessionId(normalizedNextSessionId);
-      setLastReceiptUrl(null);
-      setLastTotals(null);
-      syncSelectedSessionUrl(normalizedNextSessionId);
-    },
-    [syncSelectedSessionUrl],
-  );
 
   const loader = useCallback(() => opsClient.billingWorkspace(), []);
   const billingEnabled = Boolean(shift) && (can.billing || can.owner);
@@ -94,17 +57,39 @@ export default function BillingPage() {
     shouldReloadOnEvent: shouldReloadBillingWorkspace,
   });
 
-  useEffect(() => {
-    if (sessionIdFromQuery !== sessionId) {
-      setSessionId(sessionIdFromQuery);
-    }
-  }, [sessionIdFromQuery, sessionId]);
-
-  const effectiveSessionId = sessionId || data?.sessions[0]?.sessionId || '';
+  const effectiveSessionId = sessionId || requestedSessionId || data?.sessions[0]?.sessionId || '';
   const current = useMemo(
     () => data?.sessions.find((session) => session.sessionId === effectiveSessionId) ?? null,
     [data, effectiveSessionId],
   );
+
+  const printableAllocations = useMemo(
+    () =>
+      (current?.items ?? [])
+        .map((item) => ({
+          orderItemId: item.orderItemId,
+          quantity: item.qtyBillable,
+        }))
+        .filter((item) => item.quantity > 0),
+    [current?.items],
+  );
+
+  const resetSessionSideEffects = useCallback(() => {
+    setSelectedQty({});
+    setLastReceiptUrl(null);
+    setLastTotals(null);
+  }, []);
+
+  const selectSession = useCallback((nextSessionId: string) => {
+    const normalized = String(nextSessionId ?? '').trim();
+    if (!normalized) {
+      return;
+    }
+
+    setSessionId(normalized);
+    resetSessionSideEffects();
+    router.replace(buildBillingPageUrl(normalized), { scroll: false });
+  }, [resetSessionSideEffects, router]);
 
   useEffect(() => {
     const sessions = data?.sessions ?? [];
@@ -113,22 +98,37 @@ export default function BillingPage() {
       if (sessionId) {
         setSessionId('');
       }
-      if (sessionIdFromQuery) {
-        syncSelectedSessionUrl('');
+      if (requestedSessionId) {
+        router.replace('/billing', { scroll: false });
       }
       return;
     }
 
-    const requestedSessionId = sessionId || sessionIdFromQuery;
-    if (requestedSessionId && !sessions.some((session) => session.sessionId === requestedSessionId)) {
-      const fallbackSessionId = sessions[0]?.sessionId ?? '';
-      setSessionId(fallbackSessionId);
-      setSelectedQty({});
-      setLastReceiptUrl(null);
-      setLastTotals(null);
-      syncSelectedSessionUrl(fallbackSessionId);
+    if (requestedSessionId) {
+      const requestedExists = sessions.some((session) => session.sessionId === requestedSessionId);
+      if (requestedExists) {
+        if (sessionId !== requestedSessionId) {
+          setSessionId(requestedSessionId);
+          resetSessionSideEffects();
+        }
+        return;
+      }
     }
-  }, [data?.sessions, sessionId, sessionIdFromQuery, syncSelectedSessionUrl]);
+
+    const fallbackSessionId = sessions[0]?.sessionId ?? '';
+    if (!fallbackSessionId) {
+      return;
+    }
+
+    if (sessionId !== fallbackSessionId) {
+      setSessionId(fallbackSessionId);
+      resetSessionSideEffects();
+    }
+
+    if (requestedSessionId !== fallbackSessionId) {
+      router.replace(buildBillingPageUrl(fallbackSessionId), { scroll: false });
+    }
+  }, [data?.sessions, requestedSessionId, resetSessionSideEffects, router, sessionId]);
 
   const allocations = useCallback(() => {
     return (current?.items ?? [])
@@ -139,32 +139,47 @@ export default function BillingPage() {
       .filter((item) => item.quantity > 0);
   }, [current?.items, selectedQty]);
 
-  const settleCommand = useOpsCommand(
-    async () => {
-      const currentSessionId = effectiveSessionId;
-      const selected = allocations();
-      const result = await opsClient.settleAndClose(selected);
-      setSelectedQty({});
-      setLastReceiptUrl(result.receiptUrl);
-      setLastTotals(result.totals);
-      setData((currentWorkspace) => applyBillingToWorkspace(currentWorkspace, currentSessionId, selected, 'settle'));
-    },
-    { onError: setLocalError },
-  );
+  const executeBillingMutation = useCallback(async (mode: BillingMutationMode, requestedAllocations: BillingAllocationInput[], debtorNameInput?: string) => {
+    const currentSessionId = effectiveSessionId;
+    const normalizedAllocations = requestedAllocations.filter((item) => item.quantity > 0);
 
-  const deferCommand = useOpsCommand(
-    async () => {
-      const currentSessionId = effectiveSessionId;
-      const selected = allocations();
-      const result = await opsClient.deferAndClose(debtorName, selected);
-      setSelectedQty({});
+    if (!currentSessionId || normalizedAllocations.length === 0) {
+      throw new Error('حدد البنود المطلوبة أولاً.');
+    }
+
+    const normalizedDebtorName = String(debtorNameInput ?? '').trim();
+    if (mode === 'defer' && !normalizedDebtorName) {
+      throw new Error('اكتب اسم الآجل أولاً قبل الترحيل.');
+    }
+
+    const result = mode === 'settle'
+      ? await opsClient.settleAndClose(normalizedAllocations)
+      : await opsClient.deferAndClose(normalizedDebtorName, normalizedAllocations);
+
+    setSelectedQty({});
+    if (mode === 'defer') {
       setDebtorName('');
-      setLastReceiptUrl(result.receiptUrl);
-      setLastTotals(result.totals);
-      setData((currentWorkspace) => applyBillingToWorkspace(currentWorkspace, currentSessionId, selected, 'defer'));
-    },
-    { onError: setLocalError },
-  );
+    }
+    setLastReceiptUrl(appendBillingReturnSessionId(result.receiptUrl, currentSessionId));
+    setLastTotals(result.totals);
+    setData((currentWorkspace) => applyBillingToWorkspace(currentWorkspace, currentSessionId, normalizedAllocations, mode));
+  }, [effectiveSessionId, setData]);
+
+  const settleCommand = useOpsCommand(async () => {
+    await executeBillingMutation('settle', allocations());
+  }, { onError: setLocalError });
+
+  const deferCommand = useOpsCommand(async () => {
+    await executeBillingMutation('defer', allocations(), debtorName);
+  }, { onError: setLocalError });
+
+  const settleFullCommand = useOpsCommand(async () => {
+    await executeBillingMutation('settle', printableAllocations);
+  }, { onError: setLocalError });
+
+  const deferFullCommand = useOpsCommand(async () => {
+    await executeBillingMutation('defer', printableAllocations, debtorName);
+  }, { onError: setLocalError });
 
   if (!shift) return <ShiftRequired title="الحساب" />;
   if (!can.billing && !can.owner) return <AccessDenied title="الحساب" />;
@@ -174,7 +189,7 @@ export default function BillingPage() {
   }
 
   const effectiveError = localError ?? error;
-  const busy = settleCommand.busy || deferCommand.busy;
+  const busy = settleCommand.busy || deferCommand.busy || settleFullCommand.busy || deferFullCommand.busy;
   const selectedAllocations = allocations();
   const selectedQtyTotal = selectedAllocations.reduce((sum, item) => sum + item.quantity, 0);
   const selectedSubtotal = selectedAllocations.reduce((sum, item) => {
@@ -183,13 +198,6 @@ export default function BillingPage() {
   }, 0);
   const previewTotals = computeBillingTotals(selectedSubtotal, data?.billingSettings);
 
-  const printableAllocations = (current?.items ?? [])
-    .map((item) => ({
-      orderItemId: item.orderItemId,
-      quantity: item.qtyBillable,
-    }))
-    .filter((item) => item.quantity > 0);
-
   const printableQtyTotal = printableAllocations.reduce((sum, item) => sum + item.quantity, 0);
   const printableSubtotal = printableAllocations.reduce((sum, item) => {
     const match = current?.items.find((candidate) => candidate.orderItemId === item.orderItemId);
@@ -197,87 +205,56 @@ export default function BillingPage() {
   }, 0);
   const printableTotals = computeBillingTotals(printableSubtotal, data?.billingSettings);
   const previewReceiptUrl = buildBillingPreviewUrl(effectiveSessionId, printableAllocations, debtorName, effectiveSessionId);
-  const receiptDocumentUrl = appendReturnSessionIdToUrl(lastReceiptUrl, effectiveSessionId);
+
+  const openPreviewReceipt = useCallback(() => {
+    if (!previewReceiptUrl) {
+      return;
+    }
+
+    saveBillingReceiptPreviewDraft({
+      sessionId: effectiveSessionId,
+      allocations: printableAllocations,
+      debtorName,
+    });
+    router.push(previewReceiptUrl);
+  }, [debtorName, effectiveSessionId, previewReceiptUrl, printableAllocations, router]);
 
   return (
     <MobileShell
       title="الحساب"
       topRight={
         <div className="flex gap-2">
-          <Link href="/complaints" className={opsGhostButton}>
-            شكاوى
-          </Link>
-          <Link href="/support?source=in_app&page=/billing" className={opsGhostButton}>
-            دعم
-          </Link>
+          <Link href="/complaints" className={opsGhostButton}>شكاوى</Link>
+          <Link href="/support?source=in_app&page=/billing" className={opsGhostButton}>دعم</Link>
         </div>
       }
       stickyFooter={
         <StickyActionBar>
-          <div className="space-y-3">
-            <div className="flex items-center justify-between gap-3">
-              <div className="min-w-0 text-right">
-                <div className="text-sm font-semibold text-[#1e1712]">{current?.sessionLabel ?? 'اختر جلسة للحساب'}</div>
-                <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
-                  {selectedQtyTotal > 0
-                    ? `المحدد ${selectedQtyTotal} • قبل الإضافات ${formatMoney(previewTotals.subtotal)} ج • النهائي ${formatMoney(previewTotals.total)} ج`
-                    : 'حدد البنود المطلوبة للتحصيل أو الترحيل'}
-                </div>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1 text-right">
+              <div className="text-xs font-semibold text-[#1e1712]">{current?.sessionLabel ?? 'اختر جلسة للحساب'}</div>
+              <div className="mt-1 text-[11px] leading-5 text-[#7d6a59]">
+                {selectedQtyTotal > 0 ? `المحدد ${selectedQtyTotal} • الإجمالي ${formatMoney(previewTotals.total)} ج` : 'حدد البنود المطلوبة للتحصيل أو الترحيل'}
               </div>
             </div>
 
-            {(data?.billingSettings.taxEnabled || data?.billingSettings.serviceEnabled) && selectedQtyTotal > 0 ? (
-              <div className={[opsInset, 'p-3 text-xs text-[#6b5a4c]'].join(' ')}>
-                {data?.billingSettings.taxEnabled ? (
-                  <div>
-                    ضريبة: {formatMoney(previewTotals.taxAmount)} ج ({formatMoney(data.billingSettings.taxRate)}%)
-                  </div>
-                ) : null}
-                {data?.billingSettings.serviceEnabled ? (
-                  <div>
-                    خدمة: {formatMoney(previewTotals.serviceAmount)} ج ({formatMoney(data.billingSettings.serviceRate)}%)
-                  </div>
-                ) : null}
-              </div>
-            ) : null}
-
-            {lastTotals ? (
-              <div className="flex items-center justify-between gap-3 rounded-[20px] border border-[#cfe0d7] bg-[#eff7f1] p-3 text-sm">
-                <div className="text-right text-[#2e6a4e]">
-                  <div className="font-semibold">تم تسجيل العملية.</div>
-                  <div className="mt-1 text-xs">الإجمالي النهائي {formatMoney(lastTotals.total)} ج</div>
-                </div>
-                {receiptDocumentUrl ? (
-                  <Link href={receiptDocumentUrl} className="rounded-[18px] border border-[#c0d8cb] px-4 py-2 text-sm font-semibold text-[#2e6a4e]">
-                    عرض المستند النهائي
-                  </Link>
-                ) : null}
-              </div>
-            ) : null}
-
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                disabled={busy || selectedQtyTotal === 0}
-                onClick={() => void settleCommand.run()}
-                className={opsSuccessButton}
-              >
-                تحصيل المحدد
-              </button>
-              <button
-                disabled={busy || !debtorName.trim() || selectedQtyTotal === 0}
-                onClick={() => void deferCommand.run()}
-                className={opsAccentButton}
-              >
-                ترحيل المحدد
-              </button>
+            <div className="grid min-w-[13.5rem] grid-cols-2 gap-2">
+              <button disabled={busy || selectedQtyTotal === 0} onClick={() => void settleCommand.run()} className={opsSuccessButton}>تحصيل المحدد</button>
+              <button disabled={busy || !debtorName.trim() || selectedQtyTotal === 0} onClick={() => void deferCommand.run()} className={opsAccentButton}>ترحيل المحدد</button>
             </div>
           </div>
         </StickyActionBar>
       }
     >
-      {effectiveError ? (
-        <div className="mb-3 rounded-[22px] border border-[#e6c7c2] bg-[#fff7f5] p-3 text-sm text-[#9a3e35]">
-          {effectiveError}
+      {effectiveError ? <div className="mb-3 rounded-[22px] border border-[#e6c7c2] bg-[#fff7f5] p-3 text-sm text-[#9a3e35]">{effectiveError}</div> : null}
+
+      {lastTotals ? (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-[22px] border border-[#cfe0d7] bg-[#eff7f1] p-3 text-sm">
+          <div className="text-right text-[#2e6a4e]">
+            <div className="font-semibold">تم تسجيل العملية.</div>
+            <div className="mt-1 text-xs">الإجمالي النهائي {formatMoney(lastTotals.total)} ج</div>
+          </div>
+          {lastReceiptUrl ? <Link href={lastReceiptUrl} className="rounded-[18px] border border-[#c0d8cb] px-4 py-2 text-sm font-semibold text-[#2e6a4e]">عرض المستند النهائي</Link> : null}
         </div>
       ) : null}
 
@@ -285,25 +262,14 @@ export default function BillingPage() {
         <div className="flex items-start justify-between gap-3">
           <div className="text-right">
             <div className="text-sm font-semibold text-[#1e1712]">التحصيل والإقفال</div>
-            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
-              اختر الجلسة، حدّد البنود المطلوب تحصيلها، ثم اطبع الفاتورة أو رحّلها إلى الآجل باسم واضح.
-            </div>
+            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">اختر الجلسة، حدّد البنود المطلوب تحصيلها، أو نفّذ الفاتورة الكاملة من الكارت الموجود أسفل الأصناف.</div>
           </div>
           <div className={opsBadge('accent')}>واجهة التحصيل</div>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2">
-          <div className={opsMetricCard('success')}>
-            <div className="text-[11px] font-semibold opacity-70">جلسات للحساب</div>
-            <div className="mt-1 text-xl font-black leading-none">{data?.sessions?.length ?? 0}</div>
-          </div>
-          <div className={opsMetricCard('info')}>
-            <div className="text-[11px] font-semibold opacity-70">المحدد</div>
-            <div className="mt-1 text-xl font-black leading-none">{selectedQtyTotal}</div>
-          </div>
-          <div className={opsMetricCard('accent')}>
-            <div className="text-[11px] font-semibold opacity-70">الإجمالي</div>
-            <div className="mt-1 text-xl font-black leading-none">{formatMoney(previewTotals.total)}</div>
-          </div>
+          <div className={opsMetricCard('success')}><div className="text-[11px] font-semibold opacity-70">جلسات للحساب</div><div className="mt-1 text-xl font-black leading-none">{data?.sessions?.length ?? 0}</div></div>
+          <div className={opsMetricCard('info')}><div className="text-[11px] font-semibold opacity-70">المحدد</div><div className="mt-1 text-xl font-black leading-none">{selectedQtyTotal}</div></div>
+          <div className={opsMetricCard('accent')}><div className="text-[11px] font-semibold opacity-70">إجمالي المحدد</div><div className="mt-1 text-xl font-black leading-none">{formatMoney(previewTotals.total)}</div></div>
         </div>
       </section>
 
@@ -321,22 +287,16 @@ export default function BillingPage() {
                 onClick={() => selectSession(session.sessionId)}
                 className={[
                   'rounded-[20px] border px-3 py-3 text-right transition',
-                  effectiveSessionId === session.sessionId
-                    ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]'
-                    : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
+                  effectiveSessionId === session.sessionId ? 'border-[#1e1712] bg-[#1e1712] text-white shadow-[0_14px_28px_rgba(30,23,18,0.16)]' : 'border-[#decebb] bg-[#fffdf8] text-[#1e1712]',
                 ].join(' ')}
               >
                 <div className="truncate text-sm font-bold">{session.sessionLabel}</div>
-                <div className={['mt-1 text-xs', effectiveSessionId === session.sessionId ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
-                  {session.totalBillableQty} صنف • {session.totalBillableAmount} ج
-                </div>
+                <div className={['mt-1 text-xs', effectiveSessionId === session.sessionId ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>{session.totalBillableQty} صنف • {session.totalBillableAmount} ج</div>
               </button>
             ))}
           </div>
         ) : (
-          <div className={[opsDashed, 'p-3 text-sm text-[#6b5a4c]'].join(' ')}>
-            لا توجد جلسات جاهزة للحساب الآن.
-          </div>
+          <div className={[opsDashed, 'p-3 text-sm text-[#6b5a4c]'].join(' ')}>لا توجد جلسات جاهزة للحساب الآن.</div>
         )}
       </section>
 
@@ -353,32 +313,6 @@ export default function BillingPage() {
               <span className={opsBadge('success')}>{current.totalBillableAmount} ج</span>
             </div>
           </div>
-
-          {printableQtyTotal > 0 ? (
-            <div className={[opsInset, 'mt-3 flex items-center justify-between gap-3 p-3'].join(' ')}>
-              <div className="text-right">
-                <div className="text-sm font-semibold text-[#1e1712]">الفاتورة الكاملة</div>
-                <div className="mt-1 text-xs text-[#7d6a59]">
-                  {formatMoney(printableTotals.total)} ج • {printableQtyTotal} صنف
-                </div>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => {
-                  saveBillingReceiptPreviewDraft({
-                    sessionId: effectiveSessionId,
-                    allocations: printableAllocations,
-                    debtorName,
-                  });
-                  router.push(previewReceiptUrl);
-                }}
-                className={opsPrimaryButton}
-              >
-                طباعة الفاتورة
-              </button>
-            </div>
-          ) : null}
         </div>
       ) : null}
 
@@ -426,11 +360,42 @@ export default function BillingPage() {
             })}
           </div>
         ) : (
-          <div className={[opsDashed, 'p-3 text-sm text-[#6b5a4c]'].join(' ')}>
-            لا يوجد عناصر جاهزة للحساب في هذه الجلسة.
-          </div>
+          <div className={[opsDashed, 'p-3 text-sm text-[#6b5a4c]'].join(' ')}>لا يوجد عناصر جاهزة للحساب في هذه الجلسة.</div>
         )}
       </section>
+
+      {current ? (
+        <section className={[opsSurface, 'mt-3 p-3'].join(' ')}>
+          <div className="flex items-start justify-between gap-3">
+            <div className="text-right">
+              <div className="text-sm font-semibold text-[#1e1712]">الفاتورة الكاملة</div>
+              <div className="mt-1 text-xs leading-6 text-[#7d6a59]">هذا القسم يخص الفاتورة بالكامل، ويقع مباشرة أسفل الأصناف الجاهزة للحساب.</div>
+            </div>
+            <div className={opsBadge('accent')}>{printableQtyTotal} صنف</div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <div className={opsMetricCard('neutral')}><div className="text-[11px] font-semibold opacity-70">قبل الإضافات</div><div className="mt-1 text-lg font-black leading-none">{formatMoney(printableTotals.subtotal)} ج</div></div>
+            <div className={opsMetricCard('success')}><div className="text-[11px] font-semibold opacity-70">الإجمالي</div><div className="mt-1 text-lg font-black leading-none">{formatMoney(printableTotals.total)} ج</div></div>
+            <div className={opsMetricCard('info')}><div className="text-[11px] font-semibold opacity-70">الضريبة</div><div className="mt-1 text-lg font-black leading-none">{formatMoney(printableTotals.taxAmount)} ج</div></div>
+            <div className={opsMetricCard('warning')}><div className="text-[11px] font-semibold opacity-70">الخدمة</div><div className="mt-1 text-lg font-black leading-none">{formatMoney(printableTotals.serviceAmount)} ج</div></div>
+          </div>
+
+          <div className={[opsInset, 'mt-3 p-3'].join(' ')}>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" disabled={busy || !previewReceiptUrl} onClick={openPreviewReceipt} className={opsGhostButton}>عرض المستند</button>
+              <button type="button" disabled={busy || !previewReceiptUrl} onClick={openPreviewReceipt} className={opsPrimaryButton}>طباعة الفاتورة</button>
+            </div>
+
+            <div className="mt-2 grid grid-cols-2 gap-2">
+              <button type="button" disabled={busy || printableQtyTotal === 0} onClick={() => void settleFullCommand.run()} className={opsSuccessButton}>تحصيل الفاتورة بالكامل</button>
+              <button type="button" disabled={busy || printableQtyTotal === 0 || !debtorName.trim()} onClick={() => void deferFullCommand.run()} className={opsAccentButton}>ترحيل الفاتورة بالكامل</button>
+            </div>
+
+            {!debtorName.trim() ? <div className="mt-2 text-right text-[11px] font-semibold text-[#7d6a59]">اكتب اسم الآجل أسفل هذا القسم لتفعيل ترحيل الفاتورة بالكامل.</div> : null}
+          </div>
+        </section>
+      ) : null}
 
       <section className={[opsSurface, 'mt-3 p-3'].join(' ')}>
         <div className="text-right text-sm font-semibold text-[#3d3128]">الترحيل إلى الآجل</div>

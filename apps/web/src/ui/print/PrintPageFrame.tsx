@@ -1,5 +1,6 @@
 'use client';
 
+import Link, { type LinkProps } from 'next/link';
 import type { ReactNode } from 'react';
 
 type PrintPageFrameProps = {
@@ -11,6 +12,8 @@ type PrintPageFrameProps = {
   contentClassName?: string;
   titleClassName?: string;
   subtitleClassName?: string;
+  backHref?: LinkProps['href'];
+  backLabel?: string;
 };
 
 function mergeClassNames(...parts: Array<string | undefined>) {
@@ -26,6 +29,8 @@ export function PrintPageFrame({
   contentClassName,
   titleClassName,
   subtitleClassName,
+  backHref,
+  backLabel = 'رجوع',
 }: PrintPageFrameProps) {
   void exportFilename;
 
@@ -40,7 +45,11 @@ export function PrintPageFrame({
             </div>
             <div className="flex gap-2">
               <button type="button" onClick={() => window.print()} className="rounded-2xl bg-neutral-900 px-4 py-2 text-sm font-semibold text-white">طباعة</button>
-              <button type="button" onClick={() => window.history.back()} className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-neutral-700">رجوع</button>
+              {backHref ? (
+                <Link href={backHref} className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-neutral-700">{backLabel}</Link>
+              ) : (
+                <button type="button" onClick={() => window.history.back()} className="rounded-2xl border bg-white px-4 py-2 text-sm font-semibold text-neutral-700">{backLabel}</button>
+              )}
             </div>
           </div>
         </div>
