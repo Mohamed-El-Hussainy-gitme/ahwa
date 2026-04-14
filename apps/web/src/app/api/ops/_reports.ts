@@ -27,7 +27,7 @@ type ShiftRow = {
   closed_at: string | null;
   business_date: string | null;
 };
-type NamedActorRow = { id: string; full_name: string | null };
+type NamedActorRow = { id: string; full_name: string | null; is_active?: boolean | null; employment_status?: string | null };
 type RawMenuProductRef = { id: string; product_name: string | null };
 type ItemRow = {
   shift_id: string;
@@ -117,7 +117,7 @@ type DailySnapshotRow = { business_date: string; snapshot_json: unknown };
 type WeeklySummaryRow = { week_start_date: string; summary_json: unknown };
 type MonthlySummaryRow = { month_start_date: string; summary_json: unknown };
 type YearlySummaryRow = { year_start_date: string; summary_json: unknown };
-type ActorMaps = { staffNames: Map<string, string>; ownerNames: Map<string, string> };
+type ActorMaps = { staffNames: Map<string, string>; ownerNames: Map<string, string>; activeStaff: NamedActorRow[] };
 
 type AggregateMaps = {
   shiftRowsById: Map<string, ReportShiftRow>;
@@ -395,6 +395,36 @@ function sortShifts(rows: ReportShiftRow[]): ReportShiftRow[] {
   );
 }
 
+function normalizeActorLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ar');
+}
+
+function actorPresentationKey(row: Pick<StaffPerformanceRow, 'actorKey' | 'actorLabel'>): string {
+  return normalizeActorLabel(row.actorLabel) || row.actorKey;
+}
+
+function seedRosterStaffRows(activeStaff: NamedActorRow[]): StaffPerformanceRow[] {
+  return activeStaff
+    .map((row) => {
+      const actorLabel = toStringValue(row.full_name).trim();
+      if (!actorLabel) return null;
+      return createStaffRow(`staff:${String(row.id)}`, actorLabel);
+    })
+    .filter(Boolean) as StaffPerformanceRow[];
+}
+
+function collapseStaffRows(rows: StaffPerformanceRow[], roster: StaffPerformanceRow[] = []): StaffPerformanceRow[] {
+  const byPresentation = new Map<string, StaffPerformanceRow>();
+  for (const row of [...roster, ...rows]) {
+    const presentationKey = actorPresentationKey(row);
+    const current = byPresentation.get(presentationKey) ?? createStaffRow(presentationKey, row.actorLabel);
+    mergeStaffRows(current, row);
+    if (!current.actorLabel && row.actorLabel) current.actorLabel = row.actorLabel;
+    byPresentation.set(presentationKey, current);
+  }
+  return sortStaff(Array.from(byPresentation.values()));
+}
+
 function actorKeyFromIds(row: { by_staff_id?: string | null; by_owner_id?: string | null }): string | null {
   if (row.by_owner_id) return `owner:${String(row.by_owner_id)}`;
   if (row.by_staff_id) return `staff:${String(row.by_staff_id)}`;
@@ -453,6 +483,7 @@ function buildPeriodReport(input: {
   staffByShift: Map<string, Map<string, StaffPerformanceRow>>;
   complaintsByShift: Map<string, ReportComplaintEntry[]>;
   itemIssuesByShift: Map<string, ReportItemIssueEntry[]>;
+  staffRoster?: StaffPerformanceRow[];
 }): PeriodReport {
   const shifts = sortShifts(
     input.shiftRows.filter((row) => inDateRange(row.businessDate, input.startDate, input.endDate)),
@@ -505,7 +536,7 @@ function buildPeriodReport(input: {
     shifts,
     products: sortProducts(Array.from(productsById.values())),
     addons: sortAddons(Array.from(addonsById.values())),
-    staff: sortStaff(Array.from(staffByKey.values())),
+    staff: collapseStaffRows(Array.from(staffByKey.values()), input.staffRoster ?? []),
     complaints: sortComplaintEntries(complaints).slice(0, 80),
     itemIssues: sortComplaintEntries(itemIssues).slice(0, 80),
   };
@@ -514,14 +545,22 @@ function buildPeriodReport(input: {
 async function loadActorMaps(cafeId: string, databaseKey: string): Promise<ActorMaps> {
   const admin = adminOps(databaseKey);
   const [{ data: staffRows, error: staffError }, { data: ownerRows, error: ownerError }] = await Promise.all([
-    admin.from('staff_members').select('id, full_name').eq('cafe_id', cafeId),
+    admin.from('staff_members').select('id, full_name, is_active, employment_status').eq('cafe_id', cafeId),
     admin.from('owner_users').select('id, full_name').eq('cafe_id', cafeId),
   ]);
   if (staffError) throw staffError;
   if (ownerError) throw ownerError;
+  const allStaffRows = (staffRows ?? []) as NamedActorRow[];
+  const activeStaff = allStaffRows.filter((row) => {
+    const employmentStatus = toStringValue(row.employment_status, '').trim().toLowerCase();
+    if (employmentStatus) return employmentStatus === 'active';
+    return row.is_active !== false;
+  });
+
   return {
-    staffNames: new Map(((staffRows ?? []) as NamedActorRow[]).map((row) => [String(row.id), String(row.full_name ?? '')])),
+    staffNames: new Map(allStaffRows.map((row) => [String(row.id), String(row.full_name ?? '')])),
     ownerNames: new Map(((ownerRows ?? []) as NamedActorRow[]).map((row) => [String(row.id), String(row.full_name ?? '')])),
+    activeStaff,
   };
 }
 
@@ -1212,7 +1251,7 @@ function parseSummaryProducts(summaryLike: any): ProductReportRow[] {
 
 function parseSummaryStaff(summaryLike: any): StaffPerformanceRow[] {
   const rows = Array.isArray(summaryLike?.staff) ? summaryLike.staff : [];
-  return sortStaff(
+  return collapseStaffRows(
     rows
       .map((raw: any) => {
         const actorLabel = toStringValue(raw?.actor_label);
@@ -1261,17 +1300,8 @@ function mergeProductCollections(base: ProductReportRow[], supplement: ProductRe
   return sortProducts(Array.from(byId.values()));
 }
 
-function mergeStaffCollections(base: StaffPerformanceRow[], supplement: StaffPerformanceRow[]): StaffPerformanceRow[] {
-  const byKey = new Map<string, StaffPerformanceRow>();
-  for (const row of base) {
-    byKey.set(row.actorKey, { ...row });
-  }
-  for (const row of supplement) {
-    const current = byKey.get(row.actorKey) ?? createStaffRow(row.actorKey, row.actorLabel);
-    mergeStaffRows(current, row);
-    byKey.set(row.actorKey, current);
-  }
-  return sortStaff(Array.from(byKey.values()));
+function mergeStaffCollections(base: StaffPerformanceRow[], supplement: StaffPerformanceRow[], roster: StaffPerformanceRow[] = []): StaffPerformanceRow[] {
+  return collapseStaffRows([...base, ...supplement], roster);
 }
 
 function mergeDayCollections(base: ReportBusinessDayRow[], supplement: ReportBusinessDayRow[]): ReportBusinessDayRow[] {
@@ -1453,6 +1483,7 @@ function buildValidatedSummaryBackedPeriod(input: {
   currentProducts: ProductReportRow[];
   currentAddons: AddonReportRow[];
   currentStaff: StaffPerformanceRow[];
+  staffRoster: StaffPerformanceRow[];
 }): PeriodReport {
   const base = input.detail;
   if (!input.summaryLike) {
@@ -1465,7 +1496,7 @@ function buildValidatedSummaryBackedPeriod(input: {
 
   let totals = parseSummaryTotals(input.summaryLike);
   let products = parseSummaryProducts(input.summaryLike);
-  let staff = parseSummaryStaff(input.summaryLike);
+  let staff = collapseStaffRows(parseSummaryStaff(input.summaryLike), input.staffRoster);
   let days = mergeDayCollections([], rangeDailyRows);
 
   if (input.currentShift) {
@@ -1483,7 +1514,7 @@ function buildValidatedSummaryBackedPeriod(input: {
       addTotals(mergedTotals, input.currentShift);
       totals = applySalesReconciliation(mergedTotals);
       products = mergeProductCollections(products, input.currentProducts);
-      staff = mergeStaffCollections(staff, input.currentStaff);
+      staff = mergeStaffCollections(staff, input.currentStaff, input.staffRoster);
       days = mergeDayCollections(days, currentDay);
     }
   }
@@ -1570,18 +1601,18 @@ export async function buildReportsWorkspace(
       currentShift: null,
       currentProducts: [],
       currentAddons: [],
-      currentStaff: [],
+      currentStaff: collapseStaffRows([], seedRosterStaffRows(actorMaps.activeStaff)),
       currentComplaints: [],
       currentItemIssues: [],
       periods: {
-        day: buildPeriodReport({ ...ranges.day, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
-        week: buildPeriodReport({ ...ranges.week, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
-        month: buildPeriodReport({ ...ranges.month, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
-        year: buildPeriodReport({ ...ranges.year, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+        day: buildPeriodReport({ ...ranges.day, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift, staffRoster: seedRosterStaffRows(actorMaps.activeStaff) }),
+        week: buildPeriodReport({ ...ranges.week, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift, staffRoster: seedRosterStaffRows(actorMaps.activeStaff) }),
+        month: buildPeriodReport({ ...ranges.month, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift, staffRoster: seedRosterStaffRows(actorMaps.activeStaff) }),
+        year: buildPeriodReport({ ...ranges.year, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift, staffRoster: seedRosterStaffRows(actorMaps.activeStaff) }),
       },
       customRange: hasCustomRange && customStartDate && customEndDate
         ? ({
-            ...buildPeriodReport({ ...ranges.day, key: 'day', label: 'فترة مخصصة', startDate: customStartDate, endDate: customEndDate, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift }),
+            ...buildPeriodReport({ ...ranges.day, key: 'day', label: 'فترة مخصصة', startDate: customStartDate, endDate: customEndDate, shiftRows: [], productsByShift: emptyMaps.productsByShift, addonsByShift: emptyMaps.addonsByShift, staffByShift: emptyMaps.staffByShift, complaintsByShift: emptyMaps.complaintsByShift, itemIssuesByShift: emptyMaps.itemIssuesByShift, staffRoster: seedRosterStaffRows(actorMaps.activeStaff) }),
             key: 'range',
             label: 'فترة مخصصة',
           } as CustomRangeReport)
@@ -1622,9 +1653,10 @@ export async function buildReportsWorkspace(
   const currentAddons = currentShift
     ? sortAddons(Array.from(combinedAggregates.addonsByShift.get(currentShift.shiftId)?.values() ?? []))
     : [];
+  const staffRoster = seedRosterStaffRows(actorMaps.activeStaff);
   const currentStaff = currentShift
-    ? sortStaff(Array.from(combinedAggregates.staffByShift.get(currentShift.shiftId)?.values() ?? []))
-    : [];
+    ? collapseStaffRows(Array.from(combinedAggregates.staffByShift.get(currentShift.shiftId)?.values() ?? []), staffRoster)
+    : collapseStaffRows([], staffRoster);
   const currentComplaints = currentShift
     ? sortComplaintEntries(combinedAggregates.complaintsByShift.get(currentShift.shiftId) ?? []).slice(0, 50)
     : [];
@@ -1633,10 +1665,10 @@ export async function buildReportsWorkspace(
     : [];
 
   const periods = {
-    day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift }),
-    week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift }),
-    month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift }),
-    year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift }),
+    day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
+    week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
+    month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
+    year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
   };
 
   const customRange = hasCustomRange && customStartDate && customEndDate
@@ -1652,6 +1684,7 @@ export async function buildReportsWorkspace(
           staffByShift: combinedAggregates.staffByShift,
           complaintsByShift: combinedAggregates.complaintsByShift,
           itemIssuesByShift: combinedAggregates.itemIssuesByShift,
+          staffRoster,
         }),
         key: 'range',
         label: 'فترة مخصصة',
