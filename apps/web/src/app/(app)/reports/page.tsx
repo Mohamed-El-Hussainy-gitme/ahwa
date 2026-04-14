@@ -412,7 +412,7 @@ function ShiftList({ items }: { items: ReportShiftRow[] }) {
   );
 }
 
-function DayBreakdown({ period }: { period: PeriodReport }) {
+function DayBreakdown({ period }: { period: PeriodReport | CustomRangeReport }) {
   if (!period.days.length) return <EmptyState text="لا يوجد تجميع يومي في هذه الفترة." />;
 
   return (
