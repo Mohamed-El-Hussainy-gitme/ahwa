@@ -117,7 +117,7 @@ type DailySnapshotRow = { business_date: string; snapshot_json: unknown };
 type WeeklySummaryRow = { week_start_date: string; summary_json: unknown };
 type MonthlySummaryRow = { month_start_date: string; summary_json: unknown };
 type YearlySummaryRow = { year_start_date: string; summary_json: unknown };
-type ActorMaps = { staffNames: Map<string, string>; ownerNames: Map<string, string>; activeStaff: NamedActorRow[] };
+type ActorMaps = { staffNames: Map<string, string>; ownerNames: Map<string, string>; activeStaff: NamedActorRow[]; uniqueStaffKeyByLabel: Map<string, string>; uniqueStaffLabelByKey: Map<string, string> };
 
 type AggregateMaps = {
   shiftRowsById: Map<string, ReportShiftRow>;
@@ -395,12 +395,59 @@ function sortShifts(rows: ReportShiftRow[]): ReportShiftRow[] {
   );
 }
 
-function normalizeActorLabel(label: string): string {
-  return label.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ar');
+
+function buildUniqueStaffLabelIndex(activeStaff: NamedActorRow[]): {
+  uniqueStaffKeyByLabel: Map<string, string>;
+  uniqueStaffLabelByKey: Map<string, string>;
+} {
+  const buckets = new Map<string, { key: string; label: string }[]>();
+  for (const row of activeStaff) {
+    const staffId = String(row.id ?? '').trim();
+    const actorLabel = toStringValue(row.full_name).trim();
+    if (!staffId || !actorLabel) continue;
+    const normalizedLabel = normalizeActorLabel(actorLabel);
+    const bucket = buckets.get(normalizedLabel) ?? [];
+    bucket.push({ key: `staff:${staffId}`, label: actorLabel });
+    buckets.set(normalizedLabel, bucket);
+  }
+
+  const uniqueStaffKeyByLabel = new Map<string, string>();
+  const uniqueStaffLabelByKey = new Map<string, string>();
+  for (const [normalizedLabel, bucket] of buckets.entries()) {
+    if (bucket.length !== 1) continue;
+    const onlyEntry = bucket[0]!;
+    uniqueStaffKeyByLabel.set(normalizedLabel, onlyEntry.key);
+    uniqueStaffLabelByKey.set(onlyEntry.key, onlyEntry.label);
+  }
+
+  return { uniqueStaffKeyByLabel, uniqueStaffLabelByKey };
 }
 
-function actorPresentationKey(row: Pick<StaffPerformanceRow, 'actorKey' | 'actorLabel'>): string {
-  return normalizeActorLabel(row.actorLabel) || row.actorKey;
+function canonicalizeStaffIdentity(
+  row: Pick<StaffPerformanceRow, 'actorKey' | 'actorLabel'>,
+  rosterIndex: { uniqueStaffKeyByLabel: Map<string, string>; uniqueStaffLabelByKey: Map<string, string> },
+): { actorKey: string; actorLabel: string } {
+  const normalizedLabel = normalizeActorLabel(row.actorLabel);
+  if (row.actorKey.startsWith('staff:')) {
+    return {
+      actorKey: row.actorKey,
+      actorLabel: rosterIndex.uniqueStaffLabelByKey.get(row.actorKey) ?? row.actorLabel,
+    };
+  }
+
+  const canonicalStaffKey = rosterIndex.uniqueStaffKeyByLabel.get(normalizedLabel);
+  if (!canonicalStaffKey) {
+    return row;
+  }
+
+  return {
+    actorKey: canonicalStaffKey,
+    actorLabel: rosterIndex.uniqueStaffLabelByKey.get(canonicalStaffKey) ?? row.actorLabel,
+  };
+}
+
+function normalizeActorLabel(label: string): string {
+  return label.trim().replace(/\s+/g, ' ').toLocaleLowerCase('ar');
 }
 
 function seedRosterStaffRows(activeStaff: NamedActorRow[]): StaffPerformanceRow[] {
@@ -414,15 +461,34 @@ function seedRosterStaffRows(activeStaff: NamedActorRow[]): StaffPerformanceRow[
 }
 
 function collapseStaffRows(rows: StaffPerformanceRow[], roster: StaffPerformanceRow[] = []): StaffPerformanceRow[] {
-  const byPresentation = new Map<string, StaffPerformanceRow>();
-  for (const row of [...roster, ...rows]) {
-    const presentationKey = actorPresentationKey(row);
-    const current = byPresentation.get(presentationKey) ?? createStaffRow(presentationKey, row.actorLabel);
-    mergeStaffRows(current, row);
-    if (!current.actorLabel && row.actorLabel) current.actorLabel = row.actorLabel;
-    byPresentation.set(presentationKey, current);
+  const rosterIndex = {
+    uniqueStaffKeyByLabel: new Map<string, string>(),
+    uniqueStaffLabelByKey: new Map<string, string>(),
+  };
+
+  for (const row of roster) {
+    if (!row.actorKey.startsWith('staff:')) continue;
+    rosterIndex.uniqueStaffLabelByKey.set(row.actorKey, row.actorLabel);
+    const normalizedLabel = normalizeActorLabel(row.actorLabel);
+    const existingKey = rosterIndex.uniqueStaffKeyByLabel.get(normalizedLabel);
+    if (!existingKey) {
+      rosterIndex.uniqueStaffKeyByLabel.set(normalizedLabel, row.actorKey);
+      continue;
+    }
+    if (existingKey !== row.actorKey) {
+      rosterIndex.uniqueStaffKeyByLabel.delete(normalizedLabel);
+    }
   }
-  return sortStaff(Array.from(byPresentation.values()));
+
+  const byActorKey = new Map<string, StaffPerformanceRow>();
+  for (const row of [...roster, ...rows]) {
+    const canonicalRow = canonicalizeStaffIdentity(row, rosterIndex);
+    const current = byActorKey.get(canonicalRow.actorKey) ?? createStaffRow(canonicalRow.actorKey, canonicalRow.actorLabel);
+    mergeStaffRows(current, { ...row, actorKey: canonicalRow.actorKey, actorLabel: canonicalRow.actorLabel });
+    if (!current.actorLabel && canonicalRow.actorLabel) current.actorLabel = canonicalRow.actorLabel;
+    byActorKey.set(canonicalRow.actorKey, current);
+  }
+  return sortStaff(Array.from(byActorKey.values()));
 }
 
 function actorKeyFromIds(row: { by_staff_id?: string | null; by_owner_id?: string | null }): string | null {
@@ -447,6 +513,17 @@ function resolveActorFromIds(
   const actorKey = actorKeyFromIds(row);
   const actorLabel = actorLabelFromIds(row, maps);
   if (!actorKey || !actorLabel) return null;
+
+  const normalizedLabel = normalizeActorLabel(actorLabel);
+  const canonicalStaffKey = maps.uniqueStaffKeyByLabel.get(normalizedLabel);
+  if (actorKey.startsWith('staff:')) {
+    return { actorKey, actorLabel: maps.uniqueStaffLabelByKey.get(actorKey) ?? actorLabel };
+  }
+
+  if (canonicalStaffKey) {
+    return { actorKey: canonicalStaffKey, actorLabel: maps.uniqueStaffLabelByKey.get(canonicalStaffKey) ?? actorLabel };
+  }
+
   return { actorKey, actorLabel };
 }
 
@@ -557,10 +634,14 @@ async function loadActorMaps(cafeId: string, databaseKey: string): Promise<Actor
     return row.is_active !== false;
   });
 
+  const uniqueStaffIndex = buildUniqueStaffLabelIndex(activeStaff);
+
   return {
     staffNames: new Map(allStaffRows.map((row) => [String(row.id), String(row.full_name ?? '')])),
     ownerNames: new Map(((ownerRows ?? []) as NamedActorRow[]).map((row) => [String(row.id), String(row.full_name ?? '')])),
     activeStaff,
+    uniqueStaffKeyByLabel: uniqueStaffIndex.uniqueStaffKeyByLabel,
+    uniqueStaffLabelByKey: uniqueStaffIndex.uniqueStaffLabelByKey,
   };
 }
 

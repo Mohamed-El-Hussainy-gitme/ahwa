@@ -169,7 +169,7 @@ function BillingReceiptPageContent() {
         {data ? (
           <div className="space-y-4 text-[12px] leading-5 text-neutral-900">
             <section className="border-b border-dashed pb-3 text-center">
-              <div className="text-[19px] font-black leading-tight tracking-[0.01em] text-[#1e1712] break-words">{data.cafeName}</div>
+              <div className="text-[17px] font-black leading-tight tracking-[0.02em] text-[#1e1712] break-words" style={{ fontFamily: 'ui-sans-serif, system-ui, -apple-system, "Segoe UI", Arial, "Noto Sans Arabic", "Noto Sans", sans-serif' }}>{data.cafeName}</div>
               <div className="mt-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-[#8d7967]">{data.mode === 'preview' ? 'Guest Check' : 'Sales Receipt'}</div>
             </section>
 

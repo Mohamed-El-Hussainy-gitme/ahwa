@@ -44,6 +44,54 @@ function buildBillingPageHref(sessionId: string) {
   return `/billing?${params.toString()}`;
 }
 
+
+const BILLING_RECEIPT_STORAGE_KEY = 'ahwa:billing:last-receipts';
+
+type StoredBillingReceiptEntry = {
+  receiptUrl: string;
+  totals: BillingTotals;
+  updatedAt: string;
+};
+
+function readStoredBillingReceiptMap(): Record<string, StoredBillingReceiptEntry> {
+  if (typeof window === 'undefined') return {};
+  try {
+    const raw = window.localStorage.getItem(BILLING_RECEIPT_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function readStoredBillingReceipt(sessionId: string): StoredBillingReceiptEntry | null {
+  const normalizedSessionId = String(sessionId ?? '').trim();
+  if (!normalizedSessionId) return null;
+  const map = readStoredBillingReceiptMap();
+  const entry = map[normalizedSessionId];
+  if (!entry || typeof entry !== 'object') return null;
+  const receiptUrl = String((entry as { receiptUrl?: unknown }).receiptUrl ?? '').trim();
+  const totals = (entry as { totals?: BillingTotals }).totals ?? null;
+  if (!receiptUrl || !totals) return null;
+  return {
+    receiptUrl,
+    totals,
+    updatedAt: String((entry as { updatedAt?: unknown }).updatedAt ?? ''),
+  };
+}
+
+function saveStoredBillingReceipt(sessionId: string, entry: StoredBillingReceiptEntry) {
+  const normalizedSessionId = String(sessionId ?? '').trim();
+  if (typeof window === 'undefined' || !normalizedSessionId) return;
+  const nextMap = readStoredBillingReceiptMap();
+  nextMap[normalizedSessionId] = entry;
+  try {
+    window.localStorage.setItem(BILLING_RECEIPT_STORAGE_KEY, JSON.stringify(nextMap));
+  } catch {
+  }
+}
+
 function appendReturnSessionId(url: string, sessionId: string) {
   const normalizedUrl = String(url ?? '').trim();
   const normalizedSessionId = String(sessionId ?? '').trim();
@@ -98,6 +146,18 @@ export default function BillingPage() {
   );
 
   useEffect(() => {
+    if (!effectiveSessionId) {
+      setLastReceiptUrl(null);
+      setLastTotals(null);
+      return;
+    }
+
+    const storedReceipt = readStoredBillingReceipt(effectiveSessionId);
+    setLastReceiptUrl(storedReceipt?.receiptUrl ?? null);
+    setLastTotals(storedReceipt?.totals ?? null);
+  }, [effectiveSessionId]);
+
+  useEffect(() => {
     const sessions = data?.sessions ?? [];
 
     if (!sessions.length) {
@@ -133,8 +193,10 @@ export default function BillingPage() {
   );
 
   const rememberReceipt = useCallback((receiptUrl: string, sessionId: string, totals: BillingTotals) => {
-    setLastReceiptUrl(appendReturnSessionId(receiptUrl, sessionId));
+    const persistedReceiptUrl = appendReturnSessionId(receiptUrl, sessionId);
+    setLastReceiptUrl(persistedReceiptUrl);
     setLastTotals(totals);
+    saveStoredBillingReceipt(sessionId, { receiptUrl: persistedReceiptUrl, totals, updatedAt: new Date().toISOString() });
   }, []);
 
   const settleSelectedCommand = useOpsCommand(
@@ -323,8 +385,6 @@ export default function BillingPage() {
                 key={session.sessionId}
                 onClick={() => {
                   setSelectedQty({});
-                  setLastReceiptUrl(null);
-                  setLastTotals(null);
                   router.replace(buildBillingPageHref(session.sessionId), { scroll: false });
                 }}
                 className={[

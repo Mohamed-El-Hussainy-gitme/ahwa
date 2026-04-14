@@ -276,6 +276,24 @@ function DetailTabs({ value, onChange }: { value: DetailTab; onChange: (value: D
   );
 }
 
+
+function DrilldownSection({ title, description, children }: { title: string; description: string; children: React.ReactNode }) {
+  return (
+    <details className="ahwa-card p-3">
+      <summary className="cursor-pointer list-none select-none">
+        <div className="flex items-center justify-between gap-3">
+          <div className="text-right">
+            <div className="font-semibold">{title}</div>
+            <div className="mt-1 text-xs text-[#8a7763]">{description}</div>
+          </div>
+          <div className="ahwa-pill-neutral shrink-0">عرض</div>
+        </div>
+      </summary>
+      <div className="mt-3">{children}</div>
+    </details>
+  );
+}
+
 function EmptyState({ text }: { text: string }) {
   return <div className="ahwa-card-dashed p-4 text-sm text-[#8a7763]">{text}</div>;
 }
@@ -557,21 +575,15 @@ function OverviewPanel({
   return (
     <div className="space-y-3">
       {period ? (
-        <div className="ahwa-card p-3">
-          <div className="font-semibold">التجميع اليومي</div>
-          <div className="mt-3">
-            <DayBreakdown period={period} />
-          </div>
-        </div>
+        <DrilldownSection title="التجميع اليومي" description="تفصيل إضافي عند الحاجة بدل إبقائه في الواجهة الأساسية.">
+          <DayBreakdown period={period} />
+        </DrilldownSection>
       ) : null}
 
       {period ? (
-        <div className="ahwa-card p-3">
-          <div className="font-semibold">تفصيل الورديات</div>
-          <div className="mt-3">
-            <ShiftList items={period.shifts} />
-          </div>
-        </div>
+        <DrilldownSection title="تفصيل الورديات" description="عرض تشغيلي ثانوي للمراجعة الدقيقة داخل الفترة المختارة.">
+          <ShiftList items={period.shifts} />
+        </DrilldownSection>
       ) : null}
 
       <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
