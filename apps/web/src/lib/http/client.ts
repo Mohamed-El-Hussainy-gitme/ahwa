@@ -1,4 +1,5 @@
 import { resolveMessage } from '@/lib/messages/catalog';
+import { hasIntersectingTags, uniqueTags } from '@/lib/ops/cache-tags';
 
 export type ApiErrorEnvelope = {
   ok?: false;
@@ -6,9 +7,10 @@ export type ApiErrorEnvelope = {
   message?: string;
 };
 
-type RequestCacheOptions = {
+export type ApiReadCacheOptions = {
   ttlMs: number;
   key?: string;
+  tags?: readonly string[];
   forceRefresh?: boolean;
 };
 
@@ -16,16 +18,17 @@ type ApiPostOptions = {
   idempotency?: {
     scope: string;
   };
-  readCache?: RequestCacheOptions;
+  readCache?: ApiReadCacheOptions;
 };
 
 type ApiGetOptions = {
-  readCache?: RequestCacheOptions;
+  readCache?: ApiReadCacheOptions;
 };
 
 type ResponseCacheEntry = {
   payload: unknown;
   expiresAt: number;
+  tags: readonly string[];
 };
 
 const pendingIdempotentPosts = new Map<string, Promise<unknown>>();
@@ -88,7 +91,7 @@ function buildIdempotencyKey(scope: string) {
   return `${scope}:${uuid}`.slice(0, 180);
 }
 
-function buildReadCacheKey(method: 'GET' | 'POST', path: string, body: unknown, cacheOptions?: RequestCacheOptions) {
+function buildReadCacheKey(method: 'GET' | 'POST', path: string, body: unknown, cacheOptions?: ApiReadCacheOptions) {
   return cacheOptions?.key?.trim()
     ? `${method}:${cacheOptions.key.trim()}`
     : `${method}:${path}|${stableStringify(body)}`;
@@ -109,11 +112,15 @@ function readCachedPayload<T>(cacheKey: string | null): T | null {
   return cached.payload as T;
 }
 
-function storeCachedPayload(cacheKey: string | null, ttlMs: number | undefined, payload: unknown) {
-  if (!cacheKey || !ttlMs || ttlMs <= 0) {
+function storeCachedPayload(cacheKey: string | null, cacheOptions: ApiReadCacheOptions | undefined, payload: unknown) {
+  if (!cacheKey || !cacheOptions?.ttlMs || cacheOptions.ttlMs <= 0) {
     return;
   }
-  responseCache.set(cacheKey, { payload, expiresAt: Date.now() + ttlMs });
+  responseCache.set(cacheKey, {
+    payload,
+    expiresAt: Date.now() + cacheOptions.ttlMs,
+    tags: uniqueTags(cacheOptions.tags ?? []),
+  });
 }
 
 export function clearApiRequestCache(prefix?: string) {
@@ -131,6 +138,25 @@ export function clearApiRequestCache(prefix?: string) {
 
   for (const key of Array.from(pendingReadRequests.keys())) {
     if (key.includes(prefix)) {
+      pendingReadRequests.delete(key);
+    }
+  }
+}
+
+export function invalidateApiRequestCacheByTags(tags?: readonly string[]) {
+  if (!tags?.length) {
+    clearApiRequestCache();
+    return;
+  }
+
+  for (const [key, entry] of responseCache.entries()) {
+    if (hasIntersectingTags(entry.tags, tags)) {
+      responseCache.delete(key);
+    }
+  }
+
+  for (const key of Array.from(pendingReadRequests.keys())) {
+    if (tags.some((tag) => key.includes(tag))) {
       pendingReadRequests.delete(key);
     }
   }
@@ -175,7 +201,7 @@ async function performPost<T>(path: string, body: unknown = {}, options?: ApiPos
       throw new Error(extractErrorMessage(payload));
     }
 
-    storeCachedPayload(readCacheKey, options?.readCache?.ttlMs, payload);
+    storeCachedPayload(readCacheKey, options?.readCache, payload);
     return payload as T;
   };
 
@@ -243,7 +269,7 @@ export async function apiGet<T>(path: string, options?: ApiGetOptions): Promise<
       throw new Error(extractErrorMessage(payload));
     }
 
-    storeCachedPayload(readCacheKey, options?.readCache?.ttlMs, payload);
+    storeCachedPayload(readCacheKey, options?.readCache, payload);
     return payload as T;
   })().finally(() => {
     if (readCacheKey) {

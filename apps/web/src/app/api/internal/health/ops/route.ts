@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { validateCriticalEnv, getOutboxDispatchPolicy } from '@/lib/platform/env-contract';
 import { getQStashConfig } from '@/lib/platform/qstash';
 import { listConfiguredOperationalDatabasesFromEnv } from '@/lib/supabase/env';
+import { getOpsEventBusHealthSnapshot } from '@/lib/ops/event-bus/health';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -21,8 +22,7 @@ export async function GET(request: Request) {
     }
 
     const validation = validateCriticalEnv(true);
-    const driver = String(process.env.AHWA_OPS_EVENT_BUS_DRIVER ?? 'auto').trim().toLowerCase() || 'auto';
-    const redisUrl = String(process.env.AHWA_OPS_EVENT_BUS_REDIS_URL ?? '').trim();
+    const eventBusHealth = getOpsEventBusHealthSnapshot();
     const operationalDatabases = listConfiguredOperationalDatabasesFromEnv().map((item) => item.databaseKey);
     const qstash = getQStashConfig();
 
@@ -30,11 +30,7 @@ export async function GET(request: Request) {
       ok: validation.ok,
       checks: {
         env: validation,
-        eventBus: {
-          driver,
-          redisConfigured: Boolean(redisUrl),
-          redisTls: redisUrl.startsWith('rediss://'),
-        },
+        eventBus: eventBusHealth,
         outbox: {
           policy: getOutboxDispatchPolicy(),
           batchLimit: Number(process.env.AHWA_OPS_OUTBOX_DISPATCH_BATCH_LIMIT ?? '100'),

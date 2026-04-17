@@ -1,12 +1,12 @@
 'use client';
 
-type Listener = () => void;
+type Listener = (tags?: readonly string[]) => void;
 
 const listeners = new Set<Listener>();
 
-export function invalidateOpsWorkspaces() {
+export function invalidateOpsWorkspaces(tags?: readonly string[]) {
   for (const listener of listeners) {
-    listener();
+    listener(tags);
   }
 }
 

@@ -4,6 +4,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { OpsRealtimeEvent } from './types';
 import { getOpsRealtimeSnapshot, isOpsRealtimeHealthy, subscribeOpsRealtime } from './realtime';
 import { subscribeOpsInvalidation } from './invalidation';
+import { getDefaultTagsForOpsCacheKey, hasIntersectingTags, uniqueTags } from './cache-tags';
+import { getCachedWorkspace, invalidateWorkspaceCacheByTags, setCachedWorkspace } from './workspace-cache';
 
 type WorkspaceOptions = {
   enabled?: boolean;
@@ -13,6 +15,7 @@ type WorkspaceOptions = {
   pollIntervalMs?: number;
   pollWhenHidden?: boolean;
   cacheKey?: string;
+  invalidationTags?: readonly string[];
 };
 
 type ReloadMode = 'manual' | 'background';
@@ -23,13 +26,6 @@ type WorkspaceLoadContext = {
 
 const DEFAULT_STALE_TIME_MS = 30_000;
 const DEFAULT_REALTIME_DEBOUNCE_MS = 180;
-
-type WorkspaceCacheEntry = {
-  data: unknown;
-  loadedAt: number;
-};
-
-const workspaceCache = new Map<string, WorkspaceCacheEntry>();
 
 function isStale(lastLoadedAt: number | null, staleTimeMs: number, hasError: boolean) {
   if (hasError || lastLoadedAt === null) {
@@ -47,7 +43,12 @@ export function useOpsWorkspace<T>(loader: (context?: WorkspaceLoadContext) => P
     pollIntervalMs = 0,
     pollWhenHidden = false,
     cacheKey,
+    invalidationTags,
   } = options;
+  const resolvedInvalidationTags = useMemo(
+    () => uniqueTags(invalidationTags?.length ? invalidationTags : getDefaultTagsForOpsCacheKey(cacheKey)),
+    [cacheKey, invalidationTags],
+  );
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -99,9 +100,7 @@ export function useOpsWorkspace<T>(loader: (context?: WorkspaceLoadContext) => P
           setData(next);
           setError(null);
           setLastLoadedAt(loadedAt);
-          if (cacheKey) {
-            workspaceCache.set(cacheKey, { data: next, loadedAt });
-          }
+          setCachedWorkspace(cacheKey, next, loadedAt, resolvedInvalidationTags);
           return next;
         } catch (loadError) {
           const message = loadError instanceof Error ? loadError.message : 'REQUEST_FAILED';
@@ -122,7 +121,7 @@ export function useOpsWorkspace<T>(loader: (context?: WorkspaceLoadContext) => P
       inFlightRef.current = request;
       return request;
     },
-    [cacheKey, enabled, loader],
+    [cacheKey, enabled, loader, resolvedInvalidationTags],
   );
 
   const reload = useCallback(async () => runReload('manual'), [runReload]);
@@ -156,15 +155,13 @@ export function useOpsWorkspace<T>(loader: (context?: WorkspaceLoadContext) => P
       return;
     }
 
-    if (cacheKey) {
-      const cached = workspaceCache.get(cacheKey);
-      if (cached && !isStale(cached.loadedAt, staleTimeMs, false)) {
-        setData(cached.data as T);
-        setError(null);
-        setLoading(false);
-        setLastLoadedAt(cached.loadedAt);
-        return;
-      }
+    const cached = getCachedWorkspace<T>(cacheKey);
+    if (cached && !isStale(cached.loadedAt, staleTimeMs, false)) {
+      setData(cached.data);
+      setError(null);
+      setLoading(false);
+      setLastLoadedAt(cached.loadedAt);
+      return;
     }
 
     void runReload('manual');
@@ -203,7 +200,11 @@ export function useOpsWorkspace<T>(loader: (context?: WorkspaceLoadContext) => P
       scheduleBackgroundReload();
     });
 
-    const unsubscribeInvalidation = subscribeOpsInvalidation(() => {
+    const unsubscribeInvalidation = subscribeOpsInvalidation((tags) => {
+      if (tags?.length && resolvedInvalidationTags.length && !hasIntersectingTags(resolvedInvalidationTags, tags)) {
+        return;
+      }
+      invalidateWorkspaceCacheByTags(tags);
       scheduleBackgroundReload();
     });
 
@@ -229,7 +230,7 @@ export function useOpsWorkspace<T>(loader: (context?: WorkspaceLoadContext) => P
       window.removeEventListener('focus', onFocus);
       document.removeEventListener('visibilitychange', onVisible);
     };
-  }, [clearReloadTimer, enabled, scheduleBackgroundReload, shouldReloadOnEvent, shouldRevalidate, shouldUsePollingFallback]);
+  }, [clearReloadTimer, enabled, resolvedInvalidationTags, scheduleBackgroundReload, shouldReloadOnEvent, shouldRevalidate, shouldUsePollingFallback]);
 
   return useMemo(
     () => ({ data, setData, loading, error, reload, lastLoadedAt }),

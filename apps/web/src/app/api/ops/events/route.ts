@@ -5,6 +5,8 @@ import {
   isUnboundRuntimeSessionError,
 } from '@/lib/runtime/me';
 import { subscribeOpsEvents } from '@/lib/ops/events';
+import { OpsEventBusDegradedError } from '@/lib/ops/event-bus/errors';
+import { getOpsEventBusHealthSnapshot } from '@/lib/ops/event-bus/health';
 import type { OpsRealtimeEvent } from '@/lib/ops/types';
 
 export const runtime = 'nodejs';
@@ -89,18 +91,18 @@ export async function GET(req: Request) {
           return;
         }
         currentCursor = event.cursor ?? event.id ?? currentCursor;
-        safeEnqueue(`event: ops
-id: ${event.cursor ?? event.id}
-data: ${JSON.stringify(event)}
-
-`);
+        safeEnqueue(`event: ops\nid: ${event.cursor ?? event.id}\ndata: ${JSON.stringify(event)}\n\n`);
       };
-      const gracefulReconnect = (reason: string) => {
-        const payload = JSON.stringify({ cafeId, ok: true, reason, cursor: currentCursor });
-        safeEnqueue(`event: reconnect
-data: ${payload}
 
-`);
+      const gracefulReconnect = (reason: string, includeHealth = false) => {
+        const payload = JSON.stringify({
+          cafeId,
+          ok: reason.startsWith('polling-fallback:') ? false : true,
+          reason,
+          cursor: currentCursor,
+          ...(includeHealth ? { health: getOpsEventBusHealthSnapshot() } : {}),
+        });
+        safeEnqueue(`event: reconnect\ndata: ${payload}\n\n`);
         stop();
         try {
           controller.close();
@@ -115,10 +117,8 @@ data: ${payload}
         { once: true },
       );
 
-      if (!safeEnqueue(`event: ready
-data: ${JSON.stringify({ cafeId, ok: true, cursor: lastCursor })}
-
-`)) {
+      const health = getOpsEventBusHealthSnapshot();
+      if (!safeEnqueue(`event: ready\ndata: ${JSON.stringify({ cafeId, ok: true, cursor: lastCursor, transport: health.activeDriver, degraded: health.circuitOpen || !health.redisUrlValid })}\n\n`)) {
         return;
       }
 
@@ -128,18 +128,26 @@ data: ${JSON.stringify({ cafeId, ok: true, cursor: lastCursor })}
             cafeId,
             cursor: lastCursor,
             signal: abortController.signal,
-            onError: () => {
-              safeEnqueue(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false, reason: 'subscription-error' })}\n\n`);
+            onError: (error) => {
+              const snapshot = getOpsEventBusHealthSnapshot();
+              gracefulReconnect(
+                snapshot.circuitOpen
+                  ? 'polling-fallback:circuit-open'
+                  : `polling-fallback:${error instanceof Error && error.message ? error.message : 'subscription-error'}`,
+                true,
+              );
             },
           },
           send,
         );
-      } catch {
-        safeEnqueue(`event: reconnect\ndata: ${JSON.stringify({ cafeId, ok: false, reason: 'subscribe-failed' })}\n\n`);
-        stop();
-        try {
-          controller.close();
-        } catch {}
+      } catch (error) {
+        const snapshot = getOpsEventBusHealthSnapshot();
+        const reason = error instanceof OpsEventBusDegradedError
+          ? `polling-fallback:${error.reason}`
+          : snapshot.circuitOpen
+            ? 'polling-fallback:circuit-open'
+            : 'subscribe-failed';
+        gracefulReconnect(reason, true);
         return;
       }
 

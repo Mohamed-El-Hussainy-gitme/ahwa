@@ -3,24 +3,7 @@ import Redis from 'ioredis';
 import type { OpsRealtimeEvent } from '@/lib/ops/types';
 import { getOpsEventStreamName, normalizeOpsRealtimeEvent } from './schema';
 import type { OpsEventBus, OpsEventBusListener, OpsEventBusSubscribeOptions } from './types';
-
-function env(name: string, fallback = '') {
-  const value = process.env[name];
-  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
-}
-
-function getRedisUrl() {
-  return env('AHWA_OPS_EVENT_BUS_REDIS_URL');
-}
-
-function getRedisPrefix() {
-  return env('AHWA_OPS_EVENT_BUS_REDIS_PREFIX', 'ahwa');
-}
-
-function getRedisMaxLen() {
-  const parsed = Number(env('AHWA_OPS_EVENT_BUS_REDIS_MAXLEN', '20000'));
-  return Number.isFinite(parsed) && parsed >= 100 ? Math.trunc(parsed) : 20000;
-}
+import { getOpsEventBusConfig } from './config';
 
 const REDIS_PUBLISHER_KEY = '__ahwa_ops_event_bus_redis_publisher__';
 
@@ -28,24 +11,35 @@ type GlobalRedisScope = typeof globalThis & {
   [REDIS_PUBLISHER_KEY]?: Redis;
 };
 
+function getRedisUrl() {
+  const config = getOpsEventBusConfig();
+  if (!config.redis.normalized) {
+    throw new Error(config.redis.error ?? 'AHWA_OPS_EVENT_BUS_REDIS_URL is required when the Redis event bus driver is enabled');
+  }
+  return config.redis.normalized;
+}
+
+function createRedisClient(url: string) {
+  return new Redis(url, {
+    lazyConnect: true,
+    maxRetriesPerRequest: null,
+    enableReadyCheck: true,
+    enableOfflineQueue: false,
+    connectTimeout: 10_000,
+  });
+}
+
 function getPublisher() {
   const scope = globalThis as GlobalRedisScope;
   const url = getRedisUrl();
-  if (!url) {
-    throw new Error('AHWA_OPS_EVENT_BUS_REDIS_URL is required when the Redis event bus driver is enabled');
-  }
   if (!scope[REDIS_PUBLISHER_KEY]) {
-    scope[REDIS_PUBLISHER_KEY] = new Redis(url, {
-      lazyConnect: true,
-      maxRetriesPerRequest: 3,
-      enableReadyCheck: true,
-    });
+    scope[REDIS_PUBLISHER_KEY] = createRedisClient(url);
   }
   return scope[REDIS_PUBLISHER_KEY] as Redis;
 }
 
 async function ensureConnected(redis: Redis) {
-  if (redis.status === 'ready' || redis.status === 'connecting') {
+  if (redis.status === 'ready' || redis.status === 'connecting' || redis.status === 'connect') {
     return;
   }
   await redis.connect();
@@ -66,15 +60,16 @@ function fieldsToObject(fields: string[]) {
 export function createRedisOpsEventBus(): OpsEventBus {
   return {
     async publish(event: OpsRealtimeEvent) {
+      const config = getOpsEventBusConfig();
       const publisher = getPublisher();
       await ensureConnected(publisher);
-      const stream = getOpsEventStreamName(event.cafeId, getRedisPrefix());
+      const stream = getOpsEventStreamName(event.cafeId, config.redisPrefix);
       const next = normalizeOpsRealtimeEvent({ ...event, stream });
       const cursor = await publisher.xadd(
         stream,
         'MAXLEN',
         '~',
-        String(getRedisMaxLen()),
+        String(config.redisMaxLen),
         '*',
         'payload',
         JSON.stringify(next),
@@ -82,19 +77,10 @@ export function createRedisOpsEventBus(): OpsEventBus {
       return { ...next, cursor, stream } satisfies OpsRealtimeEvent;
     },
     async subscribe(options: OpsEventBusSubscribeOptions, listener: OpsEventBusListener) {
-      const url = getRedisUrl();
-      if (!url) {
-        throw new Error('AHWA_OPS_EVENT_BUS_REDIS_URL is required when the Redis event bus driver is enabled');
-      }
-
-      const redis = new Redis(url, {
-        lazyConnect: true,
-        maxRetriesPerRequest: null,
-        enableReadyCheck: true,
-      });
+      const redis = createRedisClient(getRedisUrl());
       await ensureConnected(redis);
 
-      const stream = getOpsEventStreamName(options.cafeId, getRedisPrefix());
+      const stream = getOpsEventStreamName(options.cafeId, getOpsEventBusConfig().redisPrefix);
       let active = true;
       let cursor = String(options.cursor ?? '').trim() || '$';
 
