@@ -364,34 +364,34 @@ export function MobileShell({
     desktopMode === 'mobile'
       ? 'max-w-md'
       : desktopMode === 'admin'
-        ? 'max-w-[min(1680px,calc(100vw-3rem))]'
+        ? 'max-w-md xl:max-w-[min(1680px,calc(100vw-3rem))]'
         : desktopMode === 'ops'
-          ? 'max-w-[min(1900px,calc(100vw-2rem))]'
-          : 'max-w-[min(1440px,calc(100vw-3rem))]';
+          ? 'max-w-md xl:max-w-[min(1900px,calc(100vw-2rem))]'
+          : 'max-w-md xl:max-w-[min(1440px,calc(100vw-3rem))]';
   const shellFrameClass =
     desktopMode === 'mobile'
       ? 'md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)]'
       : desktopMode === 'ops'
-        ? 'lg:my-3 lg:min-h-[calc(100dvh-1.5rem)] lg:rounded-[32px] lg:border lg:border-[#d9cabb] lg:shadow-[0_28px_72px_rgba(30,23,18,0.12)] xl:rounded-[36px]'
-        : 'lg:my-4 lg:min-h-[calc(100dvh-2rem)] lg:rounded-[32px] lg:border lg:border-[#d9cabb] lg:shadow-[0_28px_72px_rgba(30,23,18,0.12)] xl:rounded-[36px]';
+        ? 'xl:my-3 xl:min-h-[calc(100dvh-1.5rem)] xl:rounded-[32px] xl:border xl:border-[#d9cabb] xl:shadow-[0_28px_72px_rgba(30,23,18,0.12)] 2xl:rounded-[36px]'
+        : 'xl:my-4 xl:min-h-[calc(100dvh-2rem)] xl:rounded-[32px] xl:border xl:border-[#d9cabb] xl:shadow-[0_28px_72px_rgba(30,23,18,0.12)] 2xl:rounded-[36px]';
   const headerPaddingClass =
     desktopMode === 'mobile'
       ? 'px-4 py-3'
       : desktopMode === 'ops'
-        ? 'px-4 py-3 lg:px-6 lg:py-4 xl:px-8 2xl:px-10'
-        : 'px-4 py-3 lg:px-5 lg:py-4 xl:px-7';
+        ? 'px-4 py-3 xl:px-6 xl:py-4 2xl:px-8'
+        : 'px-4 py-3 xl:px-5 xl:py-4 2xl:px-7';
   const mainPaddingClass =
     desktopMode === 'mobile'
       ? 'px-3 pt-3'
       : desktopMode === 'ops'
-        ? 'px-3 pt-3 lg:px-6 lg:pt-5 xl:px-8 xl:pt-6 2xl:px-10'
-        : 'px-3 pt-3 lg:px-5 lg:pt-5 xl:px-7 xl:pt-6';
+        ? 'px-3 pt-3 xl:px-6 xl:pt-5 2xl:px-8 2xl:pt-6'
+        : 'px-3 pt-3 xl:px-5 xl:pt-5 2xl:px-7 2xl:pt-6';
   const dockPaddingClass =
     desktopMode === 'mobile'
       ? 'px-2'
       : desktopMode === 'ops'
-        ? 'px-3 lg:px-6 xl:px-8 2xl:px-10'
-        : 'px-3 lg:px-5 xl:px-7';
+        ? 'px-2 xl:px-6 2xl:px-8'
+        : 'px-2 xl:px-5 2xl:px-7';
 
   const stickyFooterOffset = useMemo(() => {
     const bottomNavHeight = bottomNavBox.height || 82;
@@ -435,7 +435,7 @@ export function MobileShell({
           {(quickMetrics.length || pathname !== '/owner') ? (
             <div className="mt-3 flex items-start gap-2">
               {quickMetrics.length ? (
-                <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible">
+                <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 xl:flex-wrap xl:overflow-visible">
                   {quickMetrics.map((metric) => {
                     const content = (
                       <>

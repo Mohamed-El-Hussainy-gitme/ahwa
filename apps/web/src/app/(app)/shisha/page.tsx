@@ -321,7 +321,7 @@ export default function ShishaPage() {
       desktopMode="ops"
       stickyFooter={
         <StickyActionBar>
-          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div className="flex items-center justify-between gap-3 xl:gap-4">
             <div className="min-w-0 text-right">
               <div className="text-sm font-semibold text-[#1e1712]">
                 {creatingNew ? (label ? `جلسة جديدة: ${label}` : 'جلسة جديدة') : currentSessionLabel || 'اختر جلسة شيشة'}
@@ -331,7 +331,7 @@ export default function ShishaPage() {
               </div>
               {orderNotes ? <div className="mt-1 line-clamp-1 text-xs font-semibold text-[#9b6b2e]">ملاحظة الطلب: {orderNotes}</div> : null}
             </div>
-            <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex shrink-0 items-center gap-2">
               <button
                 type="button"
                 onClick={openNoteComposer}
@@ -374,7 +374,7 @@ export default function ShishaPage() {
           </div>
 
           {sessions.length ? (
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2 xl:grid-cols-2 2xl:grid-cols-3">
               {sessions.map((session) => {
                 const active = !creatingNew && effectiveSessionId === session.id;
                 return (
@@ -433,7 +433,7 @@ export default function ShishaPage() {
           </div>
 
           {filteredProducts.length ? (
-            <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid grid-cols-2 gap-2 xl:grid-cols-2 2xl:grid-cols-3">
               {filteredProducts.map((product) => (
                 <div key={product.id} className="rounded-[20px] border border-[#e1d4c4] bg-[#fffdf8] p-3 shadow-[0_8px_24px_rgba(30,23,18,0.05)]">
                   <div className="text-sm font-semibold text-[#1e1712]">{product.name}</div>
@@ -559,7 +559,7 @@ export default function ShishaPage() {
 
       {composerOpen ? (
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-[#1e1712]/45 p-3 sm:items-center">
-          <div className="w-full max-w-[min(40rem,calc(100vw-2rem))] rounded-[28px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
+          <div className="w-full max-w-md xl:max-w-[min(40rem,calc(100vw-2rem))] rounded-[28px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
             <div className="text-right">
               <div className="text-base font-black text-[#1e1712]">تعريف جلسة جديدة</div>
               <div className="mt-1 text-sm text-[#7d6a59]">اكتب اسمًا أو رقمًا واضحًا لجلسة الشيشة لتسهيل العودة إليها أثناء التشغيل.</div>
@@ -588,7 +588,7 @@ export default function ShishaPage() {
 
       {noteOpen ? (
         <div className="fixed inset-0 z-[72] flex items-end justify-center bg-[#1e1712]/45 p-3 sm:items-center">
-          <div className="w-full max-w-[min(40rem,calc(100vw-2rem))] rounded-[28px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
+          <div className="w-full max-w-md xl:max-w-[min(40rem,calc(100vw-2rem))] rounded-[28px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
             <div className="text-right">
               <div className="text-base font-black text-[#1e1712]">ملاحظة الطلب</div>
               <div className="mt-1 text-sm text-[#7d6a59]">أضف ملاحظة للكابتن أوردر أو لمحطة الشيشة، وسيتم إرسالها مع هذه الدفعة.</div>

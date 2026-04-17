@@ -224,7 +224,7 @@ export default function OwnerCustomerDetailPage() {
         </div>
       </section>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-2">
+      <section className="mt-4 grid gap-4 xl:grid-cols-2">
         <InsightCard title="الطلبات المرشحة" hint="من التاريخ المؤكد فقط.">
           {(workspace?.recommendedProducts ?? []).length === 0 ? (
             <EmptyText text="لا توجد جلسات ترحيل كافية لاستخراج أصناف مرشحة بعد." />
@@ -262,7 +262,7 @@ export default function OwnerCustomerDetailPage() {
         </InsightCard>
       </section>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-2">
+      <section className="mt-4 grid gap-4 xl:grid-cols-2">
         <InsightCard title="ملاحظات متكررة" hint="ملاحظات متكررة.">
           {(workspace?.recommendedNotes ?? []).length === 0 ? (
             <EmptyText text="لا توجد ملاحظات متكررة مؤكدة بعد." />
@@ -300,7 +300,7 @@ export default function OwnerCustomerDetailPage() {
         </InsightCard>
       </section>
 
-      <section className="mt-4 grid gap-4 lg:grid-cols-2">
+      <section className="mt-4 grid gap-4 xl:grid-cols-2">
         <InsightCard title="آخر جلسات مترابطة" hint="آخر جلسات مرتبطة.">
           {(workspace?.recentSessions ?? []).length === 0 ? (
             <EmptyText text="لا توجد جلسات مرحّلة مرتبطة بعد." />
@@ -351,7 +351,7 @@ function InsightCard({ title, hint, children }: { title: string; hint?: string; 
     <section className={[opsSurface, 'p-4'].join(' ')}>
       <div className="text-right">
         <div className={opsSectionTitle}>{title}</div>
-        {hint ? <div className={[opsSectionHint, 'mt-1 hidden lg:block'].join(' ')}>{hint}</div> : null}
+        {hint ? <div className={[opsSectionHint, 'mt-1 hidden xl:block'].join(' ')}>{hint}</div> : null}
       </div>
       <div className="mt-4">{children}</div>
     </section>

@@ -175,7 +175,7 @@ export default function OwnerCustomersPage() {
         </div>
       </section>
 
-      <section className={[opsSurface, 'mt-4 p-4 lg:p-5'].join(' ')}>
+      <section className={[opsSurface, 'mt-4 p-4'].join(' ')}>
         <div className="flex items-start justify-between gap-3">
           <div className="text-right">
             <div className={opsSectionTitle}>{selectedId ? 'تعديل ملف عميل' : 'إضافة عميل جديد'}</div>
@@ -238,7 +238,7 @@ export default function OwnerCustomersPage() {
         </div>
       </section>
 
-      <section className={[opsSurface, 'mt-4 p-4 lg:p-5'].join(' ')}>
+      <section className={[opsSurface, 'mt-4 p-4'].join(' ')}>
         <div className="flex items-start justify-between gap-3">
           <div className="text-right">
             <div className={opsSectionTitle}>الملفات الحالية</div>
@@ -249,7 +249,7 @@ export default function OwnerCustomersPage() {
           <div className={opsBadge('info')}>{filteredItems.length} نتيجة</div>
         </div>
 
-        <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] xl:items-start">
+        <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px] xl:grid-cols-[minmax(260px,320px)_minmax(0,1fr)] xl:items-start">
           <div className={[opsInset, 'order-2 p-3 xl:order-1'].join(' ')}>
             <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px]">
               <input

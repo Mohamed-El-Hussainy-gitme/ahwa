@@ -91,7 +91,7 @@ export default function KitchenPage() {
           </div>
           <div className={opsBadge('accent')}>تحضير مباشر</div>
         </div>
-        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+        <div className="mt-3 grid grid-cols-3 gap-2">
           <div className={opsMetricCard('warning')}>
             <div className="text-[11px] font-semibold opacity-70">قيد الانتظار</div>
             <div className="mt-1 text-xl font-black leading-none">{totalWaiting}</div>
@@ -107,7 +107,7 @@ export default function KitchenPage() {
         </div>
       </section>
 
-      <section id="queue-panel" className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
+      <section id="queue-panel" className="space-y-3 xl:grid xl:grid-cols-2 xl:gap-3 xl:space-y-0 2xl:grid-cols-3">
         {(data?.queue ?? []).map((item) => {
           const qty = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, item.qtyWaiting));
           const parsedNotes = parseOrderItemNotes(item.notes);
