@@ -14,6 +14,7 @@ import { SessionRemakePanel } from '@/ui/ops/SessionRemakePanel';
 import { StickyActionBar } from '@/ui/StickyActionBar';
 import { ProductAddonPicker, type ProductAddonOption } from '@/ui/ProductAddonPicker';
 import { clampPositive, sessionItemsForSession } from '@/ui/ops/sessionHelpers';
+import { QuickSessionLabelGrid } from '@/ui/ops/QuickSessionLabelGrid';
 import { shouldReloadWaiterCatalogWorkspace, shouldReloadWaiterLiveWorkspace } from '@/lib/ops/reload-rules';
 import {
   opsAccentButton,
@@ -763,19 +764,7 @@ export default function OrdersPage() {
               onKeyDown={(event) => handleDialogSubmitKeyDown(event, confirmComposer)}
             />
             <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولد النظام اسمًا تلقائيًا.</div>
-            {sessionLabelSuggestions.length ? (
-              <div className="mt-4">
-                <div className="mb-2 text-right text-xs font-semibold text-[#7d6a59]">اختيار سريع من الجلسات المستخدمة سابقًا</div>
-                <div className="grid gap-2 sm:grid-cols-2">
-                  {sessionLabelSuggestions.map((item) => (
-                    <button key={`${item.label}-${item.lastUsedAt ?? ''}`} type="button" onClick={() => applyRecentSessionLabel(item.label)} className="rounded-[18px] border border-[#dac9b6] bg-[#fffaf3] px-3 py-3 text-right transition hover:border-[#9b6b2e] hover:bg-[#fff6ea]">
-                      <div className="text-sm font-bold text-[#1e1712]">{item.label}</div>
-                      <div className="mt-1 text-[11px] text-[#7d6a59]">آخر استخدام {formatClockLabel(item.lastUsedAt)} • {item.usageCount} مرات</div>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            <QuickSessionLabelGrid items={sessionLabelSuggestions} onSelect={applyRecentSessionLabel} />
             <div className="mt-4 flex gap-2">
               <button type="button" onClick={cancelComposer} className={[opsGhostButton, 'flex-1 justify-center'].join(' ')}>
                 إلغاء

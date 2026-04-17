@@ -21,6 +21,7 @@ import { clampPositive, readyItemsForStation, sessionItemsForSession } from '@/u
 import { playOpsNotificationSignal } from '@/lib/ops/notifications';
 import { shouldReloadStationWorkspace, shouldReloadWaiterCatalogWorkspace, shouldReloadWaiterLiveWorkspace } from '@/lib/ops/reload-rules';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
+import { QuickSessionLabelGrid } from '@/ui/ops/QuickSessionLabelGrid';
 import {
   opsAccentButton,
   opsAlert,
@@ -90,6 +91,7 @@ export default function ShishaPage() {
   const previousQueueQtyRef = useRef(0);
 
   const notePresets = liveData?.notePresets ?? [];
+  const sessionLabelSuggestions = liveData?.recentSessionLabels ?? [];
   const composerInputRef = useRef<HTMLInputElement | null>(null);
   const noteTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
@@ -297,6 +299,17 @@ export default function ShishaPage() {
     setCreatingNew(true);
     setSessionId('');
     setLabel(composerLabel.trim());
+    setSessionWarning(null);
+    setComposerOpen(false);
+  }
+
+  function applyRecentSessionLabel(nextLabel: string) {
+    const normalized = nextLabel.trim();
+    if (!normalized) return;
+    setComposerLabel(normalized);
+    setCreatingNew(true);
+    setSessionId('');
+    setLabel(normalized);
     setSessionWarning(null);
     setComposerOpen(false);
   }
@@ -574,6 +587,7 @@ export default function ShishaPage() {
               onKeyDown={(event) => handleDialogSubmitKeyDown(event, confirmComposer)}
             />
             <div className="mt-2 text-right text-xs text-[#7d6a59]">يمكن ترك الاسم فارغًا ليولد النظام اسمًا تلقائيًا.</div>
+            <QuickSessionLabelGrid items={sessionLabelSuggestions} onSelect={applyRecentSessionLabel} />
             <div className="mt-4 flex gap-2">
               <button type="button" onClick={cancelComposer} className={[opsGhostButton, 'flex-1 justify-center'].join(' ')}>
                 إلغاء
