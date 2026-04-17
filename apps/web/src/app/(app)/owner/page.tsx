@@ -10,6 +10,7 @@ import { AppIcon } from '@/ui/icons/AppIcon';
 const cards = [
   { href: '/shift', title: 'الوردية', icon: 'clock', description: 'فتح وتقفيل الوردية وتوزيع الأدوار على الفريق.' },
   { href: '/owner/customers', title: 'ملف العملاء', icon: 'users', description: 'بيانات الزبائن الأساسية: الهاتف، العنوان، والمشروب المفضل.' },
+  { href: '/inventory', title: 'المخزن', icon: 'building', description: 'الخامات، الحركات، والموردون داخل المخزن.' },
   { href: '/customers', title: 'دفتر الآجل', icon: 'users', description: 'الأرصدة، السداد، وحركة العملاء اليومية.' },
   { href: '/complaints', title: 'الشكاوى', icon: 'lifebuoy', description: 'المعالجة والإعادة ومراجعة مستوى الخدمة.' },
   { href: '/staff', title: 'فريق العمل', icon: 'crown', description: 'البيانات، الحالة، والصلاحيات التشغيلية.' },

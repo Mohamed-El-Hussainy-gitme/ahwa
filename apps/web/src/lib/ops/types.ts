@@ -157,6 +157,125 @@ export type CustomerIntelligenceWorkspace = {
   recommendedBaskets: CustomerRecommendedBasket[];
 };
 
+
+export type InventoryStockStatus = 'ok' | 'low' | 'empty' | 'inactive';
+export type InventoryMovementKind = 'inbound' | 'outbound' | 'waste' | 'adjustment';
+
+export type InventoryItem = {
+  id: string;
+  itemName: string;
+  normalizedName: string;
+  itemCode: string | null;
+  categoryLabel: string | null;
+  unitLabel: string;
+  currentBalance: number;
+  lowStockThreshold: number;
+  notes: string | null;
+  isActive: boolean;
+  lastMovementAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  stockStatus: InventoryStockStatus;
+};
+
+export type InventorySupplier = {
+  id: string;
+  supplierName: string;
+  normalizedName: string;
+  phone: string | null;
+  notes: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type InventoryMovement = {
+  id: string;
+  inventoryItemId: string;
+  itemName: string;
+  supplierId: string | null;
+  supplierName: string | null;
+  movementKind: InventoryMovementKind;
+  deltaQuantity: number;
+  unitLabel: string;
+  notes: string | null;
+  occurredAt: string;
+  createdAt: string;
+};
+
+export type InventoryMenuProductSummary = {
+  id: string;
+  name: string;
+  stationCode: StationCode;
+  isActive: boolean;
+};
+
+export type InventoryMenuAddonSummary = {
+  id: string;
+  name: string;
+  stationCode: StationCode;
+  isActive: boolean;
+};
+
+export type InventoryProductRecipe = {
+  id: string;
+  menuProductId: string;
+  productName: string;
+  stationCode: StationCode;
+  inventoryItemId: string;
+  inventoryItemName: string;
+  unitLabel: string;
+  quantityPerUnit: number;
+  wastagePercent: number;
+  notes: string | null;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+export type InventoryAddonRecipe = {
+  id: string;
+  menuAddonId: string;
+  addonName: string;
+  stationCode: StationCode;
+  inventoryItemId: string;
+  inventoryItemName: string;
+  unitLabel: string;
+  quantityPerUnit: number;
+  wastagePercent: number;
+  notes: string | null;
+  isActive: boolean;
+  updatedAt: string;
+};
+
+export type InventoryEstimatedConsumptionItem = {
+  inventoryItemId: string;
+  itemName: string;
+  unitLabel: string;
+  currentBalance: number;
+  lowStockThreshold: number;
+  stockStatus: InventoryStockStatus;
+  estimatedFromProducts: number;
+  estimatedFromAddons: number;
+  estimatedTotal: number;
+  recordedOutflow: number;
+  varianceQuantity: number;
+  avgDailyConsumption: number;
+  coverageDays: number | null;
+  recipeCount: number;
+};
+
+export type InventoryWorkspace = {
+  items: InventoryItem[];
+  suppliers: InventorySupplier[];
+  recentMovements: InventoryMovement[];
+  menuProducts: InventoryMenuProductSummary[];
+  menuAddons: InventoryMenuAddonSummary[];
+  productRecipes: InventoryProductRecipe[];
+  addonRecipes: InventoryAddonRecipe[];
+  estimatedConsumption: InventoryEstimatedConsumptionItem[];
+  analysisWindowDays: number;
+};
+
 export type ShiftKind = 'morning' | 'evening';
 export type ShiftRoleCode = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 export type ShiftTemplateAssignment = { userId: string; role: ShiftRoleCode; actorType: 'owner' | 'staff'; fullName: string | null; isActive: boolean; employmentStatus?: StaffEmploymentStatus };
