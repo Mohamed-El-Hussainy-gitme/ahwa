@@ -227,7 +227,7 @@ export default function OwnerCustomerDetailPage() {
       <section className="mt-4 grid gap-4 xl:grid-cols-2">
         <InsightCard title="الطلبات المرشحة" hint="من التاريخ المؤكد فقط.">
           {(workspace?.recommendedProducts ?? []).length === 0 ? (
-            <EmptyText text="لا توجد جلسات ترحيل كافية لاستخراج أصناف مرشحة بعد." />
+            <EmptyText text="لا توجد جلسات مرتبطة كفاية لاستخراج أصناف مرشحة بعد." />
           ) : (
             <div className="space-y-2">
               {workspace?.recommendedProducts.map((item) => (
@@ -303,7 +303,7 @@ export default function OwnerCustomerDetailPage() {
       <section className="mt-4 grid gap-4 xl:grid-cols-2">
         <InsightCard title="آخر جلسات مترابطة" hint="آخر جلسات مرتبطة.">
           {(workspace?.recentSessions ?? []).length === 0 ? (
-            <EmptyText text="لا توجد جلسات مرحّلة مرتبطة بعد." />
+            <EmptyText text="لا توجد جلسات مرتبطة بعد." />
           ) : (
             <div className="space-y-2">
               {workspace?.recentSessions.map((session) => (

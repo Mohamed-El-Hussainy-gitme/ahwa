@@ -1,6 +1,8 @@
 export type StationCode = 'barista' | 'shisha';
 export type OpsShift = { id: string; kind: string; status: string; openedAt: string };
-export type OpsSessionSummary = { id: string; label: string; status: string; openedAt: string; billableCount: number; readyCount: number };
+export type LinkedCustomerSummary = { id: string; fullName: string; phoneRaw: string; favoriteDrinkLabel: string | null };
+export type RecentSessionLabel = { label: string; lastUsedAt: string | null; usageCount: number };
+export type OpsSessionSummary = { id: string; label: string; status: string; openedAt: string; billableCount: number; readyCount: number; linkedCustomer?: LinkedCustomerSummary | null };
 export type OpsSection = { id: string; title: string; stationCode: StationCode; sortOrder: number; isActive?: boolean };
 export type OpsProduct = { id: string; sectionId: string; name: string; stationCode: StationCode; unitPrice: number; sortOrder: number; isActive?: boolean; isAvailable?: boolean };
 export type MenuAddon = { id: string; name: string; stationCode: StationCode; unitPrice: number; sortOrder: number; isActive?: boolean };
@@ -40,7 +42,7 @@ export type SessionOrderItem = {
   notes?: string | null;
 };
 export type WaiterCatalogWorkspace = { sections: OpsSection[]; products: OpsProduct[]; addons: MenuAddon[]; productAddonLinks: ProductAddonLink[] };
-export type WaiterLiveWorkspace = { shift: OpsShift | null; sessions: OpsSessionSummary[]; readyItems: ReadyItem[]; sessionItems: SessionOrderItem[]; notePresets: string[] };
+export type WaiterLiveWorkspace = { shift: OpsShift | null; sessions: OpsSessionSummary[]; readyItems: ReadyItem[]; sessionItems: SessionOrderItem[]; notePresets: string[]; recentSessionLabels: RecentSessionLabel[] };
 export type WaiterWorkspace = WaiterLiveWorkspace & WaiterCatalogWorkspace;
 export type StationQueueItem = { orderItemId: string; serviceSessionId: string; sessionLabel: string; productName: string; stationCode: StationCode; qtyWaitingOriginal: number; qtyWaitingReplacement: number; qtyWaiting: number; qtyReady: number; qtyDelivered: number; qtyReplacementDelivered: number; createdAt: string; notes?: string | null };
 export type StationWorkspace = { shift: OpsShift | null; stationCode: StationCode; queue: StationQueueItem[] };
@@ -50,7 +52,7 @@ export type BillingTotals = { subtotal: number; taxAmount: number; serviceAmount
 export type BillingReceiptLineAddon = { addonName: string; quantity: number; unitPrice: number; lineAmount: number };
 export type BillingReceiptLine = { orderItemId: string; productName: string; quantity: number; unitPrice: number; baseUnitPrice: number; baseLineAmount: number; lineAmount: number; addons: BillingReceiptLineAddon[]; notes?: string | null };
 export type BillingReceipt = { mode: 'preview' | 'final'; paymentId: string | null; paymentKind: 'cash' | 'deferred' | 'mixed' | 'repayment' | 'adjustment' | 'preview'; sessionId: string; sessionLabel: string; cafeName: string; debtorName: string | null; notes: string | null; createdAt: string; actorLabel: string; totals: BillingTotals; settings: BillingExtrasSettings; lines: BillingReceiptLine[] };
-export type BillingSession = { sessionId: string; sessionLabel: string; items: BillableItem[]; totalBillableAmount: number; totalBillableQty: number };
+export type BillingSession = { sessionId: string; sessionLabel: string; items: BillableItem[]; totalBillableAmount: number; totalBillableQty: number; linkedCustomer?: LinkedCustomerSummary | null };
 export type BillingWorkspace = { shift: OpsShift | null; sessions: BillingSession[]; deferredNames: string[]; billingSettings: BillingExtrasSettings };
 export type OperatingSettings = { businessDayStartTime: string; businessDayStartMinutes: number; timezone: string; currentBusinessDate: string; operationalWindowLabel: string };
 export type CustomerProfile = {

@@ -31,6 +31,7 @@ import type {
   BillingWorkspace,
 } from '@/lib/ops/types';
 import { normalizeNullableStationCode, normalizeStationCode } from '@/lib/ops/stations';
+import { listRecentSessionLabels, loadSessionCustomerLookup } from '@/lib/ops/owner-admin';
 
 type WaiterWorkspaceScope = {
   productStationCodes?: readonly StationCode[] | null;
@@ -317,6 +318,8 @@ export async function buildWaiterWorkspace(
   const includeSessionItems = scope.includeSessionItems !== false;
   const includeReadyItems = scope.includeReadyItems !== false;
   const sessions = normalizedShift ? await loadOpenSessions(cafeId, normalizedShift.id, databaseKey) : [];
+  const openSessionCustomerLookup = await loadSessionCustomerLookup({ cafeId, databaseKey }, sessions.map((session) => session.id));
+  const recentSessionLabels = await listRecentSessionLabels({ cafeId, databaseKey });
   const notePresets = await loadOrderNotePresets(cafeId, databaseKey, scope.sessionItemStationCodes ?? scope.productStationCodes ?? null);
 
   let sections: OpsSection[] = [];
@@ -425,7 +428,12 @@ export async function buildWaiterWorkspace(
         .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     : [];
 
-  return { shift: normalizedShift, sessions, sections, products, addons, productAddonLinks, sessionItems, readyItems, notePresets };
+  const sessionsWithCustomers = sessions.map((session) => ({
+    ...session,
+    linkedCustomer: openSessionCustomerLookup.get(session.id) ?? null,
+  }));
+
+  return { shift: normalizedShift, sessions: sessionsWithCustomers, sections, products, addons, productAddonLinks, sessionItems, readyItems, notePresets, recentSessionLabels };
 }
 
 export async function buildReadyItemsWorkspace(cafeId: string, databaseKey: string, scope: WaiterWorkspaceScope = {}): Promise<ReadyItem[]> {
@@ -457,7 +465,7 @@ export async function buildWaiterLiveWorkspace(cafeId: string, databaseKey: stri
     includeSessionItems: true,
     includeReadyItems: true,
   });
-  return { shift: workspace.shift, sessions: workspace.sessions, sessionItems: workspace.sessionItems, readyItems: workspace.readyItems, notePresets: workspace.notePresets };
+  return { shift: workspace.shift, sessions: workspace.sessions, sessionItems: workspace.sessionItems, readyItems: workspace.readyItems, notePresets: workspace.notePresets, recentSessionLabels: workspace.recentSessionLabels };
 }
 
 export async function buildStationWorkspace(cafeId: string, stationCode: StationCode, databaseKey: string): Promise<StationWorkspace> {
@@ -590,6 +598,7 @@ export async function buildBillingWorkspace(cafeId: string, databaseKey: string)
     loadDeferredCustomerSummaryRows(cafeId, databaseKey),
     loadBillingSettings(cafeId, databaseKey),
   ]);
+  const sessionCustomerLookup = await loadSessionCustomerLookup({ cafeId, databaseKey }, openSessionIds);
   const bySession = new Map<string, BillingSession>();
   for (const item of items) {
     const key = item.serviceSessionId;
@@ -599,6 +608,7 @@ export async function buildBillingWorkspace(cafeId: string, databaseKey: string)
       items: [],
       totalBillableAmount: 0,
       totalBillableQty: 0,
+      linkedCustomer: sessionCustomerLookup.get(item.serviceSessionId) ?? null,
     };
     current.items.push(item);
     current.totalBillableQty += item.qtyBillable;

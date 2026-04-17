@@ -86,6 +86,8 @@ export const opsClient = {
   deferredCustomerLedger: (debtorName: string, options?: ReadCacheOverride) => post<DeferredCustomerLedgerWorkspace>('/api/ops/workspaces/deferred-customer-ledger', { debtorName }, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.deferredLedger, key: `ops:deferred-ledger:${debtorName.trim()}` }, options) }),
   customerLookupProfiles: (options?: ReadCacheOverride) => get<{ items: CustomerProfile[] }>('/api/ops/customer-profiles/lookup', { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.deferredCustomers, key: 'ops:customer-lookup' }, options) }),
   ownerCustomerIntelligence: (customerId: string, options?: ReadCacheOverride) => get<{ workspace: CustomerIntelligenceWorkspace }>(`/api/owner/customers/${encodeURIComponent(customerId)}/intelligence`, { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.deferredLedger, key: `owner:customer-intelligence:${customerId}` }, options) }),
+  linkSessionCustomer: (input: { serviceSessionId: string; customerId: string }) => mutate(post<{ ok: true }>('/api/ops/sessions/customer-link', input), { invalidate: true }),
+  unlinkSessionCustomer: (serviceSessionId: string) => mutate(post<{ ok: true }>('/api/ops/sessions/customer-unlink', { serviceSessionId }), { invalidate: true }),
 
   ownerOnboardingGuide: (options?: ReadCacheOverride) => get<OwnerOnboardingGuide>('/api/owner/onboarding/guide', { readCache: withReadCache({ ttlMs: READ_CACHE_TTL_MS.onboardingGuide, key: 'owner:onboarding-guide' }, options) }),
   saveBillingSettings: (input: BillingExtrasSettings) => mutate(post<{ ok: true; settings: BillingExtrasSettings }>('/api/owner/billing-settings', input), { invalidate: true }),

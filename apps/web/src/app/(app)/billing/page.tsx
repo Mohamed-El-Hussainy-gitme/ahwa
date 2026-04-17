@@ -118,6 +118,7 @@ export default function BillingPage() {
   const [debtorName, setDebtorName] = useState('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
   const [customerProfiles, setCustomerProfiles] = useState<CustomerProfile[]>([]);
+  const [sessionCustomerId, setSessionCustomerId] = useState('');
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
   const [localError, setLocalError] = useState<string | null>(null);
   const [lastReceiptUrl, setLastReceiptUrl] = useState<string | null>(null);
@@ -175,6 +176,10 @@ export default function BillingPage() {
   }, [effectiveSessionId]);
 
   useEffect(() => {
+    setSessionCustomerId(current?.linkedCustomer?.id ?? '');
+  }, [current?.sessionId, current?.linkedCustomer?.id]);
+
+  useEffect(() => {
     const sessions = data?.sessions ?? [];
 
     if (!sessions.length) {
@@ -215,6 +220,40 @@ export default function BillingPage() {
     setLastTotals(totals);
     saveStoredBillingReceipt(sessionId, { receiptUrl: persistedReceiptUrl, totals, updatedAt: new Date().toISOString() });
   }, []);
+
+  const linkSessionCustomerCommand = useOpsCommand(
+    async () => {
+      if (!effectiveSessionId || !sessionCustomerId) return;
+      const profile = customerProfiles.find((item) => item.id === sessionCustomerId) ?? null;
+      await opsClient.linkSessionCustomer({ serviceSessionId: effectiveSessionId, customerId: sessionCustomerId });
+      setData((currentWorkspace) => currentWorkspace ? ({
+        ...currentWorkspace,
+        sessions: currentWorkspace.sessions.map((session) => session.sessionId === effectiveSessionId ? {
+          ...session,
+          linkedCustomer: profile ? {
+            id: profile.id,
+            fullName: profile.fullName,
+            phoneRaw: profile.phoneRaw,
+            favoriteDrinkLabel: profile.favoriteDrinkLabel ?? null,
+          } : session.linkedCustomer ?? null,
+        } : session),
+      }) : currentWorkspace);
+    },
+    { onError: setLocalError },
+  );
+
+  const unlinkSessionCustomerCommand = useOpsCommand(
+    async () => {
+      if (!effectiveSessionId) return;
+      await opsClient.unlinkSessionCustomer(effectiveSessionId);
+      setSessionCustomerId('');
+      setData((currentWorkspace) => currentWorkspace ? ({
+        ...currentWorkspace,
+        sessions: currentWorkspace.sessions.map((session) => session.sessionId === effectiveSessionId ? { ...session, linkedCustomer: null } : session),
+      }) : currentWorkspace);
+    },
+    { onError: setLocalError },
+  );
 
   const settleSelectedCommand = useOpsCommand(
     async () => {
@@ -428,6 +467,7 @@ export default function BillingPage() {
                 <div className={['mt-1 text-xs', effectiveSessionId === session.sessionId ? 'text-white/75' : 'text-[#7d6a59]'].join(' ')}>
                   {session.totalBillableQty} صنف • {formatMoney(Number(session.totalBillableAmount ?? 0))} ج
                 </div>
+                {session.linkedCustomer ? <div className={['mt-2 text-[11px] font-semibold', effectiveSessionId === session.sessionId ? 'text-white' : 'text-[#6b5a4c]'].join(' ')}>العميل: {session.linkedCustomer.fullName}</div> : null}
               </button>
             ))}
           </div>
@@ -451,6 +491,30 @@ export default function BillingPage() {
               <span className={opsBadge('success')}>{formatMoney(Number(current.totalBillableAmount ?? 0))} ج</span>
             </div>
           </div>
+
+          <div className="mt-3 grid gap-2 xl:grid-cols-[minmax(0,1fr)_auto_auto]">
+            <select value={sessionCustomerId} onChange={(event) => setSessionCustomerId(event.target.value)} className="w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-[#1e1712]">
+              <option value="">بدون ربط عميل</option>
+              {customerProfiles.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.fullName}{item.phoneRaw ? ` • ${item.phoneRaw}` : ''}
+                </option>
+              ))}
+            </select>
+            <button type="button" onClick={() => void linkSessionCustomerCommand.run()} disabled={!sessionCustomerId || linkSessionCustomerCommand.busy || unlinkSessionCustomerCommand.busy} className={opsAccentButton}>
+              {linkSessionCustomerCommand.busy ? 'جارٍ الحفظ...' : 'ربط العميل'}
+            </button>
+            <button type="button" onClick={() => void unlinkSessionCustomerCommand.run()} disabled={!current.linkedCustomer || linkSessionCustomerCommand.busy || unlinkSessionCustomerCommand.busy} className={opsGhostButton}>
+              فك الربط
+            </button>
+          </div>
+
+          {current.linkedCustomer ? (
+            <div className={[opsInset, 'mt-3 p-3 text-right'].join(' ')}>
+              <div className="text-sm font-bold text-[#1e1712]">{current.linkedCustomer.fullName}</div>
+              <div className="mt-1 text-xs text-[#7d6a59]">{current.linkedCustomer.phoneRaw || 'بدون هاتف'}{current.linkedCustomer.favoriteDrinkLabel ? ` • المفضل: ${current.linkedCustomer.favoriteDrinkLabel}` : ''}</div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 

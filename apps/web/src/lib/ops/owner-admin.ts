@@ -4,6 +4,8 @@ import type {
   CustomerAliasSource,
   CustomerIntelligenceWorkspace,
   CustomerProfile,
+  LinkedCustomerSummary,
+  RecentSessionLabel,
   CustomerRecommendedAddon,
   CustomerRecommendedBasket,
   CustomerRecommendedNote,
@@ -248,6 +250,167 @@ function mapAliasSource(value: unknown): CustomerAliasSource {
 
 function uniqueStrings(values: Array<string | null | undefined>) {
   return [...new Set(values.map((value) => String(value ?? '').trim()).filter(Boolean))];
+}
+
+function customerLinkPriority(linkSource: string | null | undefined) {
+  switch (linkSource) {
+    case 'manual':
+      return 4;
+    case 'deferred_session':
+      return 3;
+    case 'deferred_payment':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+export async function loadSessionCustomerLookup(scope: CafeDatabaseScope, sessionIds: string[]): Promise<Map<string, LinkedCustomerSummary>> {
+  const normalizedSessionIds = uniqueStrings(sessionIds);
+  if (!normalizedSessionIds.length) return new Map();
+
+  const { data: linkRows, error: linkError } = await ops(scope.databaseKey)
+    .from('customer_links')
+    .select('service_session_id, customer_id, link_source, linked_at')
+    .eq('cafe_id', scope.cafeId)
+    .in('service_session_id', normalizedSessionIds)
+    .order('linked_at', { ascending: false });
+  if (linkError) throw linkError;
+
+  const bestBySession = new Map<string, { customerId: string; priority: number; linkedAt: string }>();
+  for (const row of linkRows ?? []) {
+    const serviceSessionId = row.service_session_id ? String(row.service_session_id) : '';
+    const customerId = row.customer_id ? String(row.customer_id) : '';
+    if (!serviceSessionId || !customerId) continue;
+    const nextPriority = customerLinkPriority(row.link_source ? String(row.link_source) : null);
+    const linkedAt = row.linked_at ? String(row.linked_at) : '';
+    const current = bestBySession.get(serviceSessionId);
+    if (!current || nextPriority > current.priority || (nextPriority === current.priority && linkedAt > current.linkedAt)) {
+      bestBySession.set(serviceSessionId, { customerId, priority: nextPriority, linkedAt });
+    }
+  }
+
+  const customerIds = uniqueStrings([...bestBySession.values()].map((item) => item.customerId));
+  if (!customerIds.length) return new Map();
+
+  const { data: customerRows, error: customerError } = await ops(scope.databaseKey)
+    .from('customers')
+    .select('id, full_name, phone_raw, favorite_drink_label')
+    .eq('cafe_id', scope.cafeId)
+    .in('id', customerIds);
+  if (customerError) throw customerError;
+
+  const customersById = new Map((customerRows ?? []).map((row) => [String(row.id ?? ''), {
+    id: String(row.id ?? ''),
+    fullName: String(row.full_name ?? ''),
+    phoneRaw: String(row.phone_raw ?? ''),
+    favoriteDrinkLabel: row.favorite_drink_label ? String(row.favorite_drink_label) : null,
+  } satisfies LinkedCustomerSummary]));
+
+  const result = new Map<string, LinkedCustomerSummary>();
+  for (const [serviceSessionId, item] of bestBySession.entries()) {
+    const customer = customersById.get(item.customerId);
+    if (customer) result.set(serviceSessionId, customer);
+  }
+
+  return result;
+}
+
+export async function listRecentSessionLabels(scope: CafeDatabaseScope): Promise<RecentSessionLabel[]> {
+  const { data, error } = await ops(scope.databaseKey)
+    .from('service_sessions')
+    .select('session_label, opened_at')
+    .eq('cafe_id', scope.cafeId)
+    .order('opened_at', { ascending: false })
+    .limit(120);
+  if (error) throw error;
+
+  const labels = new Map<string, RecentSessionLabel>();
+  for (const row of data ?? []) {
+    const label = String(row.session_label ?? '').replace(/\s+/g, ' ').trim();
+    if (!label) continue;
+    const existing = labels.get(label);
+    if (existing) {
+      existing.usageCount += 1;
+      if (row.opened_at) {
+        const nextUsedAt = String(row.opened_at);
+        if (!existing.lastUsedAt || nextUsedAt > existing.lastUsedAt) {
+          existing.lastUsedAt = nextUsedAt;
+        }
+      }
+      continue;
+    }
+    labels.set(label, {
+      label,
+      lastUsedAt: row.opened_at ? String(row.opened_at) : null,
+      usageCount: 1,
+    });
+  }
+
+  return [...labels.values()]
+    .sort((left, right) => (right.lastUsedAt ?? '').localeCompare(left.lastUsedAt ?? '') || right.usageCount - left.usageCount || left.label.localeCompare(right.label, 'ar'))
+    .slice(0, 10);
+}
+
+export async function linkCustomerToCurrentSession(input: CafeDatabaseScope & {
+  customerId: string;
+  serviceSessionId: string;
+  actorOwnerId?: string | null;
+  actorStaffId?: string | null;
+}) {
+  const normalizedSessionId = String(input.serviceSessionId ?? '').trim();
+  const normalizedCustomerId = String(input.customerId ?? '').trim();
+  if (!normalizedSessionId || !normalizedCustomerId) {
+    throw new Error('INVALID_CUSTOMER_SESSION_LINK');
+  }
+
+  const { data: sessionRow, error: sessionError } = await ops(input.databaseKey)
+    .from('service_sessions')
+    .select('id')
+    .eq('cafe_id', input.cafeId)
+    .eq('id', normalizedSessionId)
+    .maybeSingle();
+  if (sessionError) throw sessionError;
+  if (!sessionRow?.id) throw new Error('SESSION_NOT_FOUND');
+
+  const { error: deleteError } = await ops(input.databaseKey)
+    .from('customer_links')
+    .delete()
+    .eq('cafe_id', input.cafeId)
+    .eq('service_session_id', normalizedSessionId)
+    .eq('link_source', 'manual');
+  if (deleteError) throw deleteError;
+
+  await createCustomerActivityLink({
+    cafeId: input.cafeId,
+    databaseKey: input.databaseKey,
+    customerId: normalizedCustomerId,
+    serviceSessionId: normalizedSessionId,
+    linkSource: 'manual',
+    actorOwnerId: input.actorOwnerId ?? null,
+    actorStaffId: input.actorStaffId ?? null,
+  });
+
+  await touchCustomerProfileActivity({
+    cafeId: input.cafeId,
+    databaseKey: input.databaseKey,
+    customerId: normalizedCustomerId,
+    actorOwnerId: input.actorOwnerId ?? null,
+  });
+}
+
+export async function unlinkCustomerFromCurrentSession(input: CafeDatabaseScope & { serviceSessionId: string }) {
+  const normalizedSessionId = String(input.serviceSessionId ?? '').trim();
+  if (!normalizedSessionId) {
+    throw new Error('INVALID_CUSTOMER_SESSION_LINK');
+  }
+  const { error } = await ops(input.databaseKey)
+    .from('customer_links')
+    .delete()
+    .eq('cafe_id', input.cafeId)
+    .eq('service_session_id', normalizedSessionId)
+    .eq('link_source', 'manual');
+  if (error) throw error;
 }
 
 export async function getCustomerProfile(scope: CafeDatabaseScope, customerId: string): Promise<CustomerProfile | null> {
@@ -636,56 +799,56 @@ export async function loadCustomerIntelligence(scope: CafeDatabaseScope, custome
     deferredPayments = (data ?? []) as Array<Record<string, unknown>>;
   }
 
-  const paymentIds = uniqueStrings([
-    ...deferredPayments.map((row) => row.id ? String(row.id) : null),
-    ...recentLinks.map((link) => link.paymentId),
-    ...recentLedger.map((entry) => entry.paymentId),
-  ]);
-
-  const sessionIds = uniqueStrings([
-    ...deferredPayments.map((row) => row.service_session_id ? String(row.service_session_id) : null),
+  const linkedSessionIds = uniqueStrings([
     ...recentLinks.map((link) => link.serviceSessionId),
     ...recentLedger.map((entry) => entry.serviceSessionId),
   ]);
 
+  const allSessionIds = uniqueStrings([
+    ...deferredPayments.map((row) => row.service_session_id ? String(row.service_session_id) : null),
+    ...linkedSessionIds,
+  ]);
+
+  let paymentRows: Array<Record<string, unknown>> = [];
+  if (allSessionIds.length > 0) {
+    const { data, error } = await ops(scope.databaseKey)
+      .from('payments')
+      .select('id, service_session_id, debtor_name, total_amount, created_at, payment_kind')
+      .eq('cafe_id', scope.cafeId)
+      .in('service_session_id', allSessionIds)
+      .neq('payment_kind', 'repayment')
+      .order('created_at', { ascending: false });
+    if (error) throw error;
+    paymentRows = (data ?? []) as Array<Record<string, unknown>>;
+  }
+
   let sessionRows: Array<Record<string, unknown>> = [];
-  if (sessionIds.length > 0) {
+  if (allSessionIds.length > 0) {
     const { data, error } = await ops(scope.databaseKey)
       .from('service_sessions')
       .select('id, session_label, opened_at, closed_at')
       .eq('cafe_id', scope.cafeId)
-      .in('id', sessionIds);
+      .in('id', allSessionIds);
     if (error) throw error;
     sessionRows = (data ?? []) as Array<Record<string, unknown>>;
   }
   const sessionMap = new Map(sessionRows.map((row) => [String(row.id ?? ''), row]));
 
-  let allocationRows: Array<Record<string, unknown>> = [];
-  if (paymentIds.length > 0) {
-    const { data, error } = await ops(scope.databaseKey)
-      .from('payment_allocations')
-      .select('payment_id, order_item_id, quantity, amount, allocation_kind')
-      .eq('cafe_id', scope.cafeId)
-      .in('payment_id', paymentIds)
-      .eq('allocation_kind', 'deferred');
-    if (error) throw error;
-    allocationRows = (data ?? []) as Array<Record<string, unknown>>;
-  }
-
-  const orderItemIds = uniqueStrings(allocationRows.map((row) => row.order_item_id ? String(row.order_item_id) : null));
   let orderItemRows: Array<Record<string, unknown>> = [];
-  if (orderItemIds.length > 0) {
+  if (allSessionIds.length > 0) {
     const { data, error } = await ops(scope.databaseKey)
       .from('order_items')
-      .select('id, menu_product_id, notes, created_at')
+      .select('id, service_session_id, menu_product_id, notes, created_at, qty_total, qty_delivered')
       .eq('cafe_id', scope.cafeId)
-      .in('id', orderItemIds);
+      .in('service_session_id', allSessionIds)
+      .order('created_at', { ascending: false });
     if (error) throw error;
     orderItemRows = (data ?? []) as Array<Record<string, unknown>>;
   }
-  const orderItemMap = new Map(orderItemRows.map((row) => [String(row.id ?? ''), row]));
 
+  const orderItemIds = uniqueStrings(orderItemRows.map((row) => row.id ? String(row.id) : null));
   const productIds = uniqueStrings(orderItemRows.map((row) => row.menu_product_id ? String(row.menu_product_id) : null));
+
   let productRows: Array<Record<string, unknown>> = [];
   if (productIds.length > 0) {
     const { data, error } = await ops(scope.databaseKey)
@@ -702,7 +865,7 @@ export async function loadCustomerIntelligence(scope: CafeDatabaseScope, custome
   if (orderItemIds.length > 0) {
     const { data, error } = await ops(scope.databaseKey)
       .from('order_item_addons')
-      .select('order_item_id, addon_name_snapshot, quantity, created_at')
+      .select('order_item_id, addon_name_snapshot, quantity')
       .eq('cafe_id', scope.cafeId)
       .in('order_item_id', orderItemIds);
     if (error) throw error;
@@ -710,126 +873,124 @@ export async function loadCustomerIntelligence(scope: CafeDatabaseScope, custome
   }
   const addonsByItemId = new Map<string, Array<Record<string, unknown>>>();
   for (const row of addonRows) {
-    const orderItemId = String(row.order_item_id ?? '');
-    if (!addonsByItemId.has(orderItemId)) {
-      addonsByItemId.set(orderItemId, []);
-    }
-    addonsByItemId.get(orderItemId)!.push(row);
+    const orderItemId = row.order_item_id ? String(row.order_item_id) : '';
+    if (!orderItemId) continue;
+    const current = addonsByItemId.get(orderItemId);
+    if (current) current.push(row);
+    else addonsByItemId.set(orderItemId, [row]);
   }
 
-  const paymentMap = new Map(deferredPayments.map((row) => [String(row.id ?? ''), row]));
+  const paymentsBySessionId = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of paymentRows) {
+    const serviceSessionId = row.service_session_id ? String(row.service_session_id) : '';
+    if (!serviceSessionId) continue;
+    const current = paymentsBySessionId.get(serviceSessionId);
+    if (current) current.push(row);
+    else paymentsBySessionId.set(serviceSessionId, [row]);
+  }
+
+  const sessionOrderItems = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of orderItemRows) {
+    const serviceSessionId = row.service_session_id ? String(row.service_session_id) : '';
+    if (!serviceSessionId) continue;
+    const current = sessionOrderItems.get(serviceSessionId);
+    if (current) current.push(row);
+    else sessionOrderItems.set(serviceSessionId, [row]);
+  }
 
   const productAgg = new Map<string, CustomerRecommendedProduct>();
   const addonAgg = new Map<string, CustomerRecommendedAddon>();
   const noteAgg = new Map<string, CustomerRecommendedNote>();
   const basketAgg = new Map<string, CustomerRecommendedBasket>();
-  const basketLines = new Map<string, string[]>();
 
-  for (const allocation of allocationRows) {
-    const paymentId = String(allocation.payment_id ?? '');
-    const orderItemId = String(allocation.order_item_id ?? '');
-    const quantity = Number(allocation.quantity ?? 0);
-    const orderItem = orderItemMap.get(orderItemId);
-    if (!orderItem) continue;
+  for (const serviceSessionId of allSessionIds) {
+    const items = sessionOrderItems.get(serviceSessionId) ?? [];
+    const basketLines: string[] = [];
+    for (const row of items) {
+      const orderItemId = String(row.id ?? '');
+      const menuProductId = String(row.menu_product_id ?? '');
+      const productName = productMap.get(menuProductId) || 'صنف غير معروف';
+      const createdAt = String(row.created_at ?? '');
+      const quantity = Math.max(Number(row.qty_delivered ?? 0), Number(row.qty_total ?? 0), 0);
 
-    const menuProductId = String(orderItem.menu_product_id ?? '');
-    const productName = productMap.get(menuProductId) || 'صنف غير معروف';
-    const createdAt = paymentMap.get(paymentId)?.created_at ? String(paymentMap.get(paymentId)?.created_at) : String(orderItem.created_at ?? '');
-
-    const currentProduct = productAgg.get(productName) ?? {
-      productName,
-      count: 0,
-      quantity: 0,
-      lastOrderedAt: null,
-    };
-    currentProduct.count += 1;
-    currentProduct.quantity += quantity;
-    if (createdAt && (!currentProduct.lastOrderedAt || createdAt > currentProduct.lastOrderedAt)) {
-      currentProduct.lastOrderedAt = createdAt;
-    }
-    productAgg.set(productName, currentProduct);
-
-    const parsedNotes = parseOrderItemNotes(orderItem.notes ? String(orderItem.notes) : null);
-    if (parsedNotes.freeformNotes) {
-      const currentNote = noteAgg.get(parsedNotes.freeformNotes) ?? {
-        noteText: parsedNotes.freeformNotes,
-        count: 0,
-        lastUsedAt: null,
-      };
-      currentNote.count += 1;
-      if (createdAt && (!currentNote.lastUsedAt || createdAt > currentNote.lastUsedAt)) {
-        currentNote.lastUsedAt = createdAt;
+      const currentProduct = productAgg.get(productName) ?? { productName, count: 0, quantity: 0, lastOrderedAt: null };
+      currentProduct.count += 1;
+      currentProduct.quantity += quantity;
+      if (createdAt && (!currentProduct.lastOrderedAt || createdAt > currentProduct.lastOrderedAt)) {
+        currentProduct.lastOrderedAt = createdAt;
       }
-      noteAgg.set(parsedNotes.freeformNotes, currentNote);
-    }
+      productAgg.set(productName, currentProduct);
 
-    const basketLabelParts = [productName];
-    const itemAddons = addonsByItemId.get(orderItemId) ?? [];
-    for (const addon of itemAddons) {
-      const addonName = String(addon.addon_name_snapshot ?? '').trim();
-      if (!addonName) continue;
-      const addonQuantity = Number(addon.quantity ?? 0);
-      const currentAddon = addonAgg.get(addonName) ?? {
-        addonName,
-        count: 0,
-        quantity: 0,
-        lastOrderedAt: null,
-      };
-      currentAddon.count += 1;
-      currentAddon.quantity += addonQuantity;
-      if (createdAt && (!currentAddon.lastOrderedAt || createdAt > currentAddon.lastOrderedAt)) {
-        currentAddon.lastOrderedAt = createdAt;
+      const parsedNotes = parseOrderItemNotes(row.notes ? String(row.notes) : null);
+      if (parsedNotes.freeformNotes) {
+        const currentNote = noteAgg.get(parsedNotes.freeformNotes) ?? { noteText: parsedNotes.freeformNotes, count: 0, lastUsedAt: null };
+        currentNote.count += 1;
+        if (createdAt && (!currentNote.lastUsedAt || createdAt > currentNote.lastUsedAt)) {
+          currentNote.lastUsedAt = createdAt;
+        }
+        noteAgg.set(parsedNotes.freeformNotes, currentNote);
       }
-      addonAgg.set(addonName, currentAddon);
-      basketLabelParts.push(`+ ${addonName}`);
+
+      const basketLabelParts = [productName];
+      const itemAddons = addonsByItemId.get(orderItemId) ?? [];
+      for (const addon of itemAddons) {
+        const addonName = String(addon.addon_name_snapshot ?? '').trim();
+        if (!addonName) continue;
+        const addonQuantity = Number(addon.quantity ?? 0);
+        const currentAddon = addonAgg.get(addonName) ?? { addonName, count: 0, quantity: 0, lastOrderedAt: null };
+        currentAddon.count += 1;
+        currentAddon.quantity += addonQuantity;
+        if (createdAt && (!currentAddon.lastOrderedAt || createdAt > currentAddon.lastOrderedAt)) {
+          currentAddon.lastOrderedAt = createdAt;
+        }
+        addonAgg.set(addonName, currentAddon);
+        basketLabelParts.push(`+ ${addonName}`);
+      }
+
+      if (parsedNotes.freeformNotes) {
+        basketLabelParts.push(`(${parsedNotes.freeformNotes})`);
+      }
+
+      basketLines.push(basketLabelParts.join(' '));
     }
 
-    if (parsedNotes.freeformNotes) {
-      basketLabelParts.push(`(${parsedNotes.freeformNotes})`);
+    if (basketLines.length > 0) {
+      const normalized = [...basketLines].sort((left, right) => left.localeCompare(right, 'ar')).join(' • ');
+      const session = sessionMap.get(serviceSessionId);
+      const createdAt = session?.opened_at ? String(session.opened_at) : null;
+      const currentBasket = basketAgg.get(normalized) ?? { label: normalized, count: 0, itemCount: 0, lastOrderedAt: null };
+      currentBasket.count += 1;
+      currentBasket.itemCount = Math.max(currentBasket.itemCount, basketLines.length);
+      if (createdAt && (!currentBasket.lastOrderedAt || createdAt > currentBasket.lastOrderedAt)) {
+        currentBasket.lastOrderedAt = createdAt;
+      }
+      basketAgg.set(normalized, currentBasket);
     }
-
-    if (!basketLines.has(paymentId)) {
-      basketLines.set(paymentId, []);
-    }
-    basketLines.get(paymentId)!.push(basketLabelParts.join(' '));
   }
 
-  for (const [paymentId, lines] of basketLines.entries()) {
-    const normalized = [...lines].sort((left, right) => left.localeCompare(right, 'ar')).join(' • ');
-    if (!normalized) continue;
-    const createdAt = paymentMap.get(paymentId)?.created_at ? String(paymentMap.get(paymentId)?.created_at) : null;
-    const currentBasket = basketAgg.get(normalized) ?? {
-      label: normalized,
-      count: 0,
-      itemCount: 0,
-      lastOrderedAt: null,
-    };
-    currentBasket.count += 1;
-    currentBasket.itemCount = Math.max(currentBasket.itemCount, lines.length);
-    if (createdAt && (!currentBasket.lastOrderedAt || createdAt > currentBasket.lastOrderedAt)) {
-      currentBasket.lastOrderedAt = createdAt;
-    }
-    basketAgg.set(normalized, currentBasket);
-  }
-
-  const recentSessionsMap = new Map<string, CustomerRecentSession>();
-  for (const payment of deferredPayments) {
-    const serviceSessionId = payment.service_session_id ? String(payment.service_session_id) : '';
-    if (!serviceSessionId) continue;
-    const session = sessionMap.get(serviceSessionId);
-    if (!session) continue;
-    recentSessionsMap.set(serviceSessionId, {
-      serviceSessionId,
-      sessionLabel: String(session.session_label ?? serviceSessionId),
-      debtorName: payment.debtor_name ? String(payment.debtor_name) : null,
-      totalAmount: Number(payment.total_amount ?? 0),
-      openedAt: String(session.opened_at ?? ''),
-      closedAt: session.closed_at ? String(session.closed_at) : null,
-      paymentCreatedAt: payment.created_at ? String(payment.created_at) : null,
-    });
-  }
-
-  const recentSessions = [...recentSessionsMap.values()]
+  const recentSessions = allSessionIds
+    .map((serviceSessionId) => {
+      const session = sessionMap.get(serviceSessionId);
+      if (!session) return null;
+      const sessionPayments = paymentsBySessionId.get(serviceSessionId) ?? [];
+      const totalAmount = sessionPayments.reduce((sum, row) => sum + Number(row.total_amount ?? 0), 0);
+      const deferredPayment = sessionPayments.find((row) => String(row.payment_kind ?? '') === 'deferred');
+      const paymentCreatedAt = sessionPayments.reduce<string | null>((latest, row) => {
+        const createdAt = row.created_at ? String(row.created_at) : null;
+        if (!createdAt) return latest;
+        return !latest || createdAt > latest ? createdAt : latest;
+      }, null);
+      return {
+        serviceSessionId,
+        sessionLabel: String(session.session_label ?? serviceSessionId),
+        debtorName: deferredPayment?.debtor_name ? String(deferredPayment.debtor_name) : null,
+        totalAmount,
+        openedAt: String(session.opened_at ?? ''),
+        closedAt: session.closed_at ? String(session.closed_at) : null,
+        paymentCreatedAt,
+      } satisfies CustomerRecentSession;
+    })
+    .filter((item): item is CustomerRecentSession => !!item)
     .sort((left, right) => (right.paymentCreatedAt ?? right.openedAt).localeCompare(left.paymentCreatedAt ?? left.openedAt))
     .slice(0, 12);
 

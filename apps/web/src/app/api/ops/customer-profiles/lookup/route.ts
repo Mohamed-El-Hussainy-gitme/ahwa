@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireDeferredAccess, requireOpsActorContext } from '@/app/api/ops/_helpers';
+import { requireOpsActorContext, requireSessionOrderAccess } from '@/app/api/ops/_helpers';
 import { listCustomerProfiles } from '@/lib/ops/owner-admin';
 
 function mapCustomerError(error: unknown) {
@@ -9,7 +9,7 @@ function mapCustomerError(error: unknown) {
 
 export async function GET() {
   try {
-    const ctx = requireDeferredAccess(await requireOpsActorContext());
+    const ctx = requireSessionOrderAccess(await requireOpsActorContext());
     const items = await listCustomerProfiles({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey }, false);
     return NextResponse.json({ ok: true, items });
   } catch (error) {
