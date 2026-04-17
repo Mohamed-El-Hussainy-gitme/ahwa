@@ -27,6 +27,21 @@ import {
   opsSelect,
   opsSurface,
 } from '@/ui/ops/premiumStyles';
+import {
+  INVENTORY_ITEM_TEMPLATES,
+  INVENTORY_STRUCTURED_OPTION_BUNDLES,
+  type InventoryItemTemplate,
+} from '@/lib/ops/inventory-presets';
+
+const INVENTORY_VIEWS = [
+  { key: 'daily', label: 'اليوم', hint: 'وارد، جرد، نقص' },
+  { key: 'items', label: 'الخامات', hint: 'تعريف ورصيد' },
+  { key: 'recipes', label: 'الوصفات', hint: 'ربط واستهلاك' },
+  { key: 'suppliers', label: 'الموردون', hint: 'الموردون والتوريد' },
+  { key: 'analysis', label: 'التحليل', hint: 'قراءة الفرق' },
+] as const;
+
+type InventoryView = (typeof INVENTORY_VIEWS)[number]['key'];
 
 function emptyItemForm() {
   return {
@@ -80,6 +95,50 @@ function emptyAddonRecipeForm() {
     quantityPerUnit: '',
     wastagePercent: '',
     notes: '',
+  };
+}
+
+function emptyQuickCountForm(itemId = '') {
+  return {
+    inventoryItemId: itemId,
+    actualQuantity: '',
+    entryUnit: 'stock' as 'stock' | 'purchase',
+    notes: '',
+  };
+}
+
+type StructuredOptionFormRow = {
+  key: string;
+  label: string;
+  menuAddonId: string;
+  quantityPerUnit: string;
+  notes: string;
+};
+
+function createStructuredOptionRows(bundleKey: string): StructuredOptionFormRow[] {
+  const bundle = INVENTORY_STRUCTURED_OPTION_BUNDLES.find((item) => item.key === bundleKey) ?? INVENTORY_STRUCTURED_OPTION_BUNDLES[0];
+  if (!bundle) return [];
+  return bundle.rows.map((row) => ({
+    key: row.key,
+    label: row.label,
+    menuAddonId: '',
+    quantityPerUnit: row.defaultQuantity ? String(row.defaultQuantity) : '',
+    notes: row.note ?? '',
+  }));
+}
+
+function applyInventoryItemTemplate(template: InventoryItemTemplate) {
+  return {
+    itemName: template.itemName,
+    itemCode: '',
+    categoryLabel: template.categoryLabel,
+    unitLabel: template.unitLabel,
+    purchaseUnitLabel: template.purchaseUnitLabel ?? '',
+    purchaseToStockFactor: template.purchaseToStockFactor ? String(template.purchaseToStockFactor) : '',
+    lowStockThreshold: template.lowStockThreshold > 0 ? String(template.lowStockThreshold) : '',
+    openingBalance: '',
+    openingBalanceUnit: template.purchaseUnitLabel ? ('purchase' as const) : ('stock' as const),
+    notes: template.notes,
   };
 }
 
@@ -210,11 +269,16 @@ export default function InventoryPage() {
   const [productRecipeId, setProductRecipeId] = useState<string | null>(null);
   const [addonRecipeId, setAddonRecipeId] = useState<string | null>(null);
   const [recipeScope, setRecipeScope] = useState<'product' | 'addon'>('product');
+  const [inventoryView, setInventoryView] = useState<InventoryView>('daily');
   const [itemForm, setItemForm] = useState(emptyItemForm());
   const [supplierForm, setSupplierForm] = useState(emptySupplierForm());
   const [movementForm, setMovementForm] = useState(emptyMovementForm());
+  const [quickCountForm, setQuickCountForm] = useState(emptyQuickCountForm());
   const [productRecipeForm, setProductRecipeForm] = useState(emptyProductRecipeForm());
   const [addonRecipeForm, setAddonRecipeForm] = useState(emptyAddonRecipeForm());
+  const [structuredBundleKey, setStructuredBundleKey] = useState(INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels');
+  const [structuredItemId, setStructuredItemId] = useState('');
+  const [structuredOptionRows, setStructuredOptionRows] = useState<StructuredOptionFormRow[]>(createStructuredOptionRows(INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels'));
 
   async function refresh() {
     setMessage(null);
@@ -233,6 +297,21 @@ export default function InventoryPage() {
       }
       const firstActive = nextWorkspace.items.find((item) => item.isActive);
       return emptyMovementForm(firstActive?.id ?? '');
+    });
+    setQuickCountForm((current) => {
+      if (current.inventoryItemId && nextWorkspace.items.some((item) => item.id === current.inventoryItemId)) {
+        return current;
+      }
+      const prioritized = nextWorkspace.items.find((item) => item.stockStatus === 'low' || item.stockStatus === 'empty')
+        ?? nextWorkspace.items.find((item) => item.isActive);
+      return emptyQuickCountForm(prioritized?.id ?? '');
+    });
+    setStructuredItemId((current) => {
+      if (current && nextWorkspace.items.some((item) => item.id === current)) {
+        return current;
+      }
+      const sugarLikeItem = nextWorkspace.items.find((item) => item.normalizedName.includes('سكر'));
+      return sugarLikeItem?.id ?? current;
     });
     return true;
   }
@@ -255,6 +334,21 @@ export default function InventoryPage() {
   const selectedMovementItem = useMemo(
     () => workspace.items.find((item) => item.id === movementForm.inventoryItemId) ?? null,
     [workspace.items, movementForm.inventoryItemId],
+  );
+
+  const selectedQuickCountItem = useMemo(
+    () => workspace.items.find((item) => item.id === quickCountForm.inventoryItemId) ?? null,
+    [workspace.items, quickCountForm.inventoryItemId],
+  );
+
+  const selectedStructuredItem = useMemo(
+    () => workspace.items.find((item) => item.id === structuredItemId) ?? null,
+    [workspace.items, structuredItemId],
+  );
+
+  const selectedStructuredBundle = useMemo(
+    () => INVENTORY_STRUCTURED_OPTION_BUNDLES.find((item) => item.key === structuredBundleKey) ?? INVENTORY_STRUCTURED_OPTION_BUNDLES[0] ?? null,
+    [structuredBundleKey],
   );
 
   const selectedProductRecipe = useMemo(
@@ -308,6 +402,21 @@ export default function InventoryPage() {
     [selectedMovementItem, movementForm.quantity, movementForm.entryUnit],
   );
 
+  const quickCountPreview = useMemo(
+    () => previewEntryInStockUnit(selectedQuickCountItem, quickCountForm.actualQuantity, quickCountForm.entryUnit),
+    [selectedQuickCountItem, quickCountForm.actualQuantity, quickCountForm.entryUnit],
+  );
+
+  const quickCountVariance = useMemo(() => {
+    if (!selectedQuickCountItem || !quickCountPreview) return null;
+    return Number((quickCountPreview.stockQuantity - selectedQuickCountItem.currentBalance).toFixed(3));
+  }, [quickCountPreview, selectedQuickCountItem]);
+
+  const quickCountFocusItems = useMemo(() => {
+    const focus = workspace.items.filter((item) => item.stockStatus === 'low' || item.stockStatus === 'empty');
+    return focus.length ? focus.slice(0, 8) : workspace.items.filter((item) => item.isActive).slice(0, 8);
+  }, [workspace.items]);
+
   useEffect(() => {
     setMovementForm((current) => {
       const canUsePurchase = current.movementKind === 'inbound' && Boolean(selectedMovementItem?.purchaseUnitLabel);
@@ -316,6 +425,19 @@ export default function InventoryPage() {
       return { ...current, entryUnit: nextEntryUnit };
     });
   }, [selectedMovementItem?.id, selectedMovementItem?.purchaseUnitLabel, movementForm.movementKind]);
+
+  useEffect(() => {
+    setQuickCountForm((current) => {
+      const canUsePurchase = Boolean(selectedQuickCountItem?.purchaseUnitLabel);
+      const nextEntryUnit = canUsePurchase ? current.entryUnit : 'stock';
+      if (current.entryUnit === nextEntryUnit) return current;
+      return { ...current, entryUnit: nextEntryUnit };
+    });
+  }, [selectedQuickCountItem?.id, selectedQuickCountItem?.purchaseUnitLabel]);
+
+  useEffect(() => {
+    setStructuredOptionRows(createStructuredOptionRows(structuredBundleKey));
+  }, [structuredBundleKey]);
 
   const stats = useMemo(() => ({
     totalItems: workspace.items.length,
@@ -326,6 +448,15 @@ export default function InventoryPage() {
     addonRecipes: workspace.addonRecipes.filter((recipe) => recipe.isActive).length,
     criticalConsumption: workspace.estimatedConsumption.filter((row) => row.stockStatus === 'empty' || row.stockStatus === 'low' || (row.coverageDays !== null && row.coverageDays <= 3)).length,
   }), [workspace]);
+
+
+  const criticalItems = useMemo(() => workspace.items.filter((item) => item.stockStatus === 'low' || item.stockStatus === 'empty'), [workspace.items]);
+
+  const prioritizedItems = useMemo(() => criticalItems.length ? criticalItems : workspace.items.filter((item) => item.isActive), [criticalItems, workspace.items]);
+
+  const criticalConsumptionRows = useMemo(() => workspace.estimatedConsumption.filter((row) => row.stockStatus === 'empty' || row.stockStatus === 'low' || (row.coverageDays !== null && row.coverageDays <= 7)), [workspace.estimatedConsumption]);
+
+  const recentInboundMovements = useMemo(() => workspace.recentMovements.filter((movement) => movement.movementKind === 'inbound').slice(0, 12), [workspace.recentMovements]);
 
   function resetItemForm() {
     setItemId(null);
@@ -534,6 +665,41 @@ export default function InventoryPage() {
     }
   }
 
+  function applyItemTemplate(template: InventoryItemTemplate) {
+    setItemId(null);
+    setItemForm(applyInventoryItemTemplate(template));
+    setMessage(`تم تجهيز قالب ${template.title}.`);
+  }
+
+  async function submitQuickCount() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/owner/inventory/quick-count', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          inventoryItemId: quickCountForm.inventoryItemId,
+          actualQuantity: quickCountForm.actualQuantity,
+          entryUnit: quickCountForm.entryUnit,
+          notes: quickCountForm.notes,
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!payload?.ok) {
+        setMessage(extractApiErrorMessage(payload, 'INVENTORY_QUICK_COUNT_FAILED'));
+        return;
+      }
+      const refreshed = await refresh();
+      if (!refreshed) return;
+      const result = payload.result as { skipped?: boolean; varianceQuantity?: number; unitLabel?: string };
+      setMessage(result?.skipped ? 'الجرد مطابق للرصيد الحالي.' : `تم حفظ الجرد السريع (${result?.varianceQuantity && result.varianceQuantity > 0 ? '+' : ''}${formatQty(Number(result?.varianceQuantity ?? 0))} ${result?.unitLabel ?? ''}).`);
+      setQuickCountForm((current) => emptyQuickCountForm(current.inventoryItemId));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function submitProductRecipe() {
     setBusy(true);
     setMessage(null);
@@ -648,6 +814,35 @@ export default function InventoryPage() {
     }
   }
 
+  async function submitStructuredOptions() {
+    setBusy(true);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/owner/inventory/recipes/addons/bulk', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          inventoryItemId: structuredItemId,
+          rows: structuredOptionRows.map((row) => ({
+            menuAddonId: row.menuAddonId || null,
+            quantityPerUnit: row.quantityPerUnit || 0,
+            notes: row.notes || row.label,
+          })),
+        }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!payload?.ok) {
+        setMessage(extractApiErrorMessage(payload, 'INVENTORY_STRUCTURED_OPTIONS_FAILED'));
+        return;
+      }
+      const refreshed = await refresh();
+      if (!refreshed) return;
+      setMessage(`تم حفظ ${payload.result?.applied ?? 0} وصفة منظمة.`);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   if (!can.owner) {
     return <AccessDenied title="المخزن" />;
   }
@@ -658,435 +853,745 @@ export default function InventoryPage() {
         <div className={[opsSurface, 'p-4'].join(' ')}>
           <div className="flex items-start justify-between gap-3">
             <div className="text-right">
-              <div className={opsSectionTitle}>إدارة المخزون</div>
-              <div className={[opsSectionHint, 'mt-1'].join(' ')}>الخامات، الموردون، الحركات، ووصفات الاستهلاك التقديري.</div>
+              <div className={opsSectionTitle}>المخزن</div>
+              <div className={[opsSectionHint, 'mt-1'].join(' ')}>قسّمنا المخزن إلى مسار يومي واضح، مع بقاء الإعدادات المتقدمة متاحة عند الحاجة.</div>
             </div>
-            <div className={opsBadge('accent')}>المرحلة 2</div>
+            <div className={opsBadge('accent')}>المرحلة 5</div>
           </div>
           {message ? <div className={[opsAlert(message.includes('تم') ? 'success' : 'danger'), 'mt-3'].join(' ')}>{message}</div> : null}
-          <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-7">
+          <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
             <div className={opsMetricCard('accent')}>
               <div className="text-xs opacity-80">الخامات</div>
               <div className="mt-2 text-2xl font-black">{stats.totalItems}</div>
             </div>
             <div className={opsMetricCard('warning')}>
-              <div className="text-xs opacity-80">منخفضة</div>
-              <div className="mt-2 text-2xl font-black">{stats.lowStock}</div>
-            </div>
-            <div className={opsMetricCard('danger')}>
-              <div className="text-xs opacity-80">نفدت</div>
-              <div className="mt-2 text-2xl font-black">{stats.emptyStock}</div>
+              <div className="text-xs opacity-80">تحتاج متابعة</div>
+              <div className="mt-2 text-2xl font-black">{criticalItems.length}</div>
             </div>
             <div className={opsMetricCard('info')}>
               <div className="text-xs opacity-80">الموردون</div>
               <div className="mt-2 text-2xl font-black">{stats.suppliers}</div>
             </div>
             <div className={opsMetricCard('success')}>
-              <div className="text-xs opacity-80">وصفات المنتجات</div>
-              <div className="mt-2 text-2xl font-black">{stats.productRecipes}</div>
-            </div>
-            <div className={opsMetricCard('success')}>
-              <div className="text-xs opacity-80">وصفات الإضافات</div>
-              <div className="mt-2 text-2xl font-black">{stats.addonRecipes}</div>
-            </div>
-            <div className={opsMetricCard('warning')}>
-              <div className="text-xs opacity-80">عناصر حرجة</div>
-              <div className="mt-2 text-2xl font-black">{stats.criticalConsumption}</div>
+              <div className="text-xs opacity-80">الوصفات النشطة</div>
+              <div className="mt-2 text-2xl font-black">{stats.productRecipes + stats.addonRecipes}</div>
             </div>
           </div>
         </div>
 
-        <section className={[opsSurface, 'p-4'].join(' ')}>
-          <div className="grid gap-3 lg:grid-cols-3">
-            <div className={[opsInset, 'p-3 text-right'].join(' ')}>
-              <div className="text-sm font-bold text-[#1e1712]">1) اختر وحدة التشغيل أولاً</div>
-              <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">هي أصغر وحدة تفهمها الوصفة، مثل ملعقة أو قطعة. الرصيد والتقارير سيعملان بها.</div>
-            </div>
-            <div className={[opsInset, 'p-3 text-right'].join(' ')}>
-              <div className="text-sm font-bold text-[#1e1712]">2) اجعل الشراء بوحدة منفصلة</div>
-              <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">مثال: بن تشغيله ملعقة وشراؤه كيلو. اكتب: 1 كيلو = 100 ملعقة، ثم سجل الوارد بالكيلو والنظام يحول تلقائيًا.</div>
-            </div>
-            <div className={[opsInset, 'p-3 text-right'].join(' ')}>
-              <div className="text-sm font-bold text-[#1e1712]">3) المتغيرات اجعلها إضافات</div>
-              <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">السكر أو الزيادة لا تُكتب كملاحظة حرة إذا أردت دقة. اجعلها إضافات لها وصفات منفصلة.</div>
-            </div>
+        <section className={[opsSurface, 'p-3'].join(' ')}>
+          <div className="flex flex-wrap justify-end gap-2">
+            {INVENTORY_VIEWS.map((view) => (
+              <button
+                key={view.key}
+                type="button"
+                className={inventoryView === view.key ? opsAccentButton : opsGhostButton}
+                onClick={() => setInventoryView(view.key)}
+              >
+                <span>{view.label}</span>
+                <span className="text-[11px] opacity-80">{view.hint}</span>
+              </button>
+            ))}
           </div>
         </section>
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.95fr)] xl:items-start">
-          <div className="space-y-4">
-            <section className={[opsSurface, 'p-4'].join(' ')}>
-              <div className="flex items-start justify-between gap-3">
+        {inventoryView === 'daily' ? (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_minmax(340px,0.88fr)] xl:items-start">
+            <div className="space-y-4">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
                 <div className="text-right">
-                  <div className={opsSectionTitle}>قراءة الاستهلاك التقديري</div>
-                  <div className={[opsSectionHint, 'mt-1'].join(' ')}>آخر {workspace.analysisWindowDays} يوم من المبيعات مقارنة بالصرف اليدوي المسجل.</div>
+                  <div className={opsSectionTitle}>ابدأ اليوم</div>
+                  <div className={[opsSectionHint, 'mt-1'].join(' ')}>1) أضف الوارد  2) اعمل جردًا سريعًا  3) راجع العناصر المنخفضة.</div>
                 </div>
-                <div className={opsBadge('info')}>تقديري فقط</div>
-              </div>
-              <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                {filteredEstimatedConsumption.map((row) => (
-                  <article key={row.inventoryItemId} className={[opsInset, 'p-4'].join(' ')}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-right">
-                        <div className="text-base font-bold text-[#1e1712]">{row.itemName}</div>
-                        <div className="mt-1 text-xs text-[#7d6a59]">{row.unitLabel} • {stockLabel(row.stockStatus)}</div>
-                      </div>
-                      <div className={opsBadge(coverageTone(row))}>{coverageLabel(row)}</div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  {INVENTORY_ITEM_TEMPLATES.map((template) => (
+                    <button
+                      key={template.key}
+                      type="button"
+                      className={[opsInset, 'p-4 text-right transition hover:-translate-y-0.5 hover:shadow-md'].join(' ')}
+                      onClick={() => {
+                        applyItemTemplate(template);
+                        setInventoryView('items');
+                      }}
+                    >
+                      <div className="text-sm font-bold text-[#1e1712]">{template.title}</div>
+                      <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">{template.description}</div>
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-3 md:grid-cols-3">
+                  <div className={[opsInset, 'p-3 text-right'].join(' ')}>
+                    <div className="text-sm font-bold text-[#1e1712]">الوارد</div>
+                    <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">سجّل الشراء بوحدة الشراء أو التشغيل، والنظام يحوّل تلقائيًا.</div>
+                  </div>
+                  <div className={[opsInset, 'p-3 text-right'].join(' ')}>
+                    <div className="text-sm font-bold text-[#1e1712]">الجرد</div>
+                    <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">ادخل العدد الفعلي فقط، وسيتم احتساب فرق التسوية مباشرة.</div>
+                  </div>
+                  <div className={[opsInset, 'p-3 text-right'].join(' ')}>
+                    <div className="text-sm font-bold text-[#1e1712]">السكر والمتغيرات</div>
+                    <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">حوّل المتغيرات إلى إضافات منظمة حتى يقترب الاستهلاك من الواقع.</div>
+                  </div>
+                </div>
+              </section>
+
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className={opsSectionTitle}>تسجيل حركة اليوم</div>
+                <div className={[opsSectionHint, 'mt-1'].join(' ')}>الوارد يمكن إدخاله بوحدة الشراء أو التشغيل. الصرف والهالك والتسوية بوحدة التشغيل.</div>
+                <div className="mt-4 grid gap-2">
+                  <select className={opsSelect} value={movementForm.inventoryItemId} onChange={(e) => setMovementForm((current) => ({ ...current, inventoryItemId: e.target.value }))}>
+                    <option value="">اختر الخامة</option>
+                    {prioritizedItems.filter((item) => item.isActive).map((item) => (
+                      <option key={item.id} value={item.id}>{item.itemName}</option>
+                    ))}
+                  </select>
+                  {selectedMovementItem ? <div className={[opsInset, 'p-3 text-right text-xs text-[#6b5a4c]'].join(' ')}>{formatItemUnitSummary(selectedMovementItem)}</div> : null}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <select className={opsSelect} value={movementForm.movementKind} onChange={(e) => setMovementForm((current) => ({ ...current, movementKind: e.target.value as InventoryMovement['movementKind'] }))}>
+                      <option value="inbound">وارد</option>
+                      <option value="outbound">صرف</option>
+                      <option value="waste">هالك</option>
+                      <option value="adjustment">تسوية</option>
+                    </select>
+                    <input className={opsInput} inputMode="decimal" placeholder={movementForm.movementKind === 'inbound' && movementForm.entryUnit === 'purchase' && selectedMovementItem?.purchaseUnitLabel ? `الكمية بـ ${selectedMovementItem.purchaseUnitLabel}` : `الكمية بـ ${selectedMovementItem?.unitLabel ?? 'الوحدة'}`} value={movementForm.quantity} onChange={(e) => setMovementForm((current) => ({ ...current, quantity: e.target.value }))} />
+                  </div>
+                  {movementForm.movementKind === 'inbound' && selectedMovementItem?.purchaseUnitLabel ? (
+                    <select className={opsSelect} value={movementForm.entryUnit} onChange={(e) => setMovementForm((current) => ({ ...current, entryUnit: e.target.value as 'stock' | 'purchase' }))}>
+                      <option value="stock">الإدخال بوحدة التشغيل ({selectedMovementItem.unitLabel})</option>
+                      <option value="purchase">الإدخال بوحدة الشراء ({selectedMovementItem.purchaseUnitLabel})</option>
+                    </select>
+                  ) : null}
+                  {movementPreview ? (
+                    <div className={[opsInset, 'p-3 text-right text-xs leading-6 text-[#6b5a4c]'].join(' ')}>
+                      المعاينة: {formatQty(Number(movementForm.quantity || 0))} {movementPreview.inputUnitLabel} = {formatQty(movementPreview.stockQuantity)} {movementPreview.stockUnitLabel}
                     </div>
-                    <div className="mt-4 grid grid-cols-2 gap-3 text-right text-xs text-[#6b5a4c]">
-                      <div className={[opsInset, 'p-3'].join(' ')}>
-                        <div>الرصيد الحالي</div>
-                        <div className="mt-1 text-lg font-black text-[#1e1712]">{formatQty(row.currentBalance)}</div>
+                  ) : null}
+                  {movementForm.movementKind === 'adjustment' ? (
+                    <select className={opsSelect} value={movementForm.adjustmentDirection} onChange={(e) => setMovementForm((current) => ({ ...current, adjustmentDirection: e.target.value as 'increase' | 'decrease' }))}>
+                      <option value="increase">زيادة</option>
+                      <option value="decrease">نقص</option>
+                    </select>
+                  ) : null}
+                  <select className={opsSelect} value={movementForm.supplierId} onChange={(e) => setMovementForm((current) => ({ ...current, supplierId: e.target.value }))}>
+                    <option value="">بدون مورد</option>
+                    {workspace.suppliers.filter((supplier) => supplier.isActive).map((supplier) => (
+                      <option key={supplier.id} value={supplier.id}>{supplier.supplierName}</option>
+                    ))}
+                  </select>
+                  <textarea className={[opsInput, 'min-h-[88px] resize-y'].join(' ')} placeholder="ملاحظات" value={movementForm.notes} onChange={(e) => setMovementForm((current) => ({ ...current, notes: e.target.value }))} />
+                </div>
+                <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitMovement} disabled={busy || !movementForm.inventoryItemId || !movementForm.quantity.trim()}>
+                  {busy ? '...' : 'تسجيل الحركة'}
+                </button>
+              </section>
+
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className={opsSectionTitle}>آخر الحركات</div>
+                <div className={[opsSectionHint, 'mt-1'].join(' ')}>تابع آخر ما دخل وخرج من المخزن.</div>
+                <div className="mt-4 space-y-3">
+                  {workspace.recentMovements.slice(0, 12).map((movement) => (
+                    <article key={movement.id} className={[opsInset, 'p-4'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-[#1e1712]">{movement.itemName}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{formatDateTime(movement.occurredAt)}</div>
+                        </div>
+                        <div className={opsBadge(movementTone(movement.movementKind))}>{movementLabel(movement.movementKind)}</div>
                       </div>
-                      <div className={[opsInset, 'p-3'].join(' ')}>
-                        <div>الاستهلاك التقديري</div>
-                        <div className="mt-1 text-lg font-black text-[#1e1712]">{formatQty(row.estimatedTotal)}</div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <div className="text-sm font-black text-[#1e1712]">{movement.deltaQuantity > 0 ? '+' : ''}{formatQty(movement.deltaQuantity)} {movement.unitLabel}</div>
+                        <div className="text-right text-xs text-[#7d6a59]">{movement.supplierName ? `المورد: ${movement.supplierName}` : movement.notes ?? '—'}</div>
                       </div>
-                      <div>
-                        <div>من المنتجات: {formatQty(row.estimatedFromProducts)}</div>
-                        <div className="mt-1">من الإضافات: {formatQty(row.estimatedFromAddons)}</div>
-                        <div className="mt-1">المتوسط اليومي: {formatQty(row.avgDailyConsumption)}</div>
+                    </article>
+                  ))}
+                  {!workspace.recentMovements.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c]'].join(' ')}>لا توجد حركات بعد.</div> : null}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-4 xl:sticky xl:top-24">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-right">
+                    <div className={opsSectionTitle}>جرد سريع</div>
+                    <div className={[opsSectionHint, 'mt-1'].join(' ')}>اختر خامة، اكتب العدد الفعلي، والنظام يحسب فرق التسوية.</div>
+                  </div>
+                  <div className={opsBadge('info')}>أسرع إجراء</div>
+                </div>
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  {quickCountFocusItems.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={item.id === quickCountForm.inventoryItemId ? opsAccentButton : opsGhostButton}
+                      onClick={() => setQuickCountForm((current) => ({ ...current, inventoryItemId: item.id }))}
+                    >
+                      {item.itemName}
+                    </button>
+                  ))}
+                </div>
+                <div className="mt-4 grid gap-2">
+                  <select className={opsSelect} value={quickCountForm.inventoryItemId} onChange={(e) => setQuickCountForm((current) => ({ ...current, inventoryItemId: e.target.value }))}>
+                    <option value="">اختر الخامة</option>
+                    {workspace.items.filter((item) => item.isActive).map((item) => (
+                      <option key={item.id} value={item.id}>{item.itemName}</option>
+                    ))}
+                  </select>
+                  {selectedQuickCountItem ? (
+                    <div className={[opsInset, 'p-3 text-right text-xs leading-6 text-[#6b5a4c]'].join(' ')}>
+                      المتوقع الآن: {formatQty(selectedQuickCountItem.currentBalance)} {selectedQuickCountItem.unitLabel}
+                      <div className="mt-1">{formatItemUnitSummary(selectedQuickCountItem)}</div>
+                    </div>
+                  ) : null}
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <input className={opsInput} inputMode="decimal" placeholder={quickCountForm.entryUnit === 'purchase' && selectedQuickCountItem?.purchaseUnitLabel ? `العدد الفعلي بـ ${selectedQuickCountItem.purchaseUnitLabel}` : `العدد الفعلي بـ ${selectedQuickCountItem?.unitLabel ?? 'الوحدة'}`} value={quickCountForm.actualQuantity} onChange={(e) => setQuickCountForm((current) => ({ ...current, actualQuantity: e.target.value }))} />
+                    {selectedQuickCountItem?.purchaseUnitLabel ? (
+                      <select className={opsSelect} value={quickCountForm.entryUnit} onChange={(e) => setQuickCountForm((current) => ({ ...current, entryUnit: e.target.value as 'stock' | 'purchase' }))}>
+                        <option value="stock">الجرد بوحدة التشغيل ({selectedQuickCountItem.unitLabel})</option>
+                        <option value="purchase">الجرد بوحدة الشراء ({selectedQuickCountItem.purchaseUnitLabel})</option>
+                      </select>
+                    ) : <div className={[opsInset, 'p-3 text-right text-xs text-[#6b5a4c]'].join(' ')}>الجرد سيتم بوحدة التشغيل فقط.</div>}
+                  </div>
+                  {quickCountPreview && selectedQuickCountItem ? (
+                    <div className={[opsInset, 'p-3 text-right text-xs leading-6 text-[#6b5a4c]'].join(' ')}>
+                      الفعلي بعد التحويل: {formatQty(quickCountPreview.stockQuantity)} {quickCountPreview.stockUnitLabel}
+                      <div className="mt-1">فرق الجرد: {quickCountVariance && quickCountVariance > 0 ? '+' : ''}{formatQty(Number(quickCountVariance ?? 0))} {quickCountPreview.stockUnitLabel}</div>
+                    </div>
+                  ) : null}
+                  <textarea className={[opsInput, 'min-h-[72px] resize-y'].join(' ')} placeholder="ملاحظة الجرد - اختياري" value={quickCountForm.notes} onChange={(e) => setQuickCountForm((current) => ({ ...current, notes: e.target.value }))} />
+                </div>
+                <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitQuickCount} disabled={busy || !quickCountForm.inventoryItemId || !quickCountForm.actualQuantity.trim()}>
+                  {busy ? '...' : 'حفظ الجرد السريع'}
+                </button>
+              </section>
+
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className={opsSectionTitle}>تحتاج متابعة الآن</div>
+                <div className={[opsSectionHint, 'mt-1'].join(' ')}>هذه العناصر المنخفضة أو المنتهية أول ما تحتاجه اليوم.</div>
+                <div className="mt-4 space-y-3">
+                  {prioritizedItems.slice(0, 10).map((item) => (
+                    <article key={item.id} className={[opsInset, 'p-4'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-base font-bold text-[#1e1712]">{item.itemName}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{formatItemUnitSummary(item)}</div>
+                        </div>
+                        <div className={opsBadge(stockTone(item.stockStatus))}>{stockLabel(item.stockStatus)}</div>
                       </div>
-                      <div>
+                      <div className="mt-3 flex items-end justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-xs text-[#7d6a59]">الرصيد</div>
+                          <div className="mt-1 text-2xl font-black text-[#1e1712]">{formatQty(item.currentBalance)}</div>
+                        </div>
+                        <div className="text-right text-xs text-[#7d6a59]">
+                          <div>حد التنبيه: {formatQty(item.lowStockThreshold)} {item.unitLabel}</div>
+                          <div className="mt-1">آخر حركة: {formatDateTime(item.lastMovementAt)}</div>
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap justify-end gap-2">
+                        <button type="button" className={opsGhostButton} onClick={() => {
+                          startEditItem(item);
+                          setInventoryView('items');
+                        }}>تعديل الخامة</button>
+                        <button type="button" className={opsAccentButton} onClick={() => setMovementForm((current) => ({ ...current, inventoryItemId: item.id, movementKind: 'inbound' }))}>وارد سريع</button>
+                      </div>
+                    </article>
+                  ))}
+                  {!prioritizedItems.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c]'].join(' ')}>لا توجد خامات تحتاج متابعة الآن.</div> : null}
+                </div>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {inventoryView === 'items' ? (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)] xl:items-start">
+            <div className="space-y-4">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="text-right">
+                    <div className={opsSectionTitle}>الخامات</div>
+                    <div className={[opsSectionHint, 'mt-1'].join(' ')}>ابحث وعدّل الرصيد والوحدات والخامات النشطة.</div>
+                  </div>
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px]">
+                    <input className={opsInput} placeholder="بحث" value={query} onChange={(e) => setQuery(e.target.value)} />
+                    <select className={opsSelect} value={stockFilter} onChange={(e) => setStockFilter(e.target.value as typeof stockFilter)}>
+                      <option value="active">النشطة</option>
+                      <option value="all">الكل</option>
+                      <option value="low">منخفضة</option>
+                      <option value="empty">نفدت</option>
+                      <option value="inactive">الموقوفة</option>
+                    </select>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  {filteredItems.map((item) => (
+                    <article key={item.id} className={[opsInset, 'p-4'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-base font-bold text-[#1e1712]">{item.itemName}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{item.categoryLabel ?? 'عام'}{item.itemCode ? ` • ${item.itemCode}` : ''}</div>
+                        </div>
+                        <div className={opsBadge(stockTone(item.stockStatus))}>{stockLabel(item.stockStatus)}</div>
+                      </div>
+                      <div className="mt-4 flex items-end justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-xs text-[#7d6a59]">الرصيد</div>
+                          <div className="mt-1 text-2xl font-black text-[#1e1712]">{formatQty(item.currentBalance)}</div>
+                        </div>
+                        <div className="text-right text-xs text-[#7d6a59]">
+                          <div>{formatItemUnitSummary(item)}</div>
+                          <div className="mt-1">حد التنبيه: {formatQty(item.lowStockThreshold)} {item.unitLabel}</div>
+                          <div className="mt-1">آخر حركة: {formatDateTime(item.lastMovementAt)}</div>
+                        </div>
+                      </div>
+                      {item.notes ? <div className="mt-3 text-right text-xs leading-6 text-[#6b5a4c]">{item.notes}</div> : null}
+                      <div className="mt-4 flex flex-wrap justify-end gap-2">
+                        <button type="button" className={opsGhostButton} onClick={() => toggleItem(item)} disabled={busy}>{item.isActive ? 'إيقاف' : 'تفعيل'}</button>
+                        <button type="button" className={opsAccentButton} onClick={() => startEditItem(item)} disabled={busy}>تعديل</button>
+                      </div>
+                    </article>
+                  ))}
+                  {!filteredItems.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c] xl:col-span-2'].join(' ')}>لا توجد خامات مطابقة.</div> : null}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-4 xl:sticky xl:top-24">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-right">
+                    <div className={opsSectionTitle}>{itemId ? 'تعديل خامة' : 'إضافة خامة'}</div>
+                    <div className={[opsSectionHint, 'mt-1'].join(' ')}>عرّف وحدة التشغيل أولاً ثم وحدة الشراء إذا اختلفت.</div>
+                  </div>
+                  {itemId ? <button type="button" className={opsGhostButton} onClick={resetItemForm}>جديد</button> : null}
+                </div>
+                {!itemId ? (
+                  <div className="mt-3 flex flex-wrap justify-end gap-2">
+                    {INVENTORY_ITEM_TEMPLATES.map((template) => (
+                      <button key={template.key} type="button" className={opsGhostButton} onClick={() => applyItemTemplate(template)}>
+                        {template.title}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <input className={opsInput} placeholder="اسم الخامة" value={itemForm.itemName} onChange={(e) => setItemForm((current) => ({ ...current, itemName: e.target.value }))} />
+                  <input className={opsInput} placeholder="كود داخلي" value={itemForm.itemCode} onChange={(e) => setItemForm((current) => ({ ...current, itemCode: e.target.value }))} />
+                  <input className={opsInput} placeholder="التصنيف" value={itemForm.categoryLabel} onChange={(e) => setItemForm((current) => ({ ...current, categoryLabel: e.target.value }))} />
+                  <input className={opsInput} placeholder="وحدة التشغيل (مثال: ملعقة / قطعة)" value={itemForm.unitLabel} onChange={(e) => setItemForm((current) => ({ ...current, unitLabel: e.target.value }))} />
+                  <input className={opsInput} placeholder="وحدة الشراء - اختياري (مثال: كيلو / علبة)" value={itemForm.purchaseUnitLabel} onChange={(e) => setItemForm((current) => ({ ...current, purchaseUnitLabel: e.target.value, openingBalanceUnit: e.target.value.trim() ? current.openingBalanceUnit : 'stock' }))} />
+                  <input className={opsInput} inputMode="decimal" placeholder="1 وحدة شراء = كم وحدة تشغيل" value={itemForm.purchaseToStockFactor} onChange={(e) => setItemForm((current) => ({ ...current, purchaseToStockFactor: e.target.value }))} disabled={!itemForm.purchaseUnitLabel.trim()} />
+                  <input className={opsInput} inputMode="decimal" placeholder="حد التنبيه" value={itemForm.lowStockThreshold} onChange={(e) => setItemForm((current) => ({ ...current, lowStockThreshold: e.target.value }))} />
+                  {!itemId ? <input className={opsInput} inputMode="decimal" placeholder="رصيد افتتاحي" value={itemForm.openingBalance} onChange={(e) => setItemForm((current) => ({ ...current, openingBalance: e.target.value }))} /> : null}
+                </div>
+                {!itemId && itemForm.purchaseUnitLabel.trim() ? (
+                  <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px]">
+                    <div className={[opsInset, 'p-3 text-right text-xs leading-6 text-[#6b5a4c]'].join(' ')}>
+                      {openingBalancePreview
+                        ? `المعاينة: ${formatQty(Number(itemForm.openingBalance || 0))} ${itemForm.openingBalanceUnit === 'purchase' ? itemForm.purchaseUnitLabel : itemForm.unitLabel} = ${formatQty(openingBalancePreview.stockQuantity)} ${itemForm.unitLabel}`
+                        : 'يمكنك إدخال الرصيد الافتتاحي بوحدة التشغيل أو بوحدة الشراء.'}
+                    </div>
+                    <select className={opsSelect} value={itemForm.openingBalanceUnit} onChange={(e) => setItemForm((current) => ({ ...current, openingBalanceUnit: e.target.value as 'stock' | 'purchase' }))}>
+                      <option value="stock">الرصيد بوحدة التشغيل</option>
+                      <option value="purchase">الرصيد بوحدة الشراء</option>
+                    </select>
+                  </div>
+                ) : null}
+                <textarea className={[opsInput, 'mt-2 min-h-[96px] resize-y'].join(' ')} placeholder="ملاحظات" value={itemForm.notes} onChange={(e) => setItemForm((current) => ({ ...current, notes: e.target.value }))} />
+                <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitItem} disabled={busy || !itemForm.itemName.trim() || !itemForm.unitLabel.trim() || (Boolean(itemForm.purchaseUnitLabel.trim()) && !itemForm.purchaseToStockFactor.trim())}>
+                  {busy ? '...' : itemId ? 'حفظ التعديل' : 'إضافة الخامة'}
+                </button>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {inventoryView === 'recipes' ? (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_minmax(360px,0.82fr)] xl:items-start">
+            <div className="space-y-4">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-right">
+                    <div className={opsSectionTitle}>قراءة الاستهلاك التقديري</div>
+                    <div className={[opsSectionHint, 'mt-1'].join(' ')}>آخر {workspace.analysisWindowDays} يوم من المبيعات مقارنة بالصرف اليدوي المسجل.</div>
+                  </div>
+                  <div className={opsBadge('info')}>تقديري فقط</div>
+                </div>
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  {filteredEstimatedConsumption.map((row) => (
+                    <article key={row.inventoryItemId} className={[opsInset, 'p-4'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-base font-bold text-[#1e1712]">{row.itemName}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{row.unitLabel} • {stockLabel(row.stockStatus)}</div>
+                        </div>
+                        <div className={opsBadge(coverageTone(row))}>{coverageLabel(row)}</div>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-3 text-right text-xs text-[#6b5a4c]">
+                        <div className={[opsInset, 'p-3'].join(' ')}>
+                          <div>الرصيد الحالي</div>
+                          <div className="mt-1 text-lg font-black text-[#1e1712]">{formatQty(row.currentBalance)}</div>
+                        </div>
+                        <div className={[opsInset, 'p-3'].join(' ')}>
+                          <div>الاستهلاك التقديري</div>
+                          <div className="mt-1 text-lg font-black text-[#1e1712]">{formatQty(row.estimatedTotal)}</div>
+                        </div>
+                        <div>
+                          <div>من المنتجات: {formatQty(row.estimatedFromProducts)}</div>
+                          <div className="mt-1">من الإضافات: {formatQty(row.estimatedFromAddons)}</div>
+                          <div className="mt-1">المتوسط اليومي: {formatQty(row.avgDailyConsumption)}</div>
+                        </div>
+                        <div>
+                          <div>الصرف المسجل: {formatQty(row.recordedOutflow)}</div>
+                          <div className="mt-1">فرق القراءة: {row.varianceQuantity > 0 ? '+' : ''}{formatQty(row.varianceQuantity)}</div>
+                          <div className="mt-1">الوصفات المرتبطة: {row.recipeCount}</div>
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                  {!filteredEstimatedConsumption.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c] xl:col-span-2'].join(' ')}>لا توجد خامات مرتبطة بوصفات بعد.</div> : null}
+                </div>
+              </section>
+
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                  <div className="text-right">
+                    <div className={opsSectionTitle}>الوصفات المرتبطة</div>
+                    <div className={[opsSectionHint, 'mt-1'].join(' ')}>اربط المنتجات والإضافات بالخامات دون التأثير على البيع المباشر.</div>
+                  </div>
+                  <div className="flex flex-wrap justify-end gap-2">
+                    <button type="button" className={recipeScope === 'product' ? opsAccentButton : opsGhostButton} onClick={() => setRecipeScope('product')}>المنتجات</button>
+                    <button type="button" className={recipeScope === 'addon' ? opsAccentButton : opsGhostButton} onClick={() => setRecipeScope('addon')}>الإضافات</button>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  {(recipeScope === 'product' ? workspace.productRecipes : workspace.addonRecipes).map((recipe) => (
+                    <article key={recipe.id} className={[opsInset, 'p-4'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-[#1e1712]">{'productName' in recipe ? recipe.productName : recipe.addonName}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{'stationCode' in recipe ? recipe.stationCode : ''} • {recipe.inventoryItemName}</div>
+                        </div>
+                        <div className={opsBadge(recipeTone(recipe.isActive))}>{recipe.isActive ? 'نشطة' : 'موقوفة'}</div>
+                      </div>
+                      <div className="mt-3 text-right text-xs text-[#6b5a4c]">
+                        <div>الكمية لكل وحدة: {formatQty(recipe.quantityPerUnit)} {recipe.unitLabel}</div>
+                        <div className="mt-1">الهالك المضاف: {formatQty(recipe.wastagePercent)}%</div>
+                        {recipe.notes ? <div className="mt-1">{recipe.notes}</div> : null}
+                      </div>
+                      <div className="mt-3 flex flex-wrap justify-end gap-2">
+                        {'menuProductId' in recipe ? (
+                          <>
+                            <button type="button" className={opsGhostButton} onClick={() => toggleProductRecipe(recipe)} disabled={busy}>{recipe.isActive ? 'إيقاف' : 'تفعيل'}</button>
+                            <button type="button" className={opsAccentButton} onClick={() => startEditProductRecipe(recipe)} disabled={busy}>تعديل</button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" className={opsGhostButton} onClick={() => toggleAddonRecipe(recipe)} disabled={busy}>{recipe.isActive ? 'إيقاف' : 'تفعيل'}</button>
+                            <button type="button" className={opsAccentButton} onClick={() => startEditAddonRecipe(recipe)} disabled={busy}>تعديل</button>
+                          </>
+                        )}
+                      </div>
+                    </article>
+                  ))}
+                  {!(recipeScope === 'product' ? workspace.productRecipes.length : workspace.addonRecipes.length) ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c] xl:col-span-2'].join(' ')}>لا توجد وصفات لهذا القسم بعد.</div> : null}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-4 xl:sticky xl:top-24">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-right">
+                    <div className={opsSectionTitle}>{recipeScope === 'product' ? (productRecipeId ? 'تعديل وصفة منتج' : 'إضافة وصفة منتج') : (addonRecipeId ? 'تعديل وصفة إضافة' : 'إضافة وصفة إضافة')}</div>
+                    <div className={[opsSectionHint, 'mt-1'].join(' ')}>الوصفة هنا للقراءة والتقارير فقط، ولا تخصم من الطلب مباشرة.</div>
+                  </div>
+                  {recipeScope === 'product'
+                    ? (productRecipeId ? <button type="button" className={opsGhostButton} onClick={resetProductRecipeForm}>جديد</button> : null)
+                    : (addonRecipeId ? <button type="button" className={opsGhostButton} onClick={resetAddonRecipeForm}>جديد</button> : null)}
+                </div>
+                <div className="mt-3 flex flex-wrap justify-end gap-2">
+                  <button type="button" className={recipeScope === 'product' ? opsAccentButton : opsGhostButton} onClick={() => setRecipeScope('product')}>منتج</button>
+                  <button type="button" className={recipeScope === 'addon' ? opsAccentButton : opsGhostButton} onClick={() => setRecipeScope('addon')}>إضافة</button>
+                </div>
+                {recipeScope === 'product' ? (
+                  <>
+                    <div className="mt-4 grid gap-2">
+                      <select className={opsSelect} value={productRecipeForm.menuProductId} onChange={(e) => setProductRecipeForm((current) => ({ ...current, menuProductId: e.target.value }))} disabled={Boolean(productRecipeId)}>
+                        <option value="">اختر المنتج</option>
+                        {workspace.menuProducts.filter((item) => item.isActive).map((item) => (
+                          <option key={item.id} value={item.id}>{item.name}</option>
+                        ))}
+                      </select>
+                      <select className={opsSelect} value={productRecipeForm.inventoryItemId} onChange={(e) => setProductRecipeForm((current) => ({ ...current, inventoryItemId: e.target.value }))} disabled={Boolean(productRecipeId)}>
+                        <option value="">اختر الخامة</option>
+                        {workspace.items.filter((item) => item.isActive).map((item) => (
+                          <option key={item.id} value={item.id}>{item.itemName}</option>
+                        ))}
+                      </select>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <input className={opsInput} inputMode="decimal" placeholder="الكمية لكل وحدة" value={productRecipeForm.quantityPerUnit} onChange={(e) => setProductRecipeForm((current) => ({ ...current, quantityPerUnit: e.target.value }))} />
+                        <input className={opsInput} inputMode="decimal" placeholder="% هالك إضافي" value={productRecipeForm.wastagePercent} onChange={(e) => setProductRecipeForm((current) => ({ ...current, wastagePercent: e.target.value }))} />
+                      </div>
+                      <textarea className={[opsInput, 'min-h-[88px] resize-y'].join(' ')} placeholder="ملاحظات" value={productRecipeForm.notes} onChange={(e) => setProductRecipeForm((current) => ({ ...current, notes: e.target.value }))} />
+                    </div>
+                    <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitProductRecipe} disabled={busy || !productRecipeForm.menuProductId || !productRecipeForm.inventoryItemId || !productRecipeForm.quantityPerUnit.trim()}>
+                      {busy ? '...' : productRecipeId ? 'حفظ وصفة المنتج' : 'إضافة وصفة المنتج'}
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <div className="mt-4 grid gap-2">
+                      <select className={opsSelect} value={addonRecipeForm.menuAddonId} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, menuAddonId: e.target.value }))} disabled={Boolean(addonRecipeId)}>
+                        <option value="">اختر الإضافة</option>
+                        {workspace.menuAddons.filter((item) => item.isActive).map((item) => (
+                          <option key={item.id} value={item.id}>{item.name}</option>
+                        ))}
+                      </select>
+                      <select className={opsSelect} value={addonRecipeForm.inventoryItemId} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, inventoryItemId: e.target.value }))} disabled={Boolean(addonRecipeId)}>
+                        <option value="">اختر الخامة</option>
+                        {workspace.items.filter((item) => item.isActive).map((item) => (
+                          <option key={item.id} value={item.id}>{item.itemName}</option>
+                        ))}
+                      </select>
+                      <div className="grid gap-2 sm:grid-cols-2">
+                        <input className={opsInput} inputMode="decimal" placeholder="الكمية لكل إضافة" value={addonRecipeForm.quantityPerUnit} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, quantityPerUnit: e.target.value }))} />
+                        <input className={opsInput} inputMode="decimal" placeholder="% هالك إضافي" value={addonRecipeForm.wastagePercent} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, wastagePercent: e.target.value }))} />
+                      </div>
+                      <textarea className={[opsInput, 'min-h-[88px] resize-y'].join(' ')} placeholder="ملاحظات" value={addonRecipeForm.notes} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, notes: e.target.value }))} />
+                    </div>
+                    <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitAddonRecipe} disabled={busy || !addonRecipeForm.menuAddonId || !addonRecipeForm.inventoryItemId || !addonRecipeForm.quantityPerUnit.trim()}>
+                      {busy ? '...' : addonRecipeId ? 'حفظ وصفة الإضافة' : 'إضافة وصفة الإضافة'}
+                    </button>
+                  </>
+                )}
+              </section>
+
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-right">
+                    <div className={opsSectionTitle}>خيارات منظمة مؤثرة في الاستهلاك</div>
+                    <div className={[opsSectionHint, 'mt-1'].join(' ')}>مثالية للسكر أو أي متغير يغيّر استهلاك الخامة من طلب لآخر.</div>
+                  </div>
+                  <div className={opsBadge('info')}>سريع</div>
+                </div>
+                <div className="mt-4 grid gap-2">
+                  <select className={opsSelect} value={structuredBundleKey} onChange={(e) => setStructuredBundleKey(e.target.value)}>
+                    {INVENTORY_STRUCTURED_OPTION_BUNDLES.map((bundle) => (
+                      <option key={bundle.key} value={bundle.key}>{bundle.title}</option>
+                    ))}
+                  </select>
+                  <div className={[opsInset, 'p-3 text-right text-xs leading-6 text-[#6b5a4c]'].join(' ')}>{selectedStructuredBundle?.description ?? 'اختر قالبًا منظمًا ثم اربطه بإضافات المنيو.'}</div>
+                  <select className={opsSelect} value={structuredItemId} onChange={(e) => setStructuredItemId(e.target.value)}>
+                    <option value="">اختر الخامة المرتبطة</option>
+                    {workspace.items.filter((item) => item.isActive).map((item) => (
+                      <option key={item.id} value={item.id}>{item.itemName}</option>
+                    ))}
+                  </select>
+                  {selectedStructuredItem ? <div className={[opsInset, 'p-3 text-right text-xs text-[#6b5a4c]'].join(' ')}>{formatItemUnitSummary(selectedStructuredItem)}</div> : null}
+                </div>
+                <div className="mt-3 space-y-2">
+                  {structuredOptionRows.map((row, index) => (
+                    <div key={row.key} className={[opsInset, 'p-3'].join(' ')}>
+                      <div className="grid gap-2 md:grid-cols-[100px_minmax(0,1fr)_minmax(0,1fr)]">
+                        <input className={opsInput} inputMode="decimal" placeholder="الكمية" value={row.quantityPerUnit} onChange={(e) => setStructuredOptionRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, quantityPerUnit: e.target.value } : item))} />
+                        <select className={opsSelect} value={row.menuAddonId} onChange={(e) => setStructuredOptionRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, menuAddonId: e.target.value } : item))}>
+                          <option value="">اختر إضافة المنيو</option>
+                          {workspace.menuAddons.filter((item) => item.isActive).map((item) => (
+                            <option key={item.id} value={item.id}>{item.name}</option>
+                          ))}
+                        </select>
+                        <div className="flex items-center justify-end text-sm font-bold text-[#1e1712]">{row.label}</div>
+                      </div>
+                      <input className={[opsInput, 'mt-2'].join(' ')} placeholder="ملاحظة اختيارية" value={row.notes} onChange={(e) => setStructuredOptionRows((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, notes: e.target.value } : item))} />
+                      {Number(row.quantityPerUnit || 0) <= 0 ? <div className="mt-2 text-right text-[11px] text-[#7d6a59]">هذه الكمية = 0، سيتم تجاهل الصف عند الحفظ.</div> : null}
+                    </div>
+                  ))}
+                </div>
+                <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitStructuredOptions} disabled={busy || !structuredItemId || !structuredOptionRows.some((row) => row.menuAddonId && Number(row.quantityPerUnit || 0) > 0)}>
+                  {busy ? '...' : 'حفظ الخيارات المنظمة'}
+                </button>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {inventoryView === 'suppliers' ? (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(340px,0.9fr)] xl:items-start">
+            <div className="space-y-4">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className={opsSectionTitle}>آخر وارد من الموردين</div>
+                <div className={[opsSectionHint, 'mt-1'].join(' ')}>راجع آخر التوريدات المسجلة والجهة التي وردت منها.</div>
+                <div className="mt-4 space-y-3">
+                  {recentInboundMovements.map((movement) => (
+                    <article key={movement.id} className={[opsInset, 'p-4'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-[#1e1712]">{movement.itemName}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{formatDateTime(movement.occurredAt)}</div>
+                        </div>
+                        <div className={opsBadge('success')}>{movement.supplierName ?? 'بدون مورد'}</div>
+                      </div>
+                      <div className="mt-3 text-right text-sm font-black text-[#1e1712]">+{formatQty(movement.deltaQuantity)} {movement.unitLabel}</div>
+                    </article>
+                  ))}
+                  {!recentInboundMovements.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c]'].join(' ')}>لا توجد توريدات واردة مسجلة بعد.</div> : null}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-4 xl:sticky xl:top-24">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-right">
+                    <div className={opsSectionTitle}>{supplierId ? 'تعديل مورد' : 'إضافة مورد'}</div>
+                    <div className={[opsSectionHint, 'mt-1'].join(' ')}>احتفظ بموردي البن والسكر والخامات الرئيسية هنا.</div>
+                  </div>
+                  {supplierId ? <button type="button" className={opsGhostButton} onClick={resetSupplierForm}>جديد</button> : null}
+                </div>
+                <div className="mt-4 grid gap-2">
+                  <input className={opsInput} placeholder="اسم المورد" value={supplierForm.supplierName} onChange={(e) => setSupplierForm((current) => ({ ...current, supplierName: e.target.value }))} />
+                  <input className={opsInput} placeholder="الهاتف" value={supplierForm.phone} onChange={(e) => setSupplierForm((current) => ({ ...current, phone: e.target.value }))} />
+                  <textarea className={[opsInput, 'min-h-[88px] resize-y'].join(' ')} placeholder="ملاحظات" value={supplierForm.notes} onChange={(e) => setSupplierForm((current) => ({ ...current, notes: e.target.value }))} />
+                </div>
+                <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitSupplier} disabled={busy || !supplierForm.supplierName.trim()}>
+                  {busy ? '...' : supplierId ? 'حفظ المورد' : 'إضافة المورد'}
+                </button>
+
+                <div className="mt-4 space-y-2">
+                  {workspace.suppliers.map((supplier) => (
+                    <article key={supplier.id} className={[opsInset, 'p-3'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-[#1e1712]">{supplier.supplierName}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{supplier.phone ?? 'بدون هاتف'}</div>
+                        </div>
+                        <div className={opsBadge(supplier.isActive ? 'success' : 'neutral')}>{supplier.isActive ? 'نشط' : 'موقوف'}</div>
+                      </div>
+                      {supplier.notes ? <div className="mt-2 text-right text-xs text-[#6b5a4c]">{supplier.notes}</div> : null}
+                      <div className="mt-3 flex flex-wrap justify-end gap-2">
+                        <button type="button" className={opsGhostButton} onClick={() => toggleSupplier(supplier)} disabled={busy}>{supplier.isActive ? 'إيقاف' : 'تفعيل'}</button>
+                        <button type="button" className={opsAccentButton} onClick={() => startEditSupplier(supplier)} disabled={busy}>تعديل</button>
+                      </div>
+                    </article>
+                  ))}
+                  {!workspace.suppliers.length ? <div className={[opsInset, 'p-3 text-right text-sm text-[#6b5a4c]'].join(' ')}>لا يوجد موردون بعد.</div> : null}
+                </div>
+              </section>
+            </div>
+          </div>
+        ) : null}
+
+        {inventoryView === 'analysis' ? (
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.08fr)_minmax(340px,0.92fr)] xl:items-start">
+            <div className="space-y-4">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className={opsSectionTitle}>قراءة الفرق والغطاء</div>
+                <div className={[opsSectionHint, 'mt-1'].join(' ')}>اعرف ما الذي سينفد وما الفرق بين الاستهلاك المتوقع والصرف المسجل.</div>
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  {criticalConsumptionRows.map((row) => (
+                    <article key={row.inventoryItemId} className={[opsInset, 'p-4'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-base font-bold text-[#1e1712]">{row.itemName}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{row.unitLabel}</div>
+                        </div>
+                        <div className={opsBadge(coverageTone(row))}>{coverageLabel(row)}</div>
+                      </div>
+                      <div className="mt-3 text-right text-xs text-[#6b5a4c] leading-6">
+                        <div>الرصيد الحالي: {formatQty(row.currentBalance)}</div>
+                        <div>الاستهلاك التقديري: {formatQty(row.estimatedTotal)}</div>
                         <div>الصرف المسجل: {formatQty(row.recordedOutflow)}</div>
-                        <div className="mt-1">فرق القراءة: {row.varianceQuantity > 0 ? '+' : ''}{formatQty(row.varianceQuantity)}</div>
-                        <div className="mt-1">الوصفات المرتبطة: {row.recipeCount}</div>
+                        <div>فرق القراءة: {row.varianceQuantity > 0 ? '+' : ''}{formatQty(row.varianceQuantity)}</div>
                       </div>
-                    </div>
-                  </article>
-                ))}
-                {!filteredEstimatedConsumption.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c] xl:col-span-2'].join(' ')}>لا توجد خامات مرتبطة بوصفات بعد.</div> : null}
-              </div>
-            </section>
-
-            <section className={[opsSurface, 'p-4'].join(' ')}>
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div className="text-right">
-                  <div className={opsSectionTitle}>الوصفات المرتبطة</div>
-                  <div className={[opsSectionHint, 'mt-1'].join(' ')}>اربط المنتجات والإضافات بالخامات دون التأثير على البيع المباشر.</div>
-                </div>
-                <div className="flex flex-wrap justify-end gap-2">
-                  <button type="button" className={recipeScope === 'product' ? opsAccentButton : opsGhostButton} onClick={() => setRecipeScope('product')}>المنتجات</button>
-                  <button type="button" className={recipeScope === 'addon' ? opsAccentButton : opsGhostButton} onClick={() => setRecipeScope('addon')}>الإضافات</button>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                {(recipeScope === 'product' ? workspace.productRecipes : workspace.addonRecipes).map((recipe) => (
-                  <article key={recipe.id} className={[opsInset, 'p-4'].join(' ')}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-right">
-                        <div className="text-sm font-bold text-[#1e1712]">{'productName' in recipe ? recipe.productName : recipe.addonName}</div>
-                        <div className="mt-1 text-xs text-[#7d6a59]">{'stationCode' in recipe ? recipe.stationCode : ''} • {recipe.inventoryItemName}</div>
-                      </div>
-                      <div className={opsBadge(recipeTone(recipe.isActive))}>{recipe.isActive ? 'نشطة' : 'موقوفة'}</div>
-                    </div>
-                    <div className="mt-3 text-right text-xs text-[#6b5a4c]">
-                      <div>الكمية لكل وحدة: {formatQty(recipe.quantityPerUnit)} {recipe.unitLabel}</div>
-                      <div className="mt-1">الهالك المضاف: {formatQty(recipe.wastagePercent)}%</div>
-                      {recipe.notes ? <div className="mt-1">{recipe.notes}</div> : null}
-                    </div>
-                    <div className="mt-3 flex flex-wrap justify-end gap-2">
-                      {'menuProductId' in recipe ? (
-                        <>
-                          <button type="button" className={opsGhostButton} onClick={() => toggleProductRecipe(recipe)} disabled={busy}>{recipe.isActive ? 'إيقاف' : 'تفعيل'}</button>
-                          <button type="button" className={opsAccentButton} onClick={() => startEditProductRecipe(recipe)} disabled={busy}>تعديل</button>
-                        </>
-                      ) : (
-                        <>
-                          <button type="button" className={opsGhostButton} onClick={() => toggleAddonRecipe(recipe)} disabled={busy}>{recipe.isActive ? 'إيقاف' : 'تفعيل'}</button>
-                          <button type="button" className={opsAccentButton} onClick={() => startEditAddonRecipe(recipe)} disabled={busy}>تعديل</button>
-                        </>
-                      )}
-                    </div>
-                  </article>
-                ))}
-                {!(recipeScope === 'product' ? workspace.productRecipes.length : workspace.addonRecipes.length) ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c] xl:col-span-2'].join(' ')}>لا توجد وصفات لهذا القسم بعد.</div> : null}
-              </div>
-            </section>
-
-            <section className={[opsSurface, 'p-4'].join(' ')}>
-              <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-                <div className="text-right">
-                  <div className={opsSectionTitle}>الخامات</div>
-                  <div className={[opsSectionHint, 'mt-1'].join(' ')}>الرصيد الحالي وحد التنبيه.</div>
-                </div>
-                <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_140px]">
-                  <input className={opsInput} placeholder="بحث" value={query} onChange={(e) => setQuery(e.target.value)} />
-                  <select className={opsSelect} value={stockFilter} onChange={(e) => setStockFilter(e.target.value as typeof stockFilter)}>
-                    <option value="active">النشطة</option>
-                    <option value="all">الكل</option>
-                    <option value="low">منخفضة</option>
-                    <option value="empty">نفدت</option>
-                    <option value="inactive">الموقوفة</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="mt-4 grid gap-3 xl:grid-cols-2">
-                {filteredItems.map((item) => (
-                  <article key={item.id} className={[opsInset, 'p-4'].join(' ')}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-right">
-                        <div className="text-base font-bold text-[#1e1712]">{item.itemName}</div>
-                        <div className="mt-1 text-xs text-[#7d6a59]">{item.categoryLabel ?? 'عام'}{item.itemCode ? ` • ${item.itemCode}` : ''}</div>
-                      </div>
-                      <div className={opsBadge(stockTone(item.stockStatus))}>{stockLabel(item.stockStatus)}</div>
-                    </div>
-                    <div className="mt-4 flex items-end justify-between gap-3">
-                      <div className="text-right">
-                        <div className="text-xs text-[#7d6a59]">الرصيد</div>
-                        <div className="mt-1 text-2xl font-black text-[#1e1712]">{formatQty(item.currentBalance)}</div>
-                      </div>
-                      <div className="text-right text-xs text-[#7d6a59]">
-                        <div>{formatItemUnitSummary(item)}</div>
-                        <div className="mt-1">حد التنبيه: {formatQty(item.lowStockThreshold)} {item.unitLabel}</div>
-                        <div className="mt-1">آخر حركة: {formatDateTime(item.lastMovementAt)}</div>
-                      </div>
-                    </div>
-                    {item.notes ? <div className="mt-3 text-right text-xs leading-6 text-[#6b5a4c]">{item.notes}</div> : null}
-                    <div className="mt-4 flex flex-wrap justify-end gap-2">
-                      <button type="button" className={opsGhostButton} onClick={() => toggleItem(item)} disabled={busy}>
-                        {item.isActive ? 'إيقاف' : 'تفعيل'}
-                      </button>
-                      <button type="button" className={opsAccentButton} onClick={() => startEditItem(item)} disabled={busy}>
-                        تعديل
-                      </button>
-                    </div>
-                  </article>
-                ))}
-                {!filteredItems.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c] xl:col-span-2'].join(' ')}>لا توجد خامات مطابقة.</div> : null}
-              </div>
-            </section>
-
-            <section className={[opsSurface, 'p-4'].join(' ')}>
-              <div className={opsSectionTitle}>آخر الحركات</div>
-              <div className={[opsSectionHint, 'mt-1'].join(' ')}>آخر 80 حركة مسجلة.</div>
-              <div className="mt-4 space-y-3">
-                {workspace.recentMovements.map((movement) => (
-                  <article key={movement.id} className={[opsInset, 'p-4'].join(' ')}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-right">
-                        <div className="text-sm font-bold text-[#1e1712]">{movement.itemName}</div>
-                        <div className="mt-1 text-xs text-[#7d6a59]">{formatDateTime(movement.occurredAt)}</div>
-                      </div>
-                      <div className={opsBadge(movementTone(movement.movementKind))}>{movementLabel(movement.movementKind)}</div>
-                    </div>
-                    <div className="mt-3 flex items-center justify-between gap-3">
-                      <div className="text-sm font-black text-[#1e1712]">
-                        {movement.deltaQuantity > 0 ? '+' : ''}{formatQty(movement.deltaQuantity)} {movement.unitLabel}
-                        {movement.inputUnitLabel && movement.inputUnitLabel !== movement.unitLabel ? (
-                          <div className="mt-1 text-[11px] font-medium text-[#7d6a59]">
-                            إدخال: {formatQty(movement.inputQuantity ?? Math.abs(movement.deltaQuantity))} {movement.inputUnitLabel}
-                            {movement.conversionFactor && movement.conversionFactor !== 1 ? ` × ${formatQty(movement.conversionFactor)}` : ''}
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="text-right text-xs text-[#7d6a59]">
-                        {movement.supplierName ? <div>المورد: {movement.supplierName}</div> : null}
-                        {movement.notes ? <div className="mt-1">{movement.notes}</div> : null}
-                      </div>
-                    </div>
-                  </article>
-                ))}
-                {!workspace.recentMovements.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c]'].join(' ')}>لا توجد حركات بعد.</div> : null}
-              </div>
-            </section>
-          </div>
-
-          <div className="space-y-4 xl:sticky xl:top-24">
-            <section className={[opsSurface, 'p-4'].join(' ')}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="text-right">
-                  <div className={opsSectionTitle}>{recipeScope === 'product' ? (productRecipeId ? 'تعديل وصفة منتج' : 'إضافة وصفة منتج') : (addonRecipeId ? 'تعديل وصفة إضافة' : 'إضافة وصفة إضافة')}</div>
-                  <div className={[opsSectionHint, 'mt-1'].join(' ')}>الوصفة هنا للقراءة والتقارير فقط، ولا تخصم من الطلب مباشرة.</div>
-                </div>
-                {recipeScope === 'product'
-                  ? (productRecipeId ? <button type="button" className={opsGhostButton} onClick={resetProductRecipeForm}>جديد</button> : null)
-                  : (addonRecipeId ? <button type="button" className={opsGhostButton} onClick={resetAddonRecipeForm}>جديد</button> : null)}
-              </div>
-              <div className="mt-3 flex flex-wrap justify-end gap-2">
-                <button type="button" className={recipeScope === 'product' ? opsAccentButton : opsGhostButton} onClick={() => setRecipeScope('product')}>منتج</button>
-                <button type="button" className={recipeScope === 'addon' ? opsAccentButton : opsGhostButton} onClick={() => setRecipeScope('addon')}>إضافة</button>
-              </div>
-              {recipeScope === 'product' ? (
-                <>
-                  <div className="mt-4 grid gap-2">
-                    <select className={opsSelect} value={productRecipeForm.menuProductId} onChange={(e) => setProductRecipeForm((current) => ({ ...current, menuProductId: e.target.value }))} disabled={Boolean(productRecipeId)}>
-                      <option value="">اختر المنتج</option>
-                      {workspace.menuProducts.filter((item) => item.isActive).map((item) => (
-                        <option key={item.id} value={item.id}>{item.name}</option>
-                      ))}
-                    </select>
-                    <select className={opsSelect} value={productRecipeForm.inventoryItemId} onChange={(e) => setProductRecipeForm((current) => ({ ...current, inventoryItemId: e.target.value }))} disabled={Boolean(productRecipeId)}>
-                      <option value="">اختر الخامة</option>
-                      {workspace.items.filter((item) => item.isActive).map((item) => (
-                        <option key={item.id} value={item.id}>{item.itemName}</option>
-                      ))}
-                    </select>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <input className={opsInput} inputMode="decimal" placeholder="الكمية لكل وحدة" value={productRecipeForm.quantityPerUnit} onChange={(e) => setProductRecipeForm((current) => ({ ...current, quantityPerUnit: e.target.value }))} />
-                      <input className={opsInput} inputMode="decimal" placeholder="% هالك إضافي" value={productRecipeForm.wastagePercent} onChange={(e) => setProductRecipeForm((current) => ({ ...current, wastagePercent: e.target.value }))} />
-                    </div>
-                    <textarea className={[opsInput, 'min-h-[88px] resize-y'].join(' ')} placeholder="ملاحظات" value={productRecipeForm.notes} onChange={(e) => setProductRecipeForm((current) => ({ ...current, notes: e.target.value }))} />
-                  </div>
-                  <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitProductRecipe} disabled={busy || !productRecipeForm.menuProductId || !productRecipeForm.inventoryItemId || !productRecipeForm.quantityPerUnit.trim()}>
-                    {busy ? '...' : productRecipeId ? 'حفظ وصفة المنتج' : 'إضافة وصفة المنتج'}
-                  </button>
-                </>
-              ) : (
-                <>
-                  <div className="mt-4 grid gap-2">
-                    <select className={opsSelect} value={addonRecipeForm.menuAddonId} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, menuAddonId: e.target.value }))} disabled={Boolean(addonRecipeId)}>
-                      <option value="">اختر الإضافة</option>
-                      {workspace.menuAddons.filter((item) => item.isActive).map((item) => (
-                        <option key={item.id} value={item.id}>{item.name}</option>
-                      ))}
-                    </select>
-                    <select className={opsSelect} value={addonRecipeForm.inventoryItemId} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, inventoryItemId: e.target.value }))} disabled={Boolean(addonRecipeId)}>
-                      <option value="">اختر الخامة</option>
-                      {workspace.items.filter((item) => item.isActive).map((item) => (
-                        <option key={item.id} value={item.id}>{item.itemName}</option>
-                      ))}
-                    </select>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <input className={opsInput} inputMode="decimal" placeholder="الكمية لكل إضافة" value={addonRecipeForm.quantityPerUnit} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, quantityPerUnit: e.target.value }))} />
-                      <input className={opsInput} inputMode="decimal" placeholder="% هالك إضافي" value={addonRecipeForm.wastagePercent} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, wastagePercent: e.target.value }))} />
-                    </div>
-                    <textarea className={[opsInput, 'min-h-[88px] resize-y'].join(' ')} placeholder="ملاحظات" value={addonRecipeForm.notes} onChange={(e) => setAddonRecipeForm((current) => ({ ...current, notes: e.target.value }))} />
-                  </div>
-                  <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitAddonRecipe} disabled={busy || !addonRecipeForm.menuAddonId || !addonRecipeForm.inventoryItemId || !addonRecipeForm.quantityPerUnit.trim()}>
-                    {busy ? '...' : addonRecipeId ? 'حفظ وصفة الإضافة' : 'إضافة وصفة الإضافة'}
-                  </button>
-                </>
-              )}
-            </section>
-
-            <section className={[opsSurface, 'p-4'].join(' ')}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="text-right">
-                  <div className={opsSectionTitle}>{itemId ? 'تعديل خامة' : 'إضافة خامة'}</div>
-                  <div className={[opsSectionHint, 'mt-1'].join(' ')}>عرّف وحدة التشغيل أولاً، ثم أضف وحدة الشراء إذا كنت تشتريها بشكل مختلف.</div>
-                </div>
-                {itemId ? <button type="button" className={opsGhostButton} onClick={resetItemForm}>جديد</button> : null}
-              </div>
-              <div className="mt-4 grid gap-2 sm:grid-cols-2">
-                <input className={opsInput} placeholder="اسم الخامة" value={itemForm.itemName} onChange={(e) => setItemForm((current) => ({ ...current, itemName: e.target.value }))} />
-                <input className={opsInput} placeholder="كود داخلي" value={itemForm.itemCode} onChange={(e) => setItemForm((current) => ({ ...current, itemCode: e.target.value }))} />
-                <input className={opsInput} placeholder="التصنيف" value={itemForm.categoryLabel} onChange={(e) => setItemForm((current) => ({ ...current, categoryLabel: e.target.value }))} />
-                <input className={opsInput} placeholder="وحدة التشغيل (مثال: ملعقة / قطعة)" value={itemForm.unitLabel} onChange={(e) => setItemForm((current) => ({ ...current, unitLabel: e.target.value }))} />
-                <input className={opsInput} placeholder="وحدة الشراء - اختياري (مثال: كيلو / علبة)" value={itemForm.purchaseUnitLabel} onChange={(e) => setItemForm((current) => ({ ...current, purchaseUnitLabel: e.target.value, openingBalanceUnit: e.target.value.trim() ? current.openingBalanceUnit : 'stock' }))} />
-                <input className={opsInput} inputMode="decimal" placeholder="1 وحدة شراء = كم وحدة تشغيل" value={itemForm.purchaseToStockFactor} onChange={(e) => setItemForm((current) => ({ ...current, purchaseToStockFactor: e.target.value }))} disabled={!itemForm.purchaseUnitLabel.trim()} />
-                <input className={opsInput} inputMode="decimal" placeholder="حد التنبيه" value={itemForm.lowStockThreshold} onChange={(e) => setItemForm((current) => ({ ...current, lowStockThreshold: e.target.value }))} />
-                {!itemId ? <input className={opsInput} inputMode="decimal" placeholder="رصيد افتتاحي" value={itemForm.openingBalance} onChange={(e) => setItemForm((current) => ({ ...current, openingBalance: e.target.value }))} /> : null}
-              </div>
-              {!itemId && itemForm.purchaseUnitLabel.trim() ? (
-                <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px]">
-                  <div className={[opsInset, 'p-3 text-right text-xs leading-6 text-[#6b5a4c]'].join(' ')}>
-                    {openingBalancePreview
-                      ? `المعاينة: ${formatQty(Number(itemForm.openingBalance || 0))} ${itemForm.openingBalanceUnit === 'purchase' ? itemForm.purchaseUnitLabel : itemForm.unitLabel} = ${formatQty(openingBalancePreview.stockQuantity)} ${itemForm.unitLabel}`
-                      : 'يمكنك إدخال الرصيد الافتتاحي بوحدة التشغيل أو بوحدة الشراء.'}
-                  </div>
-                  <select className={opsSelect} value={itemForm.openingBalanceUnit} onChange={(e) => setItemForm((current) => ({ ...current, openingBalanceUnit: e.target.value as 'stock' | 'purchase' }))}>
-                    <option value="stock">الرصيد بوحدة التشغيل</option>
-                    <option value="purchase">الرصيد بوحدة الشراء</option>
-                  </select>
-                </div>
-              ) : null}
-              <textarea className={[opsInput, 'mt-2 min-h-[96px] resize-y'].join(' ')} placeholder="ملاحظات" value={itemForm.notes} onChange={(e) => setItemForm((current) => ({ ...current, notes: e.target.value }))} />
-              <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitItem} disabled={busy || !itemForm.itemName.trim() || !itemForm.unitLabel.trim() || (Boolean(itemForm.purchaseUnitLabel.trim()) && !itemForm.purchaseToStockFactor.trim())}>
-                {busy ? '...' : itemId ? 'حفظ التعديل' : 'إضافة الخامة'}
-              </button>
-            </section>
-
-            <section className={[opsSurface, 'p-4'].join(' ')}>
-              <div className={opsSectionTitle}>تسجيل حركة</div>
-              <div className={[opsSectionHint, 'mt-1'].join(' ')}>الوارد يمكن إدخاله بوحدة الشراء أو التشغيل. الصرف والهالك والتسوية بوحدة التشغيل فقط.</div>
-              <div className="mt-4 grid gap-2">
-                <select className={opsSelect} value={movementForm.inventoryItemId} onChange={(e) => setMovementForm((current) => ({ ...current, inventoryItemId: e.target.value }))}>
-                  <option value="">اختر الخامة</option>
-                  {workspace.items.filter((item) => item.isActive).map((item) => (
-                    <option key={item.id} value={item.id}>{item.itemName}</option>
+                    </article>
                   ))}
-                </select>
-                {selectedMovementItem ? <div className={[opsInset, 'p-3 text-right text-xs text-[#6b5a4c]'].join(' ')}>{formatItemUnitSummary(selectedMovementItem)}</div> : null}
-                <div className="grid gap-2 sm:grid-cols-2">
-                  <select className={opsSelect} value={movementForm.movementKind} onChange={(e) => setMovementForm((current) => ({ ...current, movementKind: e.target.value as InventoryMovement['movementKind'] }))}>
-                    <option value="inbound">وارد</option>
-                    <option value="outbound">صرف</option>
-                    <option value="waste">هالك</option>
-                    <option value="adjustment">تسوية</option>
-                  </select>
-                  <input className={opsInput} inputMode="decimal" placeholder={movementForm.movementKind === 'inbound' && movementForm.entryUnit === 'purchase' && selectedMovementItem?.purchaseUnitLabel ? `الكمية بـ ${selectedMovementItem.purchaseUnitLabel}` : `الكمية بـ ${selectedMovementItem?.unitLabel ?? 'الوحدة'}`} value={movementForm.quantity} onChange={(e) => setMovementForm((current) => ({ ...current, quantity: e.target.value }))} />
+                  {!criticalConsumptionRows.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c] xl:col-span-2'].join(' ')}>لا توجد فروقات حرجة حاليًا.</div> : null}
                 </div>
-                {movementForm.movementKind === 'inbound' && selectedMovementItem?.purchaseUnitLabel ? (
-                  <select className={opsSelect} value={movementForm.entryUnit} onChange={(e) => setMovementForm((current) => ({ ...current, entryUnit: e.target.value as 'stock' | 'purchase' }))}>
-                    <option value="stock">الإدخال بوحدة التشغيل ({selectedMovementItem.unitLabel})</option>
-                    <option value="purchase">الإدخال بوحدة الشراء ({selectedMovementItem.purchaseUnitLabel})</option>
-                  </select>
-                ) : null}
-                {movementPreview ? (
-                  <div className={[opsInset, 'p-3 text-right text-xs leading-6 text-[#6b5a4c]'].join(' ')}>
-                    المعاينة: {formatQty(Number(movementForm.quantity || 0))} {movementPreview.inputUnitLabel} = {formatQty(movementPreview.stockQuantity)} {movementPreview.stockUnitLabel}
-                  </div>
-                ) : null}
-                {movementForm.movementKind === 'adjustment' ? (
-                  <select className={opsSelect} value={movementForm.adjustmentDirection} onChange={(e) => setMovementForm((current) => ({ ...current, adjustmentDirection: e.target.value as 'increase' | 'decrease' }))}>
-                    <option value="increase">زيادة</option>
-                    <option value="decrease">نقص</option>
-                  </select>
-                ) : null}
-                <select className={opsSelect} value={movementForm.supplierId} onChange={(e) => setMovementForm((current) => ({ ...current, supplierId: e.target.value }))}>
-                  <option value="">بدون مورد</option>
-                  {workspace.suppliers.filter((supplier) => supplier.isActive).map((supplier) => (
-                    <option key={supplier.id} value={supplier.id}>{supplier.supplierName}</option>
-                  ))}
-                </select>
-                <textarea className={[opsInput, 'min-h-[88px] resize-y'].join(' ')} placeholder="ملاحظات" value={movementForm.notes} onChange={(e) => setMovementForm((current) => ({ ...current, notes: e.target.value }))} />
-              </div>
-              <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitMovement} disabled={busy || !movementForm.inventoryItemId || !movementForm.quantity.trim()}>
-                {busy ? '...' : 'تسجيل الحركة'}
-              </button>
-            </section>
+              </section>
 
-            <section className={[opsSurface, 'p-4'].join(' ')}>
-              <div className="flex items-start justify-between gap-3">
-                <div className="text-right">
-                  <div className={opsSectionTitle}>{supplierId ? 'تعديل مورد' : 'إضافة مورد'}</div>
-                  <div className={[opsSectionHint, 'mt-1'].join(' ')}>الموردون الحاليون للمخزن.</div>
-                </div>
-                {supplierId ? <button type="button" className={opsGhostButton} onClick={resetSupplierForm}>جديد</button> : null}
-              </div>
-              <div className="mt-4 grid gap-2">
-                <input className={opsInput} placeholder="اسم المورد" value={supplierForm.supplierName} onChange={(e) => setSupplierForm((current) => ({ ...current, supplierName: e.target.value }))} />
-                <input className={opsInput} placeholder="الهاتف" value={supplierForm.phone} onChange={(e) => setSupplierForm((current) => ({ ...current, phone: e.target.value }))} />
-                <textarea className={[opsInput, 'min-h-[88px] resize-y'].join(' ')} placeholder="ملاحظات" value={supplierForm.notes} onChange={(e) => setSupplierForm((current) => ({ ...current, notes: e.target.value }))} />
-              </div>
-              <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitSupplier} disabled={busy || !supplierForm.supplierName.trim()}>
-                {busy ? '...' : supplierId ? 'حفظ المورد' : 'إضافة المورد'}
-              </button>
-
-              <div className="mt-4 space-y-2">
-                {workspace.suppliers.map((supplier) => (
-                  <article key={supplier.id} className={[opsInset, 'p-3'].join(' ')}>
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="text-right">
-                        <div className="text-sm font-bold text-[#1e1712]">{supplier.supplierName}</div>
-                        <div className="mt-1 text-xs text-[#7d6a59]">{supplier.phone ?? 'بدون هاتف'}</div>
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className={opsSectionTitle}>كل الحركات</div>
+                <div className={[opsSectionHint, 'mt-1'].join(' ')}>آخر 80 حركة مسجلة.</div>
+                <div className="mt-4 space-y-3">
+                  {workspace.recentMovements.map((movement) => (
+                    <article key={movement.id} className={[opsInset, 'p-4'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-[#1e1712]">{movement.itemName}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{formatDateTime(movement.occurredAt)}</div>
+                        </div>
+                        <div className={opsBadge(movementTone(movement.movementKind))}>{movementLabel(movement.movementKind)}</div>
                       </div>
-                      <div className={opsBadge(supplier.isActive ? 'success' : 'neutral')}>{supplier.isActive ? 'نشط' : 'موقوف'}</div>
-                    </div>
-                    {supplier.notes ? <div className="mt-2 text-right text-xs text-[#6b5a4c]">{supplier.notes}</div> : null}
-                    <div className="mt-3 flex flex-wrap justify-end gap-2">
-                      <button type="button" className={opsGhostButton} onClick={() => toggleSupplier(supplier)} disabled={busy}>{supplier.isActive ? 'إيقاف' : 'تفعيل'}</button>
-                      <button type="button" className={opsAccentButton} onClick={() => startEditSupplier(supplier)} disabled={busy}>تعديل</button>
-                    </div>
-                  </article>
-                ))}
-                {!workspace.suppliers.length ? <div className={[opsInset, 'p-3 text-right text-sm text-[#6b5a4c]'].join(' ')}>لا يوجد موردون بعد.</div> : null}
-              </div>
-            </section>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <div className="text-sm font-black text-[#1e1712]">
+                          {movement.deltaQuantity > 0 ? '+' : ''}{formatQty(movement.deltaQuantity)} {movement.unitLabel}
+                          {movement.inputUnitLabel && movement.inputUnitLabel !== movement.unitLabel ? (
+                            <div className="mt-1 text-[11px] font-medium text-[#7d6a59]">
+                              إدخال: {formatQty(movement.inputQuantity ?? Math.abs(movement.deltaQuantity))} {movement.inputUnitLabel}
+                              {movement.conversionFactor && movement.conversionFactor !== 1 ? ` × ${formatQty(movement.conversionFactor)}` : ''}
+                            </div>
+                          ) : null}
+                        </div>
+                        <div className="text-right text-xs text-[#7d6a59]">
+                          {movement.supplierName ? <div>المورد: {movement.supplierName}</div> : null}
+                          {movement.notes ? <div className="mt-1">{movement.notes}</div> : null}
+                        </div>
+                      </div>
+                    </article>
+                  ))}
+                  {!workspace.recentMovements.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c]'].join(' ')}>لا توجد حركات بعد.</div> : null}
+                </div>
+              </section>
+            </div>
+
+            <div className="space-y-4 xl:sticky xl:top-24">
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className={opsSectionTitle}>ملخص سريع</div>
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <div className={opsMetricCard('warning')}>
+                    <div className="text-xs opacity-80">منخفضة</div>
+                    <div className="mt-2 text-2xl font-black">{stats.lowStock}</div>
+                  </div>
+                  <div className={opsMetricCard('danger')}>
+                    <div className="text-xs opacity-80">نفدت</div>
+                    <div className="mt-2 text-2xl font-black">{stats.emptyStock}</div>
+                  </div>
+                  <div className={opsMetricCard('success')}>
+                    <div className="text-xs opacity-80">وصفات منتجات</div>
+                    <div className="mt-2 text-2xl font-black">{stats.productRecipes}</div>
+                  </div>
+                  <div className={opsMetricCard('success')}>
+                    <div className="text-xs opacity-80">وصفات إضافات</div>
+                    <div className="mt-2 text-2xl font-black">{stats.addonRecipes}</div>
+                  </div>
+                </div>
+              </section>
+
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className={opsSectionTitle}>العناصر الحرجة</div>
+                <div className={[opsSectionHint, 'mt-1'].join(' ')}>اضغط على الخامة للانتقال إلى الجرد أو الوارد اليومي.</div>
+                <div className="mt-4 flex flex-wrap justify-end gap-2">
+                  {prioritizedItems.slice(0, 12).map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      className={item.stockStatus === 'empty' ? opsAccentButton : opsGhostButton}
+                      onClick={() => {
+                        setQuickCountForm((current) => ({ ...current, inventoryItemId: item.id }));
+                        setMovementForm((current) => ({ ...current, inventoryItemId: item.id, movementKind: 'inbound' }));
+                        setInventoryView('daily');
+                      }}
+                    >
+                      {item.itemName}
+                    </button>
+                  ))}
+                </div>
+              </section>
+            </div>
           </div>
-        </div>
+        ) : null}
       </section>
     </MobileShell>
   );

@@ -129,6 +129,76 @@ export async function resolveInventoryMovementEntry(input: CafeDatabaseScope & {
   return resolveInventoryEntry({ quantity: input.quantity, entryUnitMode: input.entryUnitMode, item });
 }
 
+function formatInventoryNoteQuantity(value: number) {
+  return Number(value.toFixed(3));
+}
+
+export async function applyInventoryQuickCount(input: CafeDatabaseScope & {
+  actorOwnerId: string;
+  inventoryItemId: string;
+  actualQuantity: number;
+  actualEntryUnit?: InventoryEntryUnitMode | null;
+  notes?: string | null;
+  countedAt?: string | null;
+}) {
+  const item = await getInventoryItem({ cafeId: input.cafeId, databaseKey: input.databaseKey }, input.inventoryItemId);
+  if (!item) {
+    throw new Error('inventory_item_not_found');
+  }
+
+  const resolvedActual = resolveInventoryEntry({
+    quantity: input.actualQuantity,
+    entryUnitMode: input.actualEntryUnit ?? 'stock',
+    item,
+  });
+
+  const expectedBalance = Number(item.currentBalance ?? 0);
+  const actualBalance = Number(resolvedActual.deltaQuantity ?? 0);
+  const varianceQuantity = Number((actualBalance - expectedBalance).toFixed(3));
+
+  if (Math.abs(varianceQuantity) < 0.0005) {
+    return {
+      skipped: true,
+      expectedBalance: formatInventoryNoteQuantity(expectedBalance),
+      actualBalance: formatInventoryNoteQuantity(actualBalance),
+      varianceQuantity: 0,
+      unitLabel: item.unitLabel,
+    };
+  }
+
+  const noteParts = [
+    `جرد سريع — المتوقع ${formatInventoryNoteQuantity(expectedBalance)} ${item.unitLabel}`,
+    `الفعلي ${formatInventoryNoteQuantity(actualBalance)} ${item.unitLabel}`,
+  ];
+  const extraNotes = cleanInventoryText(input.notes);
+  if (extraNotes) {
+    noteParts.push(extraNotes);
+  }
+
+  const movement = await recordInventoryMovement({
+    cafeId: input.cafeId,
+    databaseKey: input.databaseKey,
+    actorOwnerId: input.actorOwnerId,
+    inventoryItemId: input.inventoryItemId,
+    movementKind: 'adjustment',
+    deltaQuantity: varianceQuantity,
+    inputQuantity: resolvedActual.inputQuantity,
+    inputUnitLabel: resolvedActual.inputUnitLabel,
+    conversionFactor: resolvedActual.conversionFactor,
+    notes: noteParts.join(' • '),
+    occurredAt: input.countedAt ?? null,
+  });
+
+  return {
+    skipped: false,
+    expectedBalance: formatInventoryNoteQuantity(expectedBalance),
+    actualBalance: formatInventoryNoteQuantity(actualBalance),
+    varianceQuantity: formatInventoryNoteQuantity(varianceQuantity),
+    unitLabel: item.unitLabel,
+    movement,
+  };
+}
+
 function mapStockStatus(currentBalance: number, threshold: number, isActive: boolean): InventoryItem['stockStatus'] {
   if (!isActive) return 'inactive';
   if (currentBalance <= 0) return 'empty';
@@ -731,6 +801,56 @@ export async function updateInventoryAddonRecipe(input: CafeDatabaseScope & {
     .eq('id', input.recipeId);
 
   if (error) throw error;
+}
+
+export async function upsertInventoryAddonRecipesBulk(input: CafeDatabaseScope & {
+  actorOwnerId: string;
+  inventoryItemId: string;
+  rows: Array<{
+    menuAddonId: string;
+    quantityPerUnit: number;
+    wastagePercent?: number;
+    notes?: string | null;
+  }>;
+}) {
+  const sanitizedRows = input.rows
+    .map((row) => ({
+      menuAddonId: String(row.menuAddonId ?? '').trim(),
+      quantityPerUnit: Number(row.quantityPerUnit ?? 0),
+      wastagePercent: Number(row.wastagePercent ?? 0),
+      notes: cleanInventoryText(row.notes),
+    }))
+    .filter((row) => row.menuAddonId && Number.isFinite(row.quantityPerUnit) && row.quantityPerUnit > 0);
+
+  if (!sanitizedRows.length) {
+    throw new Error('inventory_bulk_recipes_empty');
+  }
+
+  const { error, data } = await ops(input.databaseKey)
+    .from('inventory_addon_recipes')
+    .upsert(
+      sanitizedRows.map((row) => ({
+        cafe_id: input.cafeId,
+        menu_addon_id: row.menuAddonId,
+        inventory_item_id: input.inventoryItemId,
+        quantity_per_unit: row.quantityPerUnit,
+        wastage_percent: row.wastagePercent > 0 ? row.wastagePercent : 0,
+        notes: row.notes ?? null,
+        is_active: true,
+        updated_at: new Date().toISOString(),
+        updated_by_owner_id: input.actorOwnerId,
+      })),
+      { onConflict: 'cafe_id,menu_addon_id,inventory_item_id' },
+    )
+    .select('id');
+
+  if (error) throw error;
+
+  return {
+    count: data?.length ?? sanitizedRows.length,
+    requested: input.rows.length,
+    applied: sanitizedRows.length,
+  };
 }
 
 type OrderItemEstimateRow = {
