@@ -187,6 +187,7 @@ export default function ComplaintsPage() {
       title="الشكاوى"
       backHref={backHref}
       topRight={<Link href="/support?source=in_app&page=/complaints" className="ahwa-btn-secondary px-3 py-2 text-xs">دعم</Link>}
+      desktopMode={can.owner ? 'admin' : 'mobile'}
     >
       {effectiveError ? (
         <div className="mb-3 ahwa-alert-danger p-3 text-sm">

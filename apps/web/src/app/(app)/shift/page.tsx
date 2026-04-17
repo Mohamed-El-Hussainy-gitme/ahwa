@@ -585,7 +585,7 @@ export default function ShiftPage() {
   }
 
   return (
-    <MobileShell title="الوردية" backHref={can.owner ? '/owner' : '/dashboard'}>
+    <MobileShell title="الوردية" backHref={can.owner ? '/owner' : '/dashboard'} desktopMode={can.owner ? 'admin' : 'wide'}>
       {message ? (
         <div className="mb-3 rounded-[22px] border border-[#e6c7c2] bg-[#fff7f5] p-3 text-right text-sm text-[#9a3e35]">
           {message}

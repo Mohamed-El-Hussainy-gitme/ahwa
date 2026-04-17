@@ -46,7 +46,7 @@ export function SessionRemakePanel({
         </div>
 
         {items.length ? (
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-3">
             {items.map((item) => {
               const maxQty = item.availableRemakeQty;
               const quantity = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, Math.max(maxQty, 1)));

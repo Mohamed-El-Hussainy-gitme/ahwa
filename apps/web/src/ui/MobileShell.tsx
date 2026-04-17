@@ -336,7 +336,7 @@ export function MobileShell({
   topRight?: React.ReactNode;
   backHref?: string;
   stickyFooter?: React.ReactNode;
-  desktopMode?: 'mobile' | 'wide';
+  desktopMode?: 'mobile' | 'wide' | 'admin' | 'ops';
 }) {
   const pathname = usePathname();
   const session = useSession();
@@ -360,7 +360,38 @@ export function MobileShell({
     return bottomNavHeight + stickyFooterHeight + 20;
   }, [bottomNavBox.height, stickyFooter, stickyFooterBox.height]);
 
-  const shellMaxWidthClass = desktopMode === 'wide' ? 'max-w-[min(1440px,calc(100vw-3rem))]' : 'max-w-md';
+  const shellMaxWidthClass =
+    desktopMode === 'mobile'
+      ? 'max-w-md'
+      : desktopMode === 'admin'
+        ? 'max-w-[min(1680px,calc(100vw-3rem))]'
+        : desktopMode === 'ops'
+          ? 'max-w-[min(1900px,calc(100vw-2rem))]'
+          : 'max-w-[min(1440px,calc(100vw-3rem))]';
+  const shellFrameClass =
+    desktopMode === 'mobile'
+      ? 'md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)]'
+      : desktopMode === 'ops'
+        ? 'md:my-3 md:min-h-[calc(100dvh-1.5rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)] xl:rounded-[36px]'
+        : 'md:my-4 md:min-h-[calc(100dvh-2rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)] xl:rounded-[36px]';
+  const headerPaddingClass =
+    desktopMode === 'mobile'
+      ? 'px-4 py-3'
+      : desktopMode === 'ops'
+        ? 'px-4 py-3 md:px-6 md:py-4 xl:px-8 2xl:px-10'
+        : 'px-4 py-3 md:px-5 md:py-4 xl:px-7';
+  const mainPaddingClass =
+    desktopMode === 'mobile'
+      ? 'px-3 pt-3'
+      : desktopMode === 'ops'
+        ? 'px-3 pt-3 md:px-6 md:pt-5 xl:px-8 xl:pt-6 2xl:px-10'
+        : 'px-3 pt-3 md:px-5 md:pt-5 xl:px-7 xl:pt-6';
+  const dockPaddingClass =
+    desktopMode === 'mobile'
+      ? 'px-2'
+      : desktopMode === 'ops'
+        ? 'px-3 md:px-6 xl:px-8 2xl:px-10'
+        : 'px-3 md:px-5 xl:px-7';
 
   const stickyFooterOffset = useMemo(() => {
     const bottomNavHeight = bottomNavBox.height || 82;
@@ -369,8 +400,8 @@ export function MobileShell({
 
   return (
     <div className="min-h-dvh bg-[linear-gradient(180deg,#f4efe7_0%,#eadcc8_100%)] px-0 md:px-4">
-      <div className={`mx-auto flex min-h-dvh ${shellMaxWidthClass} flex-col bg-[#fffaf4] md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)]`}>
-        <header className="sticky top-0 z-10 border-b border-[#eadfce] bg-[linear-gradient(180deg,rgba(255,250,244,0.98)_0%,rgba(249,241,231,0.96)_100%)] px-4 py-3 backdrop-blur">
+      <div className={`mx-auto flex min-h-dvh ${shellMaxWidthClass} ${shellFrameClass} flex-col bg-[#fffaf4]`}>
+        <header className={`sticky top-0 z-10 border-b border-[#eadfce] bg-[linear-gradient(180deg,rgba(255,250,244,0.98)_0%,rgba(249,241,231,0.96)_100%)] backdrop-blur ${headerPaddingClass}`}>
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-2.5">
               {backHref ? (
@@ -404,7 +435,7 @@ export function MobileShell({
           {(quickMetrics.length || pathname !== '/owner') ? (
             <div className="mt-3 flex items-start gap-2">
               {quickMetrics.length ? (
-                <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1">
+                <div className="flex min-w-0 flex-1 gap-2 overflow-x-auto pb-1 md:flex-wrap md:overflow-visible">
                   {quickMetrics.map((metric) => {
                     const content = (
                       <>
@@ -447,7 +478,7 @@ export function MobileShell({
         </header>
 
         <main
-          className="flex-1 px-3 pt-3"
+          className={['flex-1', mainPaddingClass].join(' ')}
           style={{ paddingBottom: `calc(${bottomDockHeight}px + env(safe-area-inset-bottom))` }}
         >
           {children}
@@ -462,7 +493,7 @@ export function MobileShell({
         ) : null}
 
         <div ref={bottomNavBox.ref} className="fixed bottom-0 left-0 right-0 z-20">
-          <div className={`mx-auto w-full ${shellMaxWidthClass} px-2 pb-[env(safe-area-inset-bottom)] pt-2`}>
+          <div className={`mx-auto w-full ${shellMaxWidthClass} ${dockPaddingClass} pb-[env(safe-area-inset-bottom)] pt-2`}>
             <div className="rounded-t-[26px] border border-b-0 border-[#ddcfbf] bg-[linear-gradient(180deg,rgba(255,250,244,0.96)_0%,rgba(248,238,226,0.98)_100%)] px-2 py-2 shadow-[0_-16px_32px_rgba(30,23,18,0.08)] backdrop-blur">
               <BottomNav />
             </div>

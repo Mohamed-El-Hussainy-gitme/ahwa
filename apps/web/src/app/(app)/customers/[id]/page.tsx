@@ -116,6 +116,7 @@ export default function CustomerLedgerPage() {
     <MobileShell
       title={data?.debtorName ?? (debtorName || 'دفتر الآجل')}
       backHref="/customers"
+      desktopMode={can.owner ? 'admin' : 'mobile'}
       topRight={
         <span className={[ 'rounded-full px-3 py-1 text-xs font-semibold', status.className ].join(' ')}>
           {status.label}

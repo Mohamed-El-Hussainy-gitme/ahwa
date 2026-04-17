@@ -154,9 +154,9 @@ function ProductContentCard({
   }
 
   return (
-    <article className="rounded-[24px] border border-[#e5d8c8] bg-white/90 p-4 shadow-sm">
-      <div className="flex flex-col gap-4 md:flex-row md:items-start">
-        <div className="md:w-[180px] md:shrink-0">
+    <article className="rounded-[24px] border border-[#e5d8c8] bg-white/90 p-4 shadow-sm lg:p-5">
+      <div className="grid gap-5 xl:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[280px_minmax(0,1fr)]">
+        <div className="xl:shrink-0">
           <div className="overflow-hidden rounded-[22px] border border-[#eadfce] bg-[#f8f2ea]">
             {product.publicImageUrl ? (
               <img
@@ -184,38 +184,36 @@ function ProductContentCard({
           </div>
         </div>
 
-        <div className="min-w-0 flex-1 space-y-4">
+        <div className="min-w-0 space-y-4">
           <div>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 className="text-xl font-black text-[#1e1712]">{product.name}</h3>
-                <p className="mt-1 text-sm leading-7 text-[#6d5848]">
-                  هذا المحتوى يظهر داخل صفحة الزبون عبر QR فقط، ولن يغيّر منيو التشغيل الداخلي.
-                </p>
-              </div>
-            </div>
+            <h3 className="text-xl font-black text-[#1e1712]">{product.name}</h3>
+            <p className="mt-1 text-sm leading-7 text-[#6d5848]">
+              هذا المحتوى يظهر داخل صفحة الزبون عبر QR فقط، ولن يغيّر منيو التشغيل الداخلي.
+            </p>
           </div>
 
-          <label className="block space-y-2">
-            <span className="text-sm font-bold text-[#1e1712]">وصف الصنف في QR</span>
-            <textarea
-              value={publicDescription}
-              onChange={(event) => setPublicDescription(event.target.value)}
-              rows={4}
-              placeholder="مثال: عصير مانجو - فلفر جوز هند - آيس كريم فانيليا"
-              className="min-h-[112px] w-full rounded-[18px] border border-[#dccdbb] bg-[#fffdf9] px-4 py-3 text-sm text-[#1e1712] outline-none transition focus:border-[#b8864c]"
-            />
-          </label>
+          <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_320px]">
+            <label className="block space-y-2">
+              <span className="text-sm font-bold text-[#1e1712]">وصف الصنف في QR</span>
+              <textarea
+                value={publicDescription}
+                onChange={(event) => setPublicDescription(event.target.value)}
+                rows={4}
+                placeholder="مثال: عصير مانجو - فلفر جوز هند - آيس كريم فانيليا"
+                className="min-h-[112px] w-full rounded-[18px] border border-[#dccdbb] bg-[#fffdf9] px-4 py-3 text-sm text-[#1e1712] outline-none transition focus:border-[#b8864c]"
+              />
+            </label>
 
-          <label className="block space-y-2">
-            <span className="text-sm font-bold text-[#1e1712]">النص البديل للصورة</span>
-            <input
-              value={imageAlt}
-              onChange={(event) => setImageAlt(event.target.value)}
-              placeholder="مثال: كوب مانجو كولادا"
-              className="w-full rounded-[18px] border border-[#dccdbb] bg-[#fffdf9] px-4 py-3 text-sm text-[#1e1712] outline-none transition focus:border-[#b8864c]"
-            />
-          </label>
+            <label className="block space-y-2">
+              <span className="text-sm font-bold text-[#1e1712]">النص البديل للصورة</span>
+              <input
+                value={imageAlt}
+                onChange={(event) => setImageAlt(event.target.value)}
+                placeholder="مثال: كوب مانجو كولادا"
+                className="w-full rounded-[18px] border border-[#dccdbb] bg-[#fffdf9] px-4 py-3 text-sm text-[#1e1712] outline-none transition focus:border-[#b8864c]"
+              />
+            </label>
+          </div>
 
           <div className="flex flex-wrap gap-3">
             <button
@@ -325,7 +323,7 @@ export function PublicMenuContentManager() {
 
   return (
     <section className="space-y-4">
-      <div className="rounded-[28px] border border-[#dccdbb] bg-white p-5 shadow-[0_18px_40px_rgba(30,23,18,0.06)]">
+      <div className="rounded-[28px] border border-[#dccdbb] bg-white p-5 shadow-[0_18px_40px_rgba(30,23,18,0.06)] lg:p-6">
         <div className="text-[11px] font-semibold tracking-[0.24em] text-[#9b6b2e]">PUBLIC QR CONTENT</div>
         <h2 className="mt-2 text-[24px] font-black text-[#1e1712]">صور ووصف أصناف صفحة QR</h2>
         <p className="mt-2 text-sm leading-7 text-[#6b5a4c]">
@@ -349,12 +347,7 @@ export function PublicMenuContentManager() {
 
               <div className="space-y-4">
                 {section.products.map((product) => (
-                  <ProductContentCard
-                    key={product.id}
-                    product={product}
-                    sectionTitle={section.title}
-                    onUpdated={handleProductUpdated}
-                  />
+                  <ProductContentCard key={product.id} product={product} sectionTitle={section.title} onUpdated={handleProductUpdated} />
                 ))}
               </div>
             </div>

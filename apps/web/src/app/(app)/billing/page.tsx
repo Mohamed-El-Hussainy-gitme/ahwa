@@ -320,6 +320,7 @@ export default function BillingPage() {
           </Link>
         </div>
       }
+      desktopMode="ops"
       stickyFooter={
         <StickyActionBar>
           <div className="space-y-2">
@@ -335,7 +336,7 @@ export default function BillingPage() {
               {selectedQtyTotal > 0 ? <div className={opsBadge('info')}>{formatMoney(selectedTotals.total)} ج</div> : null}
             </div>
 
-            <div className="grid grid-cols-2 gap-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
               <button
                 disabled={busy || selectedQtyTotal === 0}
                 onClick={() => void settleSelectedCommand.run()}
@@ -383,7 +384,7 @@ export default function BillingPage() {
           </div>
           <div className={opsBadge('accent')}>واجهة التحصيل</div>
         </div>
-        <div className="mt-3 grid grid-cols-3 gap-2">
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
           <div className={opsMetricCard('success')}>
             <div className="text-[11px] font-semibold opacity-70">جلسات للحساب</div>
             <div className="mt-1 text-xl font-black leading-none">{data?.sessions?.length ?? 0}</div>
@@ -399,6 +400,8 @@ export default function BillingPage() {
         </div>
       </section>
 
+      <div className="space-y-3 xl:grid xl:grid-cols-[minmax(0,1.45fr)_minmax(340px,0.95fr)] xl:items-start xl:gap-4 xl:space-y-0">
+        <div className="space-y-3">
       <section className={[opsSurface, 'p-3'].join(' ')}>
         <div className="mb-3 flex items-center justify-between gap-2">
           <div className="text-sm font-semibold text-[#3d3128]">الجلسات للحساب</div>
@@ -406,7 +409,7 @@ export default function BillingPage() {
         </div>
 
         {(data?.sessions ?? []).length ? (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
             {(data?.sessions ?? []).map((session) => (
               <button
                 key={session.sessionId}
@@ -455,7 +458,7 @@ export default function BillingPage() {
         <div className="mb-3 text-right text-sm font-semibold text-[#3d3128]">الأصناف الجاهزة للحساب</div>
 
         {current?.items?.length ? (
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">
             {current.items.map((item) => {
               const selected = selectedQty[item.orderItemId] ?? 0;
               const parsedNotes = parseOrderItemNotes(item.notes);
@@ -501,8 +504,11 @@ export default function BillingPage() {
         )}
       </section>
 
+        </div>
+
+        <div className="space-y-3">
       {current && printableQtyTotal > 0 ? (
-        <section className={[opsSurface, 'mt-3 p-3'].join(' ')}>
+        <section className={[opsSurface, 'p-3'].join(' ')}>
           <div className="flex items-start justify-between gap-3">
             <div className="text-right">
               <div className="text-sm font-semibold text-[#1e1712]">الفاتورة الكاملة</div>
@@ -513,7 +519,7 @@ export default function BillingPage() {
             <div className={opsBadge('info')}>{printableQtyTotal} صنف</div>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             <div className={opsMetricCard('neutral')}>
               <div className="text-[11px] font-semibold opacity-70">قبل الإضافات</div>
               <div className="mt-1 text-lg font-black leading-none">{formatMoney(printableTotals.subtotal)} ج</div>
@@ -532,7 +538,7 @@ export default function BillingPage() {
             </div>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
             {lastReceiptUrl ? (
               <Link href={lastReceiptUrl} className={opsGhostButton}>
                 عرض المستند
@@ -562,7 +568,7 @@ export default function BillingPage() {
         </section>
       ) : null}
 
-      <section className={[opsSurface, 'mt-3 p-3'].join(' ')}>
+      <section className={[opsSurface, 'p-3'].join(' ')}>
         <div className="text-right text-sm font-semibold text-[#3d3128]">الترحيل إلى الآجل</div>
         <input value={debtorName} onChange={(e) => { setDebtorName(e.target.value); setSelectedCustomerId(null); }} placeholder="اسم الأجل" className={[opsInput, 'mt-3'].join(' ')} />
         {selectedCustomerId ? (
@@ -611,6 +617,8 @@ export default function BillingPage() {
           </div>
         ) : null}
       </section>
+        </div>
+      </div>
     </MobileShell>
   );
 }

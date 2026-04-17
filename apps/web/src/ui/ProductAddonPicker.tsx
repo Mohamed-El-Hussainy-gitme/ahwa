@@ -45,14 +45,14 @@ export function ProductAddonPicker({
 
   return (
     <div className="fixed inset-0 z-[85] flex items-end justify-center bg-black/35 p-3 sm:items-center">
-      <div className="w-full max-w-sm rounded-[24px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
+      <div className="w-full max-w-[min(42rem,calc(100vw-2rem))] rounded-[24px] border border-[#dccbb7] bg-[#fffdf9] p-4 shadow-[0_24px_60px_rgba(30,23,18,0.22)]">
         <div className="text-right">
           <div className="text-base font-black text-[#1e1712]">إضافات {title}</div>
           <div className="mt-1 text-sm text-[#7d6a59]">اختر الإضافات التي تريد احتسابها مع هذا الصنف.</div>
         </div>
 
-        <div className="mt-4 space-y-2">
-          {options.length ? options.map((option) => {
+        <div className="mt-4">
+          {options.length ? <div className="grid gap-2 md:grid-cols-2">{options.map((option) => {
             const active = draftSet.has(option.id);
             return (
               <button
@@ -83,7 +83,7 @@ export function ProductAddonPicker({
                 </div>
               </button>
             );
-          }) : <div className="rounded-[18px] border border-dashed border-[#d8c7b3] p-3 text-sm text-[#7d6a59]">لا توجد إضافات مرتبطة بهذا الصنف.</div>}
+          })}</div> : <div className="rounded-[18px] border border-dashed border-[#d8c7b3] p-3 text-sm text-[#7d6a59]">لا توجد إضافات مرتبطة بهذا الصنف.</div>}
         </div>
 
         <div className="mt-4 flex items-center justify-between rounded-[18px] bg-[#f8f1e6] px-3 py-2 text-sm">

@@ -134,7 +134,7 @@ export default function OwnerCustomerDetailPage() {
   }
 
   return (
-    <MobileShell title={customer?.fullName ?? 'ذكاء العميل'} backHref="/owner/customers">
+    <MobileShell title={customer?.fullName ?? 'ذكاء العميل'} backHref="/owner/customers" desktopMode="admin">
       {message ? <div className={[opsAlert(message.startsWith('تم ') ? 'success' : 'danger'), 'mb-3'].join(' ')}>{message}</div> : null}
 
       <section className={[opsSurface, 'p-4'].join(' ')}>

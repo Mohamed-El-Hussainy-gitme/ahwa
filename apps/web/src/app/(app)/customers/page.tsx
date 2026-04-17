@@ -160,7 +160,7 @@ export default function CustomersPage() {
   const effectiveError = localError ?? error;
 
   return (
-    <MobileShell title="دفتر الآجل" backHref={can.owner ? '/owner' : '/billing'}>
+    <MobileShell title="دفتر الآجل" backHref={can.owner ? '/owner' : '/billing'} desktopMode={can.owner ? 'admin' : 'mobile'}>
       {effectiveError ? (
         <div className="mb-3 rounded-2xl border border-[#e6c7c2] bg-[#fff3f1] p-3 text-sm text-[#9a3e35]">
           {effectiveError}

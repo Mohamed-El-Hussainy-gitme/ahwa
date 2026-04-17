@@ -424,7 +424,7 @@ export default function MenuPage() {
   ].some(Boolean);
 
   return (
-    <MobileShell title="المنيو" backHref="/owner">
+    <MobileShell title="المنيو" backHref="/owner" desktopMode="admin">
       <section className="mb-3 ahwa-card p-3">
         <div className="flex items-center justify-between gap-3">
           <div>

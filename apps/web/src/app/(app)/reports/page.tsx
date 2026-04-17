@@ -721,7 +721,7 @@ export default function ReportsPage() {
   ];
 
   return (
-    <MobileShell title="التقارير" backHref="/dashboard" desktopMode="wide">
+    <MobileShell title="التقارير" backHref="/dashboard" desktopMode="admin">
       {error ? <div className="mb-3 ahwa-alert-danger p-3 text-sm">{error}</div> : null}
 
       <div className="rounded-3xl border bg-[#fffdf9] p-3 shadow-sm">

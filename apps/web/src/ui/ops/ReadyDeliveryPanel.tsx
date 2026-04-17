@@ -62,7 +62,7 @@ export function ReadyDeliveryPanel({
             {groupedItems.map((group, groupIndex) => (
               <section key={`${group.sessionLabel}-${groupIndex}`} className={groupIndex > 0 ? 'border-t border-[#eadfce] pt-4' : ''}>
                 <div className="mb-3 text-base font-black text-[#2a2018]">{group.sessionLabel}</div>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-1 gap-2 md:grid-cols-2 2xl:grid-cols-3">
                   {group.items.map((item) => {
                     const quantity = Math.max(1, Math.min(selectedQty[item.orderItemId] ?? 1, item.qtyReadyForDelivery));
                     const parsedNotes = parseOrderItemNotes(item.notes);

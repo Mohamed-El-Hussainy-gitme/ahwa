@@ -203,8 +203,9 @@ export default function StaffPage() {
   );
 
   return (
-    <MobileShell title="فريق العمل" backHref="/owner">
-      <section className={[opsSurface, 'p-4'].join(' ')}>
+    <MobileShell title="فريق العمل" backHref="/owner" desktopMode="admin">
+      <div className="grid gap-4 xl:grid-cols-2">
+        <section className={[opsSurface, 'p-4 lg:p-5'].join(' ')}>
         <div className="flex items-start justify-between gap-3">
           <div className="text-right">
             <div className="text-base font-bold text-[#1e1712]">إضافة عضو للفريق</div>
@@ -241,7 +242,7 @@ export default function StaffPage() {
       </section>
 
 
-      <section className={[opsSurface, 'mt-4 p-4'].join(' ')}>
+        <section className={[opsSurface, 'p-4 lg:p-5'].join(' ')}>
         <div className="flex items-start justify-between gap-3">
           <div className="text-right">
             <div className="text-base font-bold text-[#1e1712]">إدارة مدير الفرع</div>
@@ -285,7 +286,7 @@ export default function StaffPage() {
         </div>
       </section>
 
-      <section className={[opsSurface, 'mt-4 p-4'].join(' ')}>
+        <section className={[opsSurface, 'p-4 lg:p-5 xl:col-span-2'].join(' ')}>
         <div className="flex items-center justify-between gap-3">
           <button onClick={refresh} className={opsGhostButton}>
             تحديث
@@ -384,6 +385,7 @@ export default function StaffPage() {
           </div>
         )}
       </section>
+      </div>
     </MobileShell>
   );
 }

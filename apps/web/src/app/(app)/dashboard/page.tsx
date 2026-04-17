@@ -58,7 +58,7 @@ function SupportLink() {
 
 function DashboardActionGrid({ actions }: { actions: ActionCard[] }) {
   return (
-    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
       {actions.map((action) => {
         const tone =
           action.tone === 'primary'
@@ -110,7 +110,7 @@ function DashboardStatGrid({ cards }: { cards: StatCard[] }) {
   if (!cards.length) return null;
 
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
       {cards.map((card) => {
         const tone =
           card.tone === 'success'
@@ -139,7 +139,7 @@ function DashboardStatGrid({ cards }: { cards: StatCard[] }) {
 function DashboardHero({ title, eyebrow, summary }: { title: string; eyebrow: string; summary: string }) {
   return (
     <section className="rounded-[28px] border border-[#dccdbb] bg-[linear-gradient(180deg,#fff9f2_0%,#f6ecdf_100%)] p-5 shadow-[0_18px_40px_rgba(30,23,18,0.08)]">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
         <div>
           <div className="text-[11px] font-semibold tracking-[0.24em] text-[#9b6b2e]">{eyebrow}</div>
           <h1 className="mt-2 text-[26px] font-black leading-tight text-[#1e1712]">{title}</h1>
@@ -272,7 +272,7 @@ export default function DashboardPage() {
 
   if (!shift) {
     return (
-      <MobileShell title="الرئيسية" topRight={<SupportLink />}>
+      <MobileShell title="الرئيسية" topRight={<SupportLink />} desktopMode="ops">
         <section className="space-y-4">
           <DashboardHero
             title={can.owner ? 'بداية يوم التشغيل' : 'بانتظار تفعيل الوردية'}
@@ -303,7 +303,7 @@ export default function DashboardPage() {
   }
 
   return (
-    <MobileShell title={config.title} topRight={<SupportLink />}>
+    <MobileShell title={config.title} topRight={<SupportLink />} desktopMode="ops">
       <section className="space-y-4">
         <DashboardHero title={config.title} eyebrow={config.eyebrow} summary={config.summary} />
 
