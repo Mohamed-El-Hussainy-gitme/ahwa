@@ -1,12 +1,12 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { ShiftRequired, AccessDenied } from '@/ui/AccessState';
 import { opsClient } from '@/lib/ops/client';
-import type { DeferredAgingBucket, DeferredCustomerStatus, DeferredCustomerSummary } from '@/lib/ops/types';
+import type { CustomerProfile, DeferredAgingBucket, DeferredCustomerStatus, DeferredCustomerSummary } from '@/lib/ops/types';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 
 function formatMoney(value: number) {
@@ -55,6 +55,8 @@ export default function CustomersPage() {
   const [query, setQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | DeferredCustomerStatus>('all');
   const [debtorName, setDebtorName] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [customerProfiles, setCustomerProfiles] = useState<CustomerProfile[]>([]);
   const [amount, setAmount] = useState('');
   const [notes, setNotes] = useState('');
   const [localError, setLocalError] = useState<string | null>(null);
@@ -67,6 +69,21 @@ export default function CustomersPage() {
   });
 
   const items = data?.items ?? [];
+
+  useEffect(() => {
+    if (!can.owner && !can.billing) return;
+    let active = true;
+    void opsClient.customerLookupProfiles().then((payload) => {
+      if (!active) return;
+      setCustomerProfiles(payload.items ?? []);
+    }).catch(() => {
+      if (!active) return;
+      setCustomerProfiles([]);
+    });
+    return () => {
+      active = false;
+    };
+  }, [can.billing, can.owner]);
 
   const filteredItems = useMemo(() => {
     const normalized = query.trim().toLowerCase();
@@ -109,13 +126,22 @@ export default function CustomersPage() {
     async () => {
       const numericAmount = Number(amount);
       if (!debtorName.trim() || !Number.isFinite(numericAmount) || numericAmount <= 0) return;
-      await opsClient.addDeferredDebt(debtorName.trim(), numericAmount, notes.trim() || undefined);
+      await opsClient.addDeferredDebt(debtorName.trim(), numericAmount, notes.trim() || undefined, selectedCustomerId);
       setDebtorName('');
+      setSelectedCustomerId(null);
       setAmount('');
       setNotes('');
     },
     { onError: setLocalError },
   );
+
+  const matchedCustomers = useMemo(() => {
+    const normalized = debtorName.trim().toLowerCase();
+    const base = normalized
+      ? customerProfiles.filter((item) => [item.fullName, item.phoneRaw, item.favoriteDrinkLabel ?? ''].join(' ').toLowerCase().includes(normalized))
+      : customerProfiles;
+    return base.slice(0, 6);
+  }, [customerProfiles, debtorName]);
 
   if (!can.owner && !shift) {
     return (
@@ -260,10 +286,38 @@ export default function CustomersPage() {
           <div className="space-y-2">
             <input
               value={debtorName}
-              onChange={(event) => setDebtorName(event.target.value)}
+              onChange={(event) => {
+                setDebtorName(event.target.value);
+                setSelectedCustomerId(null);
+              }}
               className="ahwa-input text-right text-sm"
               placeholder="اسم الحساب"
             />
+            {selectedCustomerId ? (
+              <div className="rounded-2xl border border-[#d8ccb8] bg-[#fff8ef] px-3 py-2 text-right text-xs text-[#6b5a4c]">
+                تم اختيار ملف عميل معروف. هذا يمنع ربط الاسم بعميل آخر عند التطابق.
+              </div>
+            ) : null}
+            {matchedCustomers.length ? (
+              <div className="flex gap-2 overflow-x-auto pb-1">
+                {matchedCustomers.map((customer) => (
+                  <button
+                    key={customer.id}
+                    type="button"
+                    onClick={() => {
+                      setDebtorName(customer.fullName);
+                      setSelectedCustomerId(customer.id);
+                    }}
+                    className={[
+                      'rounded-full border px-3 py-2 text-xs whitespace-nowrap',
+                      selectedCustomerId === customer.id ? 'border-[#9b6b2e] bg-[#9b6b2e] text-white' : 'border-[#dac9b6] bg-[#fffaf3] text-[#5e4d3f]',
+                    ].join(' ')}
+                  >
+                    {customer.fullName}
+                  </button>
+                ))}
+              </div>
+            ) : null}
             <input
               value={amount}
               onChange={(event) => setAmount(event.target.value)}

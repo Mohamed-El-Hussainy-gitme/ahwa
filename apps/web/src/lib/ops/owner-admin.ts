@@ -1,3 +1,21 @@
+import type {
+  CustomerActivityLink,
+  CustomerAlias,
+  CustomerAliasSource,
+  CustomerIntelligenceWorkspace,
+  CustomerProfile,
+  CustomerRecommendedAddon,
+  CustomerRecommendedBasket,
+  CustomerRecommendedNote,
+  CustomerRecommendedProduct,
+  CustomerRecentSession,
+  DeferredLedgerEntry,
+  OperatingSettings,
+  ShiftAssignmentTemplate,
+} from '@/lib/ops/types';
+import { describeBusinessDayWindow, formatBusinessDayStartTime, normalizeBusinessDayStartMinutes, resolveBusinessDate, currentTimeZoneDate } from '@/lib/ops/business-day';
+import { normalizeCustomerName } from '@/lib/ops/customers';
+import { parseOrderItemNotes } from '@/lib/ops/orderItemNotes';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
 export type ShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
@@ -64,13 +82,785 @@ function ops(databaseKey: string) {
 }
 
 export function currentCairoDate(): string {
-  const formatter = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Africa/Cairo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
+  return currentTimeZoneDate();
+}
+
+export async function loadOperatingSettings(scope: CafeDatabaseScope): Promise<OperatingSettings> {
+  const { data, error } = await ops(scope.databaseKey)
+    .from('cafe_operating_settings')
+    .select('business_day_start_minutes, timezone_name')
+    .eq('cafe_id', scope.cafeId)
+    .maybeSingle();
+
+  if (error) throw error;
+
+  const businessDayStartMinutes = normalizeBusinessDayStartMinutes(data?.business_day_start_minutes ?? 0);
+  const timezone = data?.timezone_name ? String(data.timezone_name) : 'Africa/Cairo';
+  const currentBusinessDate = resolveBusinessDate(new Date(), businessDayStartMinutes, timezone);
+
+  return {
+    businessDayStartTime: formatBusinessDayStartTime(businessDayStartMinutes),
+    businessDayStartMinutes,
+    timezone,
+    currentBusinessDate,
+    operationalWindowLabel: describeBusinessDayWindow(businessDayStartMinutes),
+  } satisfies OperatingSettings;
+}
+
+export async function listCustomerProfiles(scope: CafeDatabaseScope, includeInactive = true): Promise<CustomerProfile[]> {
+  let query = ops(scope.databaseKey)
+    .from('customers')
+    .select('id, full_name, normalized_name, phone_raw, phone_normalized, address, favorite_drink_label, notes, is_active, last_seen_at, created_at, updated_at')
+    .eq('cafe_id', scope.cafeId)
+    .order('updated_at', { ascending: false })
+    .order('full_name', { ascending: true });
+
+  if (!includeInactive) {
+    query = query.eq('is_active', true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  return (data ?? []).map((item) => ({
+    id: String(item.id),
+    fullName: String(item.full_name ?? ''),
+    normalizedName: String(item.normalized_name ?? ''),
+    phoneRaw: String(item.phone_raw ?? ''),
+    phoneNormalized: String(item.phone_normalized ?? ''),
+    address: item.address ? String(item.address) : null,
+    favoriteDrinkLabel: item.favorite_drink_label ? String(item.favorite_drink_label) : null,
+    notes: item.notes ? String(item.notes) : null,
+    isActive: !!item.is_active,
+    lastSeenAt: item.last_seen_at ? String(item.last_seen_at) : null,
+    createdAt: String(item.created_at),
+    updatedAt: String(item.updated_at),
+  }) satisfies CustomerProfile);
+}
+
+export async function createCustomerProfile(input: CafeDatabaseScope & {
+  actorOwnerId: string;
+  fullName: string;
+  normalizedName: string;
+  phoneRaw: string;
+  phoneNormalized: string;
+  address?: string | null;
+  favoriteDrinkLabel?: string | null;
+  notes?: string | null;
+}) {
+  const timestamp = new Date().toISOString();
+  const { data, error } = await ops(input.databaseKey)
+    .from('customers')
+    .insert({
+      cafe_id: input.cafeId,
+      full_name: input.fullName,
+      normalized_name: input.normalizedName,
+      phone_raw: input.phoneRaw,
+      phone_normalized: input.phoneNormalized,
+      address: input.address ?? null,
+      favorite_drink_label: input.favoriteDrinkLabel ?? null,
+      notes: input.notes ?? null,
+      updated_at: timestamp,
+      updated_by_owner_id: input.actorOwnerId,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return String(data.id);
+}
+
+export async function updateCustomerProfile(input: CafeDatabaseScope & {
+  actorOwnerId: string;
+  customerId: string;
+  fullName: string;
+  normalizedName: string;
+  phoneRaw: string;
+  phoneNormalized: string;
+  address?: string | null;
+  favoriteDrinkLabel?: string | null;
+  notes?: string | null;
+}) {
+  const { error } = await ops(input.databaseKey)
+    .from('customers')
+    .update({
+      full_name: input.fullName,
+      normalized_name: input.normalizedName,
+      phone_raw: input.phoneRaw,
+      phone_normalized: input.phoneNormalized,
+      address: input.address ?? null,
+      favorite_drink_label: input.favoriteDrinkLabel ?? null,
+      notes: input.notes ?? null,
+      updated_at: new Date().toISOString(),
+      updated_by_owner_id: input.actorOwnerId,
+    })
+    .eq('cafe_id', input.cafeId)
+    .eq('id', input.customerId);
+
+  if (error) throw error;
+}
+
+export async function setCustomerProfileActive(input: CafeDatabaseScope & {
+  actorOwnerId: string;
+  customerId: string;
+  isActive: boolean;
+}) {
+  const { error } = await ops(input.databaseKey)
+    .from('customers')
+    .update({
+      is_active: input.isActive,
+      updated_at: new Date().toISOString(),
+      updated_by_owner_id: input.actorOwnerId,
+    })
+    .eq('cafe_id', input.cafeId)
+    .eq('id', input.customerId);
+
+  if (error) throw error;
+}
+
+
+function mapCustomerProfileRow(item: Record<string, unknown>): CustomerProfile {
+  return {
+    id: String(item.id ?? ''),
+    fullName: String(item.full_name ?? ''),
+    normalizedName: String(item.normalized_name ?? ''),
+    phoneRaw: String(item.phone_raw ?? ''),
+    phoneNormalized: String(item.phone_normalized ?? ''),
+    address: item.address ? String(item.address) : null,
+    favoriteDrinkLabel: item.favorite_drink_label ? String(item.favorite_drink_label) : null,
+    notes: item.notes ? String(item.notes) : null,
+    isActive: !!item.is_active,
+    lastSeenAt: item.last_seen_at ? String(item.last_seen_at) : null,
+    createdAt: String(item.created_at ?? ''),
+    updatedAt: String(item.updated_at ?? ''),
+  } satisfies CustomerProfile;
+}
+
+function mapAliasSource(value: unknown): CustomerAliasSource {
+  return value === 'deferred_runtime'
+    ? 'deferred_runtime'
+    : value === 'billing_runtime'
+      ? 'billing_runtime'
+      : value === 'imported'
+        ? 'imported'
+        : 'manual';
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => String(value ?? '').trim()).filter(Boolean))];
+}
+
+export async function getCustomerProfile(scope: CafeDatabaseScope, customerId: string): Promise<CustomerProfile | null> {
+  const { data, error } = await ops(scope.databaseKey)
+    .from('customers')
+    .select('id, full_name, normalized_name, phone_raw, phone_normalized, address, favorite_drink_label, notes, is_active, last_seen_at, created_at, updated_at')
+    .eq('cafe_id', scope.cafeId)
+    .eq('id', customerId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+  return mapCustomerProfileRow(data as Record<string, unknown>);
+}
+
+export async function findCustomerByReference(scope: CafeDatabaseScope, input: { customerId?: string | null; debtorName?: string | null; includeInactive?: boolean }): Promise<CustomerProfile | null> {
+  const requestedCustomerId = String(input.customerId ?? '').trim();
+  const includeInactive = Boolean(input.includeInactive);
+  if (requestedCustomerId) {
+    const customer = await getCustomerProfile(scope, requestedCustomerId);
+    if (!customer) return null;
+    if (!includeInactive && !customer.isActive) return null;
+    return customer;
+  }
+
+  const normalizedReference = normalizeCustomerName(String(input.debtorName ?? ''));
+  if (!normalizedReference) return null;
+
+  const aliasQuery = ops(scope.databaseKey)
+    .from('customer_aliases')
+    .select('customer_id')
+    .eq('cafe_id', scope.cafeId)
+    .eq('normalized_alias', normalizedReference)
+    .maybeSingle();
+
+  const { data: aliasData, error: aliasError } = await aliasQuery;
+  if (aliasError) throw aliasError;
+
+  if (aliasData?.customer_id) {
+    const customer = await getCustomerProfile(scope, String(aliasData.customer_id));
+    if (!customer) return null;
+    if (!includeInactive && !customer.isActive) return null;
+    return customer;
+  }
+
+  let query = ops(scope.databaseKey)
+    .from('customers')
+    .select('id, full_name, normalized_name, phone_raw, phone_normalized, address, favorite_drink_label, notes, is_active, last_seen_at, created_at, updated_at')
+    .eq('cafe_id', scope.cafeId)
+    .eq('normalized_name', normalizedReference)
+    .limit(2);
+
+  if (!includeInactive) {
+    query = query.eq('is_active', true);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  if (!data || data.length !== 1) return null;
+  return mapCustomerProfileRow(data[0] as Record<string, unknown>);
+}
+
+export async function listCustomerAliases(scope: CafeDatabaseScope, customerId: string): Promise<CustomerAlias[]> {
+  const { data, error } = await ops(scope.databaseKey)
+    .from('customer_aliases')
+    .select('id, alias_text, normalized_alias, source, usage_count, last_used_at, created_at, updated_at')
+    .eq('cafe_id', scope.cafeId)
+    .eq('customer_id', customerId)
+    .order('usage_count', { ascending: false })
+    .order('last_used_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map((item) => ({
+    id: String(item.id ?? ''),
+    aliasText: String(item.alias_text ?? ''),
+    normalizedAlias: String(item.normalized_alias ?? ''),
+    source: mapAliasSource(item.source),
+    usageCount: Number(item.usage_count ?? 0),
+    lastUsedAt: item.last_used_at ? String(item.last_used_at) : null,
+    createdAt: String(item.created_at ?? ''),
+    updatedAt: String(item.updated_at ?? ''),
+  }) satisfies CustomerAlias);
+}
+
+export async function saveCustomerAlias(input: CafeDatabaseScope & {
+  customerId: string;
+  aliasText: string;
+  source: CustomerAliasSource;
+  markUsed?: boolean;
+}) {
+  const normalizedAlias = normalizeCustomerName(input.aliasText);
+  if (!normalizedAlias) {
+    throw new Error('INVALID_CUSTOMER_ALIAS');
+  }
+
+  const now = new Date().toISOString();
+  const { data: customerData, error: customerError } = await ops(input.databaseKey)
+    .from('customers')
+    .select('normalized_name')
+    .eq('cafe_id', input.cafeId)
+    .eq('id', input.customerId)
+    .single();
+  if (customerError) throw customerError;
+  const normalizedCustomerName = String(customerData?.normalized_name ?? '').trim();
+  if (normalizedAlias === normalizedCustomerName) {
+    return null;
+  }
+
+  const { data: existing, error: existingError } = await ops(input.databaseKey)
+    .from('customer_aliases')
+    .select('id, customer_id, usage_count, last_used_at')
+    .eq('cafe_id', input.cafeId)
+    .eq('normalized_alias', normalizedAlias)
+    .maybeSingle();
+
+  if (existingError) throw existingError;
+
+  if (existing?.id) {
+    if (String(existing.customer_id ?? '') !== input.customerId) {
+      const conflict = new Error('CUSTOMER_ALIAS_EXISTS');
+      (conflict as Error & { code?: string }).code = 'CUSTOMER_ALIAS_EXISTS';
+      throw conflict;
+    }
+
+    const usageCount = Number(existing.usage_count ?? 0) + (input.markUsed ? 1 : 0);
+    const { error } = await ops(input.databaseKey)
+      .from('customer_aliases')
+      .update({
+        alias_text: input.aliasText,
+        source: input.source,
+        usage_count: usageCount,
+        last_used_at: input.markUsed ? now : (existing.last_used_at ? String(existing.last_used_at) : null),
+        updated_at: now,
+      })
+      .eq('cafe_id', input.cafeId)
+      .eq('id', String(existing.id));
+    if (error) throw error;
+    return String(existing.id);
+  }
+
+  const { data, error } = await ops(input.databaseKey)
+    .from('customer_aliases')
+    .insert({
+      cafe_id: input.cafeId,
+      customer_id: input.customerId,
+      alias_text: input.aliasText,
+      normalized_alias: normalizedAlias,
+      source: input.source,
+      usage_count: input.markUsed ? 1 : 0,
+      last_used_at: input.markUsed ? now : null,
+      updated_at: now,
+    })
+    .select('id')
+    .single();
+
+  if (error) throw error;
+  return String(data.id ?? '');
+}
+
+export async function deleteCustomerAlias(input: CafeDatabaseScope & { customerId: string; aliasId: string }) {
+  const { error } = await ops(input.databaseKey)
+    .from('customer_aliases')
+    .delete()
+    .eq('cafe_id', input.cafeId)
+    .eq('customer_id', input.customerId)
+    .eq('id', input.aliasId);
+
+  if (error) throw error;
+}
+
+export async function touchCustomerProfileActivity(input: CafeDatabaseScope & { customerId: string; actorOwnerId?: string | null }) {
+  const now = new Date().toISOString();
+  const { error } = await ops(input.databaseKey)
+    .from('customers')
+    .update({
+      last_seen_at: now,
+      updated_at: now,
+      updated_by_owner_id: input.actorOwnerId ?? null,
+    })
+    .eq('cafe_id', input.cafeId)
+    .eq('id', input.customerId);
+
+  if (error) throw error;
+}
+
+export async function createCustomerActivityLink(input: CafeDatabaseScope & {
+  customerId: string;
+  paymentId?: string | null;
+  serviceSessionId?: string | null;
+  linkSource: 'deferred_payment' | 'deferred_session' | 'manual';
+  actorOwnerId?: string | null;
+  actorStaffId?: string | null;
+  notes?: string | null;
+}) {
+  const paymentId = String(input.paymentId ?? '').trim() || null;
+  const serviceSessionId = String(input.serviceSessionId ?? '').trim() || null;
+  if (!paymentId && !serviceSessionId) return;
+
+  let existingId: string | null = null;
+
+  if (paymentId) {
+    const { data, error } = await ops(input.databaseKey)
+      .from('customer_links')
+      .select('id')
+      .eq('cafe_id', input.cafeId)
+      .eq('customer_id', input.customerId)
+      .eq('payment_id', paymentId)
+      .maybeSingle();
+    if (error) throw error;
+    existingId = data?.id ? String(data.id) : null;
+  }
+
+  if (!existingId && serviceSessionId) {
+    const { data, error } = await ops(input.databaseKey)
+      .from('customer_links')
+      .select('id')
+      .eq('cafe_id', input.cafeId)
+      .eq('customer_id', input.customerId)
+      .eq('service_session_id', serviceSessionId)
+      .maybeSingle();
+    if (error) throw error;
+    existingId = data?.id ? String(data.id) : null;
+  }
+
+  if (existingId) return;
+
+  const { error } = await ops(input.databaseKey)
+    .from('customer_links')
+    .insert({
+      cafe_id: input.cafeId,
+      customer_id: input.customerId,
+      payment_id: paymentId,
+      service_session_id: serviceSessionId,
+      link_source: input.linkSource,
+      linked_by_owner_id: input.actorOwnerId ?? null,
+      linked_by_staff_id: input.actorStaffId ?? null,
+      notes: input.notes ?? null,
+    });
+
+  if (error) throw error;
+}
+
+export async function linkCustomerByDeferredName(input: CafeDatabaseScope & {
+  debtorName: string;
+  customerId?: string | null;
+  paymentId?: string | null;
+  serviceSessionId?: string | null;
+  actorOwnerId?: string | null;
+  actorStaffId?: string | null;
+  source: 'deferred_runtime' | 'billing_runtime';
+}) {
+  const debtorName = String(input.debtorName ?? '').replace(/\s+/g, ' ').trim();
+  if (!debtorName) return null;
+
+  const customer = await findCustomerByReference(input, {
+    customerId: input.customerId,
+    debtorName,
+    includeInactive: false,
   });
-  return formatter.format(new Date());
+
+  if (!customer) return null;
+
+  await saveCustomerAlias({
+    cafeId: input.cafeId,
+    databaseKey: input.databaseKey,
+    customerId: customer.id,
+    aliasText: debtorName,
+    source: input.source,
+    markUsed: true,
+  });
+
+  await touchCustomerProfileActivity({
+    cafeId: input.cafeId,
+    databaseKey: input.databaseKey,
+    customerId: customer.id,
+    actorOwnerId: input.actorOwnerId ?? null,
+  });
+
+  await createCustomerActivityLink({
+    cafeId: input.cafeId,
+    databaseKey: input.databaseKey,
+    customerId: customer.id,
+    paymentId: input.paymentId ?? null,
+    serviceSessionId: input.serviceSessionId ?? null,
+    linkSource: input.paymentId ? 'deferred_payment' : 'deferred_session',
+    actorOwnerId: input.actorOwnerId ?? null,
+    actorStaffId: input.actorStaffId ?? null,
+  });
+
+  return customer;
+}
+
+export async function loadCustomerIntelligence(scope: CafeDatabaseScope, customerId: string): Promise<CustomerIntelligenceWorkspace> {
+  const customer = await getCustomerProfile(scope, customerId);
+  if (!customer) {
+    throw new Error('CUSTOMER_NOT_FOUND');
+  }
+
+  const aliases = await listCustomerAliases(scope, customerId);
+  const deferredNames = uniqueStrings([customer.fullName, ...aliases.map((alias) => alias.aliasText)]);
+
+  const deferredSummary = {
+    outstandingBalance: 0,
+    debtTotal: 0,
+    repaymentTotal: 0,
+    entryCount: 0,
+    activeAliases: 0,
+    lastEntryAt: null as string | null,
+  };
+
+  let recentLedger: DeferredLedgerEntry[] = [];
+
+  if (deferredNames.length > 0) {
+    const { data: balanceRows, error: balanceError } = await ops(scope.databaseKey)
+      .from('deferred_customer_balances')
+      .select('debtor_name, balance, debt_total, repayment_total, entry_count, last_entry_at')
+      .eq('cafe_id', scope.cafeId)
+      .in('debtor_name', deferredNames);
+    if (balanceError) throw balanceError;
+
+    for (const row of balanceRows ?? []) {
+      deferredSummary.outstandingBalance += Number(row.balance ?? 0);
+      deferredSummary.debtTotal += Number(row.debt_total ?? 0);
+      deferredSummary.repaymentTotal += Number(row.repayment_total ?? 0);
+      deferredSummary.entryCount += Number(row.entry_count ?? 0);
+      deferredSummary.activeAliases += 1;
+      const lastEntryAt = row.last_entry_at ? String(row.last_entry_at) : null;
+      if (lastEntryAt && (!deferredSummary.lastEntryAt || lastEntryAt > deferredSummary.lastEntryAt)) {
+        deferredSummary.lastEntryAt = lastEntryAt;
+      }
+    }
+
+    const { data: ledgerRows, error: ledgerError } = await ops(scope.databaseKey)
+      .from('deferred_ledger_entries')
+      .select('id, debtor_name, entry_kind, amount, notes, created_at, payment_id, service_session_id, by_staff_id, by_owner_id')
+      .eq('cafe_id', scope.cafeId)
+      .in('debtor_name', deferredNames)
+      .order('created_at', { ascending: false })
+      .limit(25);
+    if (ledgerError) throw ledgerError;
+
+    recentLedger = (ledgerRows ?? []).map((row) => ({
+      id: String(row.id ?? ''),
+      debtorName: String(row.debtor_name ?? ''),
+      entryKind: row.entry_kind === 'debt' ? 'debt' : row.entry_kind === 'repayment' ? 'repayment' : 'adjustment',
+      amount: Number(row.amount ?? 0),
+      notes: row.notes ? String(row.notes) : null,
+      createdAt: String(row.created_at ?? ''),
+      paymentId: row.payment_id ? String(row.payment_id) : null,
+      serviceSessionId: row.service_session_id ? String(row.service_session_id) : null,
+      actorLabel: row.by_owner_id ? 'owner' : row.by_staff_id ? 'staff' : null,
+    }) satisfies DeferredLedgerEntry);
+  }
+
+  const { data: linkRows, error: linksError } = await ops(scope.databaseKey)
+    .from('customer_links')
+    .select('id, payment_id, service_session_id, link_source, linked_at, notes')
+    .eq('cafe_id', scope.cafeId)
+    .eq('customer_id', customerId)
+    .order('linked_at', { ascending: false })
+    .limit(40);
+  if (linksError) throw linksError;
+
+  const recentLinks = (linkRows ?? []).map((row) => ({
+    id: String(row.id ?? ''),
+    paymentId: row.payment_id ? String(row.payment_id) : null,
+    serviceSessionId: row.service_session_id ? String(row.service_session_id) : null,
+    linkSource: row.link_source === 'deferred_session' ? 'deferred_session' : row.link_source === 'manual' ? 'manual' : 'deferred_payment',
+    linkedAt: String(row.linked_at ?? ''),
+    notes: row.notes ? String(row.notes) : null,
+  }) satisfies CustomerActivityLink);
+
+  let deferredPayments: Array<Record<string, unknown>> = [];
+  if (deferredNames.length > 0) {
+    const { data, error } = await ops(scope.databaseKey)
+      .from('payments')
+      .select('id, service_session_id, debtor_name, total_amount, created_at, payment_kind')
+      .eq('cafe_id', scope.cafeId)
+      .eq('payment_kind', 'deferred')
+      .in('debtor_name', deferredNames)
+      .order('created_at', { ascending: false })
+      .limit(80);
+    if (error) throw error;
+    deferredPayments = (data ?? []) as Array<Record<string, unknown>>;
+  }
+
+  const paymentIds = uniqueStrings([
+    ...deferredPayments.map((row) => row.id ? String(row.id) : null),
+    ...recentLinks.map((link) => link.paymentId),
+    ...recentLedger.map((entry) => entry.paymentId),
+  ]);
+
+  const sessionIds = uniqueStrings([
+    ...deferredPayments.map((row) => row.service_session_id ? String(row.service_session_id) : null),
+    ...recentLinks.map((link) => link.serviceSessionId),
+    ...recentLedger.map((entry) => entry.serviceSessionId),
+  ]);
+
+  let sessionRows: Array<Record<string, unknown>> = [];
+  if (sessionIds.length > 0) {
+    const { data, error } = await ops(scope.databaseKey)
+      .from('service_sessions')
+      .select('id, session_label, opened_at, closed_at')
+      .eq('cafe_id', scope.cafeId)
+      .in('id', sessionIds);
+    if (error) throw error;
+    sessionRows = (data ?? []) as Array<Record<string, unknown>>;
+  }
+  const sessionMap = new Map(sessionRows.map((row) => [String(row.id ?? ''), row]));
+
+  let allocationRows: Array<Record<string, unknown>> = [];
+  if (paymentIds.length > 0) {
+    const { data, error } = await ops(scope.databaseKey)
+      .from('payment_allocations')
+      .select('payment_id, order_item_id, quantity, amount, allocation_kind')
+      .eq('cafe_id', scope.cafeId)
+      .in('payment_id', paymentIds)
+      .eq('allocation_kind', 'deferred');
+    if (error) throw error;
+    allocationRows = (data ?? []) as Array<Record<string, unknown>>;
+  }
+
+  const orderItemIds = uniqueStrings(allocationRows.map((row) => row.order_item_id ? String(row.order_item_id) : null));
+  let orderItemRows: Array<Record<string, unknown>> = [];
+  if (orderItemIds.length > 0) {
+    const { data, error } = await ops(scope.databaseKey)
+      .from('order_items')
+      .select('id, menu_product_id, notes, created_at')
+      .eq('cafe_id', scope.cafeId)
+      .in('id', orderItemIds);
+    if (error) throw error;
+    orderItemRows = (data ?? []) as Array<Record<string, unknown>>;
+  }
+  const orderItemMap = new Map(orderItemRows.map((row) => [String(row.id ?? ''), row]));
+
+  const productIds = uniqueStrings(orderItemRows.map((row) => row.menu_product_id ? String(row.menu_product_id) : null));
+  let productRows: Array<Record<string, unknown>> = [];
+  if (productIds.length > 0) {
+    const { data, error } = await ops(scope.databaseKey)
+      .from('menu_products')
+      .select('id, product_name')
+      .eq('cafe_id', scope.cafeId)
+      .in('id', productIds);
+    if (error) throw error;
+    productRows = (data ?? []) as Array<Record<string, unknown>>;
+  }
+  const productMap = new Map(productRows.map((row) => [String(row.id ?? ''), String(row.product_name ?? '')]));
+
+  let addonRows: Array<Record<string, unknown>> = [];
+  if (orderItemIds.length > 0) {
+    const { data, error } = await ops(scope.databaseKey)
+      .from('order_item_addons')
+      .select('order_item_id, addon_name_snapshot, quantity, created_at')
+      .eq('cafe_id', scope.cafeId)
+      .in('order_item_id', orderItemIds);
+    if (error) throw error;
+    addonRows = (data ?? []) as Array<Record<string, unknown>>;
+  }
+  const addonsByItemId = new Map<string, Array<Record<string, unknown>>>();
+  for (const row of addonRows) {
+    const orderItemId = String(row.order_item_id ?? '');
+    if (!addonsByItemId.has(orderItemId)) {
+      addonsByItemId.set(orderItemId, []);
+    }
+    addonsByItemId.get(orderItemId)!.push(row);
+  }
+
+  const paymentMap = new Map(deferredPayments.map((row) => [String(row.id ?? ''), row]));
+
+  const productAgg = new Map<string, CustomerRecommendedProduct>();
+  const addonAgg = new Map<string, CustomerRecommendedAddon>();
+  const noteAgg = new Map<string, CustomerRecommendedNote>();
+  const basketAgg = new Map<string, CustomerRecommendedBasket>();
+  const basketLines = new Map<string, string[]>();
+
+  for (const allocation of allocationRows) {
+    const paymentId = String(allocation.payment_id ?? '');
+    const orderItemId = String(allocation.order_item_id ?? '');
+    const quantity = Number(allocation.quantity ?? 0);
+    const orderItem = orderItemMap.get(orderItemId);
+    if (!orderItem) continue;
+
+    const menuProductId = String(orderItem.menu_product_id ?? '');
+    const productName = productMap.get(menuProductId) || 'صنف غير معروف';
+    const createdAt = paymentMap.get(paymentId)?.created_at ? String(paymentMap.get(paymentId)?.created_at) : String(orderItem.created_at ?? '');
+
+    const currentProduct = productAgg.get(productName) ?? {
+      productName,
+      count: 0,
+      quantity: 0,
+      lastOrderedAt: null,
+    };
+    currentProduct.count += 1;
+    currentProduct.quantity += quantity;
+    if (createdAt && (!currentProduct.lastOrderedAt || createdAt > currentProduct.lastOrderedAt)) {
+      currentProduct.lastOrderedAt = createdAt;
+    }
+    productAgg.set(productName, currentProduct);
+
+    const parsedNotes = parseOrderItemNotes(orderItem.notes ? String(orderItem.notes) : null);
+    if (parsedNotes.freeformNotes) {
+      const currentNote = noteAgg.get(parsedNotes.freeformNotes) ?? {
+        noteText: parsedNotes.freeformNotes,
+        count: 0,
+        lastUsedAt: null,
+      };
+      currentNote.count += 1;
+      if (createdAt && (!currentNote.lastUsedAt || createdAt > currentNote.lastUsedAt)) {
+        currentNote.lastUsedAt = createdAt;
+      }
+      noteAgg.set(parsedNotes.freeformNotes, currentNote);
+    }
+
+    const basketLabelParts = [productName];
+    const itemAddons = addonsByItemId.get(orderItemId) ?? [];
+    for (const addon of itemAddons) {
+      const addonName = String(addon.addon_name_snapshot ?? '').trim();
+      if (!addonName) continue;
+      const addonQuantity = Number(addon.quantity ?? 0);
+      const currentAddon = addonAgg.get(addonName) ?? {
+        addonName,
+        count: 0,
+        quantity: 0,
+        lastOrderedAt: null,
+      };
+      currentAddon.count += 1;
+      currentAddon.quantity += addonQuantity;
+      if (createdAt && (!currentAddon.lastOrderedAt || createdAt > currentAddon.lastOrderedAt)) {
+        currentAddon.lastOrderedAt = createdAt;
+      }
+      addonAgg.set(addonName, currentAddon);
+      basketLabelParts.push(`+ ${addonName}`);
+    }
+
+    if (parsedNotes.freeformNotes) {
+      basketLabelParts.push(`(${parsedNotes.freeformNotes})`);
+    }
+
+    if (!basketLines.has(paymentId)) {
+      basketLines.set(paymentId, []);
+    }
+    basketLines.get(paymentId)!.push(basketLabelParts.join(' '));
+  }
+
+  for (const [paymentId, lines] of basketLines.entries()) {
+    const normalized = [...lines].sort((left, right) => left.localeCompare(right, 'ar')).join(' • ');
+    if (!normalized) continue;
+    const createdAt = paymentMap.get(paymentId)?.created_at ? String(paymentMap.get(paymentId)?.created_at) : null;
+    const currentBasket = basketAgg.get(normalized) ?? {
+      label: normalized,
+      count: 0,
+      itemCount: 0,
+      lastOrderedAt: null,
+    };
+    currentBasket.count += 1;
+    currentBasket.itemCount = Math.max(currentBasket.itemCount, lines.length);
+    if (createdAt && (!currentBasket.lastOrderedAt || createdAt > currentBasket.lastOrderedAt)) {
+      currentBasket.lastOrderedAt = createdAt;
+    }
+    basketAgg.set(normalized, currentBasket);
+  }
+
+  const recentSessionsMap = new Map<string, CustomerRecentSession>();
+  for (const payment of deferredPayments) {
+    const serviceSessionId = payment.service_session_id ? String(payment.service_session_id) : '';
+    if (!serviceSessionId) continue;
+    const session = sessionMap.get(serviceSessionId);
+    if (!session) continue;
+    recentSessionsMap.set(serviceSessionId, {
+      serviceSessionId,
+      sessionLabel: String(session.session_label ?? serviceSessionId),
+      debtorName: payment.debtor_name ? String(payment.debtor_name) : null,
+      totalAmount: Number(payment.total_amount ?? 0),
+      openedAt: String(session.opened_at ?? ''),
+      closedAt: session.closed_at ? String(session.closed_at) : null,
+      paymentCreatedAt: payment.created_at ? String(payment.created_at) : null,
+    });
+  }
+
+  const recentSessions = [...recentSessionsMap.values()]
+    .sort((left, right) => (right.paymentCreatedAt ?? right.openedAt).localeCompare(left.paymentCreatedAt ?? left.openedAt))
+    .slice(0, 12);
+
+  const recommendedProducts = [...productAgg.values()]
+    .sort((left, right) => right.count - left.count || right.quantity - left.quantity || left.productName.localeCompare(right.productName, 'ar'))
+    .slice(0, 8);
+
+  const recommendedAddons = [...addonAgg.values()]
+    .sort((left, right) => right.count - left.count || right.quantity - left.quantity || left.addonName.localeCompare(right.addonName, 'ar'))
+    .slice(0, 8);
+
+  const recommendedNotes = [...noteAgg.values()]
+    .sort((left, right) => right.count - left.count || left.noteText.localeCompare(right.noteText, 'ar'))
+    .slice(0, 8);
+
+  const recommendedBaskets = [...basketAgg.values()]
+    .sort((left, right) => right.count - left.count || right.itemCount - left.itemCount || left.label.localeCompare(right.label, 'ar'))
+    .slice(0, 6);
+
+  return {
+    customer,
+    aliases,
+    deferredSummary,
+    recentLedger,
+    recentSessions,
+    recentLinks,
+    recommendedProducts,
+    recommendedAddons,
+    recommendedNotes,
+    recommendedBaskets,
+  } satisfies CustomerIntelligenceWorkspace;
 }
 
 export async function listStaffMembers(scope: CafeDatabaseScope, includeInactive = false) {
@@ -163,6 +953,194 @@ export type CurrentShiftState = {
     actorType: 'owner' | 'staff';
   }>;
 };
+
+type ShiftKind = 'morning' | 'evening';
+
+function templateLabelForKind(kind: ShiftKind) {
+  return kind === 'morning' ? 'النمط الصباحي الافتراضي' : 'النمط المسائي الافتراضي';
+}
+
+function assertShiftAssignmentsValid(assignments: Array<{ userId: string; role: ShiftRole; actorType?: 'staff' | 'owner' }>) {
+  const supervisorCount = assignments.filter((item) => item.role === 'supervisor').length;
+  if (supervisorCount !== 1) {
+    throw new Error('supervisor_required');
+  }
+
+  const baristaCount = assignments.filter((item) => item.role === 'barista').length;
+  if (baristaCount > 1) {
+    throw new Error('multiple_baristas_not_allowed');
+  }
+
+  const seen = new Set<string>();
+  for (const assignment of assignments) {
+    const actorType = assignment.actorType === 'owner' ? 'owner' : 'staff';
+    const dedupeKey = `${actorType}:${assignment.userId}`;
+    if (seen.has(dedupeKey)) {
+      throw new Error('duplicate_shift_assignment');
+    }
+    seen.add(dedupeKey);
+  }
+}
+
+export async function listShiftAssignmentTemplates(scope: CafeDatabaseScope): Promise<ShiftAssignmentTemplate[]> {
+  const admin = ops(scope.databaseKey);
+  const { data: templateRows, error: templateError } = await admin
+    .from('shift_assignment_templates')
+    .select('id, shift_kind, template_label, updated_at')
+    .eq('cafe_id', scope.cafeId)
+    .order('shift_kind', { ascending: true });
+
+  if (templateError) throw templateError;
+
+  const templates = (templateRows ?? []).map((item) => ({
+    id: String(item.id),
+    kind: item.shift_kind as ShiftKind,
+    label: item.template_label ? String(item.template_label) : templateLabelForKind(item.shift_kind as ShiftKind),
+    updatedAt: item.updated_at ? String(item.updated_at) : new Date(0).toISOString(),
+  }));
+
+  if (templates.length === 0) {
+    return [];
+  }
+
+  const templateIds = templates.map((item) => item.id);
+  const { data: memberRows, error: memberError } = await admin
+    .from('shift_assignment_template_members')
+    .select('template_id, role_code, staff_member_id, owner_user_id, sort_order')
+    .eq('cafe_id', scope.cafeId)
+    .in('template_id', templateIds)
+    .order('sort_order', { ascending: true });
+
+  if (memberError) throw memberError;
+
+  const staffIds = Array.from(new Set((memberRows ?? []).map((item) => item.staff_member_id).filter(Boolean).map(String)));
+  const ownerIds = Array.from(new Set((memberRows ?? []).map((item) => item.owner_user_id).filter(Boolean).map(String)));
+
+  const [staffRows, ownerRows] = await Promise.all([
+    staffIds.length > 0
+      ? admin.from('staff_members').select('id, full_name, is_active, employment_status').eq('cafe_id', scope.cafeId).in('id', staffIds)
+      : Promise.resolve({ data: [], error: null }),
+    ownerIds.length > 0
+      ? admin.from('owner_users').select('id, full_name, is_active').eq('cafe_id', scope.cafeId).in('id', ownerIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (staffRows.error) throw staffRows.error;
+  if (ownerRows.error) throw ownerRows.error;
+
+  const staffById = new Map((staffRows.data ?? []).map((item) => [String(item.id), {
+    fullName: item.full_name ? String(item.full_name) : null,
+    isActive: !!item.is_active,
+    employmentStatus: item.employment_status ? String(item.employment_status) as 'active' | 'inactive' | 'left' : (!!item.is_active ? 'active' : 'inactive'),
+  }]));
+
+  const ownerById = new Map((ownerRows.data ?? []).map((item) => [String(item.id), {
+    fullName: item.full_name ? String(item.full_name) : null,
+    isActive: !!item.is_active,
+  }]));
+
+  const membersByTemplateId = new Map<string, ShiftAssignmentTemplate['assignments']>();
+  for (const row of memberRows ?? []) {
+    const templateId = String(row.template_id ?? '');
+    if (!templateId) continue;
+
+    const ownerId = row.owner_user_id ? String(row.owner_user_id) : null;
+    const staffId = row.staff_member_id ? String(row.staff_member_id) : null;
+    const actorType = ownerId ? 'owner' as const : 'staff' as const;
+    const userId = ownerId ?? staffId ?? '';
+    if (!userId) continue;
+
+    const owner = ownerId ? ownerById.get(ownerId) ?? null : null;
+    const staff = staffId ? staffById.get(staffId) ?? null : null;
+    const isActive = actorType === 'owner' ? (owner?.isActive ?? false) : !!staff?.isActive && (staff?.employmentStatus ?? 'inactive') === 'active';
+
+    const entry = {
+      userId,
+      role: row.role_code as ShiftRole,
+      actorType,
+      fullName: actorType === 'owner' ? owner?.fullName ?? null : staff?.fullName ?? null,
+      isActive,
+      employmentStatus: actorType === 'staff' ? (staff?.employmentStatus ?? 'inactive') : undefined,
+    };
+
+    const bucket = membersByTemplateId.get(templateId) ?? [];
+    bucket.push(entry);
+    membersByTemplateId.set(templateId, bucket);
+  }
+
+  return templates.map((template) => {
+    const assignments = membersByTemplateId.get(template.id) ?? [];
+    return {
+      ...template,
+      assignments,
+      availableAssignmentsCount: assignments.filter((item) => item.isActive).length,
+      inactiveAssignmentsCount: assignments.filter((item) => !item.isActive).length,
+    } satisfies ShiftAssignmentTemplate;
+  });
+}
+
+export async function saveShiftAssignmentTemplate(input: CafeDatabaseScope & {
+  kind: ShiftKind;
+  assignments: Array<{ userId: string; role: ShiftRole; actorType?: 'staff' | 'owner' }>;
+}) {
+  assertShiftAssignmentsValid(input.assignments);
+
+  const admin = ops(input.databaseKey);
+  const timestamp = new Date().toISOString();
+  const { data: templateRow, error: templateError } = await admin
+    .from('shift_assignment_templates')
+    .upsert({
+      cafe_id: input.cafeId,
+      shift_kind: input.kind,
+      template_label: templateLabelForKind(input.kind),
+      updated_at: timestamp,
+    }, { onConflict: 'cafe_id,shift_kind' })
+    .select('id, shift_kind, template_label, updated_at')
+    .single();
+
+  if (templateError) throw templateError;
+
+  const templateId = String(templateRow.id ?? '');
+  if (!templateId) {
+    throw new Error('SHIFT_TEMPLATE_SAVE_FAILED');
+  }
+
+  const { error: deleteError } = await admin
+    .from('shift_assignment_template_members')
+    .delete()
+    .eq('cafe_id', input.cafeId)
+    .eq('template_id', templateId);
+
+  if (deleteError) throw deleteError;
+
+  if (input.assignments.length > 0) {
+    const rows = input.assignments.map((assignment, index) => ({
+      cafe_id: input.cafeId,
+      template_id: templateId,
+      role_code: assignment.role,
+      staff_member_id: assignment.actorType === 'owner' ? null : assignment.userId,
+      owner_user_id: assignment.actorType === 'owner' ? assignment.userId : null,
+      sort_order: index,
+    }));
+
+    const { error: insertError } = await admin.from('shift_assignment_template_members').insert(rows);
+    if (insertError) throw insertError;
+  }
+
+  const templates = await listShiftAssignmentTemplates(input);
+  return templates.find((item) => item.kind === input.kind) ?? null;
+}
+
+export async function deleteShiftAssignmentTemplate(input: CafeDatabaseScope & { kind: ShiftKind }) {
+  const admin = ops(input.databaseKey);
+  const { error } = await admin
+    .from('shift_assignment_templates')
+    .delete()
+    .eq('cafe_id', input.cafeId)
+    .eq('shift_kind', input.kind);
+
+  if (error) throw error;
+}
 
 export async function readCurrentShiftState(scope: CafeDatabaseScope): Promise<CurrentShiftState> {
   const admin = ops(scope.databaseKey);
@@ -288,11 +1266,13 @@ export async function openShiftWithAssignments(input: CafeDatabaseScope & {
   notes?: string | null;
   assignments: Array<{ userId: string; role: ShiftRole; actorType?: 'staff' | 'owner' }>;
 }) {
+  assertShiftAssignmentsValid(input.assignments);
   const admin = supabaseAdminForDatabase(input.databaseKey);
+  const operatingSettings = await loadOperatingSettings(input);
   const openRpc = await admin.rpc('ops_open_shift_with_assignments', {
     p_cafe_id: input.cafeId,
     p_shift_kind: input.kind,
-    p_business_date: currentCairoDate(),
+    p_business_date: operatingSettings.currentBusinessDate,
     p_opened_by_owner_id: input.ownerUserId,
     p_notes: input.notes ?? null,
     p_assignments: input.assignments.map((assignment) =>

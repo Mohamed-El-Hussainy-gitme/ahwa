@@ -11,6 +11,7 @@ import {
   requireOpsActorContext,
 } from '@/app/api/ops/_helpers';
 import { buildBillingReceiptUrl } from '@/lib/ops/billing';
+import { linkCustomerByDeferredName } from '@/lib/ops/owner-admin';
 import { resolveBillingContext } from '@/app/api/ops/_billing';
 
 type DeferAllocationInput = {
@@ -20,6 +21,7 @@ type DeferAllocationInput = {
 
 type DeferRequestBody = {
   debtorName?: string;
+  customerId?: string;
   allocations?: DeferAllocationInput[];
 };
 
@@ -36,7 +38,7 @@ export async function POST(req: Request) {
   let mutation: BegunIdempotentMutation | null = null;
 
   try {
-    const { debtorName, allocations } = (await req.json()) as DeferRequestBody;
+    const { debtorName, allocations, customerId } = (await req.json()) as DeferRequestBody;
     const normalizedDebtorName = String(debtorName ?? '').trim();
     if (!normalizedDebtorName) {
       throw new Error('INVALID_INPUT');
@@ -69,6 +71,18 @@ export async function POST(req: Request) {
     if (!rpc.ok || !paymentId) {
       throw new Error('INVALID_RPC_RESPONSE:ops_defer_selected_quantities');
     }
+
+    await linkCustomerByDeferredName({
+      cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
+      debtorName: normalizedDebtorName,
+      customerId: customerId ? String(customerId).trim() : null,
+      paymentId,
+      serviceSessionId: billing.serviceSessionId,
+      actorOwnerId: ctx.actorOwnerId,
+      actorStaffId: ctx.actorStaffId,
+      source: 'billing_runtime',
+    });
 
     kickOpsOutboxDispatch(ctx);
 

@@ -11,15 +11,17 @@ import {
   requireOpsActorContext,
   requireOpenOpsShift,
 } from '@/app/api/ops/_helpers';
+import { linkCustomerByDeferredName } from '@/lib/ops/owner-admin';
 
 export async function POST(req: Request) {
   let mutation: BegunIdempotentMutation | null = null;
 
   try {
-    const { debtorName, amount, notes } = (await req.json()) as {
+    const { debtorName, amount, notes, customerId } = (await req.json()) as {
       debtorName?: string;
       amount?: number;
       notes?: string;
+      customerId?: string;
     };
     const name = String(debtorName ?? '').trim();
     const numericAmount = Number(amount ?? 0);
@@ -49,6 +51,16 @@ export async function POST(req: Request) {
       p_by_staff_id: ctx.actorStaffId,
       p_by_owner_id: ctx.actorOwnerId,
     }, ctx.databaseKey);
+
+    await linkCustomerByDeferredName({
+      cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
+      debtorName: name,
+      customerId: customerId ? String(customerId).trim() : null,
+      actorOwnerId: ctx.actorOwnerId,
+      actorStaffId: ctx.actorStaffId,
+      source: 'deferred_runtime',
+    });
 
     kickOpsOutboxDispatch(ctx);
 

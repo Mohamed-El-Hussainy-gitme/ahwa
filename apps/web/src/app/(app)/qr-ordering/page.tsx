@@ -4,6 +4,7 @@ import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { AccessDenied } from '@/ui/AccessState';
 import { OwnerPublicOrderingCard } from '../owner/OwnerPublicOrderingCard';
+import { PublicMenuContentManager } from './PublicMenuContentManager';
 
 export default function QrOrderingPage() {
   const { can } = useAuthz();
@@ -24,6 +25,7 @@ export default function QrOrderingPage() {
         </div>
 
         <OwnerPublicOrderingCard />
+        <PublicMenuContentManager />
       </section>
     </MobileShell>
   );

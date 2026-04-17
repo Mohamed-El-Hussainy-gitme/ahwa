@@ -6,13 +6,24 @@ import type { PublicMenuPayload } from '@/lib/public-ordering';
 
 type StationCode = 'barista' | 'shisha';
 type Section = { id: string; title: string; stationCode: StationCode; sortOrder: number };
-type Product = { id: string; sectionId: string; name: string; stationCode: StationCode; unitPrice: number; sortOrder: number };
+type Product = {
+  id: string;
+  sectionId: string;
+  name: string;
+  stationCode: StationCode;
+  unitPrice: number;
+  sortOrder: number;
+  publicDescription: string | null;
+  publicImageUrl: string | null;
+  publicImageAlt: string | null;
+};
 type Addon = { id: string; name: string; stationCode: StationCode; unitPrice: number; sortOrder: number };
 type ProductAddonLink = { productId: string; addonId: string };
 type BillingSettings = { taxEnabled: boolean; taxRate: number; serviceEnabled: boolean; serviceRate: number };
+type NotePreset = { noteText: string; stationCode: StationCode | null };
 type MenuPayload = PublicMenuPayload & {
   cafe: { cafeId: string; cafeSlug: string; cafeName: string; databaseKey: string };
-  menu: { sections: Section[]; products: Product[]; addons: Addon[]; productAddonLinks: ProductAddonLink[]; billingSettings: BillingSettings };
+  menu: { sections: Section[]; products: Product[]; addons: Addon[]; productAddonLinks: ProductAddonLink[]; billingSettings: BillingSettings; notePresets: NotePreset[] };
 };
 
 type CartEntry = { product: Product; quantity: number; addonIds: string[]; addonOptions: ProductAddonOption[]; addonUnitTotal: number };
@@ -109,6 +120,39 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
       })
       .filter((entry): entry is CartEntry => entry !== null);
   }, [addonOptionsByProductId, cart, menu, selectedAddons]);
+
+
+  const selectedStationCodes = useMemo(() => Array.from(new Set(cartEntries.map((entry) => entry.product.stationCode))), [cartEntries]);
+
+  const visibleNotePresets = useMemo(() => {
+    const presets = menu?.menu.notePresets ?? [];
+    if (!presets.length) {
+      return [] as NotePreset[];
+    }
+
+    const allowedStations = selectedStationCodes.length ? new Set(selectedStationCodes) : null;
+    const filtered = presets.filter((preset) => {
+      if (!preset.stationCode) {
+        return true;
+      }
+      return allowedStations ? allowedStations.has(preset.stationCode) : true;
+    });
+
+    const seen = new Set<string>();
+    return filtered.filter((preset) => {
+      const normalizedText = preset.noteText.trim();
+      if (!normalizedText || seen.has(normalizedText)) {
+        return false;
+      }
+      seen.add(normalizedText);
+      return true;
+    });
+  }, [menu?.menu.notePresets, selectedStationCodes]);
+
+  function applyNotePreset(presetText: string) {
+    setSuccessMessage(null);
+    setNotes(presetText);
+  }
 
   const totals = useMemo(() => {
     const subtotal = cartEntries.reduce((sum, entry) => sum + (entry.product.unitPrice + entry.addonUnitTotal) * entry.quantity, 0);
@@ -220,19 +264,37 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
                       const quantity = cart[product.id] ?? 0;
                       return (
                         <div key={product.id} className="ahwa-card-soft p-4">
-                          <div className="flex items-start justify-between gap-4">
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-start justify-between gap-2">
-                                <div>
-                                  <h3 className="text-lg font-bold text-[var(--brand-ink)]">{product.name}</h3>
-                                  <p className="mt-1 text-sm text-[var(--brand-muted)]">{formatMoney(product.unitPrice)} ج.م</p>
+                          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="flex min-w-0 flex-1 gap-4">
+                              {product.publicImageUrl ? (
+                                <div className="h-24 w-24 shrink-0 overflow-hidden rounded-[20px] border border-[var(--brand-border)] bg-white shadow-sm sm:h-28 sm:w-28">
+                                  <img
+                                    src={product.publicImageUrl}
+                                    alt={product.publicImageAlt || product.name}
+                                    className="h-full w-full object-cover"
+                                    loading="lazy"
+                                  />
                                 </div>
-                                {addonOptionsByProductId.get(product.id)?.length ? (
-                                  <button className="ahwa-btn-secondary shrink-0 px-3 py-1.5 text-xs" onClick={() => setAddonPickerProductId(product.id)} type="button">إضافات</button>
+                              ) : null}
+
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-start justify-between gap-2">
+                                  <div>
+                                    <h3 className="text-lg font-bold text-[var(--brand-ink)]">{product.name}</h3>
+                                    <p className="mt-1 text-sm text-[var(--brand-muted)]">{formatMoney(product.unitPrice)} ج.م</p>
+                                  </div>
+                                  {addonOptionsByProductId.get(product.id)?.length ? (
+                                    <button className="ahwa-btn-secondary shrink-0 px-3 py-1.5 text-xs" onClick={() => setAddonPickerProductId(product.id)} type="button">إضافات</button>
+                                  ) : null}
+                                </div>
+                                {product.publicDescription ? (
+                                  <p className="mt-3 whitespace-pre-line text-sm leading-7 text-[var(--brand-muted)]">
+                                    {product.publicDescription}
+                                  </p>
                                 ) : null}
                               </div>
                             </div>
-                            <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-2 self-end sm:self-start">
                               <button className="ahwa-btn-secondary min-w-10 px-3 py-2" onClick={() => changeQuantity(product.id, -1)} type="button">-</button>
                               <span className="min-w-8 text-center text-lg font-bold">{quantity}</span>
                               <button className="ahwa-btn-accent min-w-10 px-3 py-2" onClick={() => changeQuantity(product.id, 1)} type="button">+</button>
@@ -276,6 +338,39 @@ export function PublicCafeOrderingClient({ slug, initialMenu }: { slug: string; 
               <span className="mb-1 block text-sm font-semibold">ملاحظة</span>
               <textarea className="ahwa-textarea min-h-24" value={notes} onChange={(event) => setNotes(event.target.value)} placeholder="بدون سكر / سريع لو سمحت" />
             </label>
+
+            {visibleNotePresets.length ? (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-semibold text-[var(--brand-ink)]">ملاحظات سريعة</span>
+                  <span className="text-[11px] text-[var(--brand-muted)]">
+                    {selectedStationCodes.length
+                      ? 'مرتبطة بالأصناف المختارة'
+                      : 'مبنية على أكثر الملاحظات استخدامًا'}
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {visibleNotePresets.map((preset) => {
+                    const isActive = notes.trim() === preset.noteText;
+                    return (
+                      <button
+                        key={`${preset.stationCode ?? 'all'}:${preset.noteText}`}
+                        type="button"
+                        onClick={() => applyNotePreset(preset.noteText)}
+                        className={[
+                          'rounded-[18px] border px-3 py-2 text-sm transition',
+                          isActive
+                            ? 'border-[var(--brand-accent-strong)] bg-[var(--brand-accent-strong)] text-white'
+                            : 'border-[var(--brand-border)] bg-white text-[var(--brand-ink)]',
+                        ].join(' ')}
+                      >
+                        {preset.noteText}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
 
             <div className="ahwa-card-dashed space-y-3 p-4">
               {cartEntries.length ? cartEntries.map((entry) => (

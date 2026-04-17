@@ -17,6 +17,7 @@ import type {
   StationCode,
 } from '@/lib/ops/types';
 import { adminOps, buildDeferredCustomersWorkspace, ensureRuntimeContract } from '@/app/api/ops/_server';
+import { loadOperatingSettings } from '@/lib/ops/owner-admin';
 import { normalizeNullableStationCode, normalizeStationCode } from '@/lib/ops/stations';
 
 type ShiftRow = {
@@ -127,15 +128,6 @@ type AggregateMaps = {
   complaintsByShift: Map<string, ReportComplaintEntry[]>;
   itemIssuesByShift: Map<string, ReportItemIssueEntry[]>;
 };
-
-function cairoToday(): string {
-  return new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Africa/Cairo',
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-  }).format(new Date());
-}
 
 function toDateValue(date: string): Date {
   return new Date(`${date}T12:00:00Z`);
@@ -1627,7 +1619,8 @@ export async function buildReportsWorkspace(
 ): Promise<ReportsWorkspace> {
   await ensureRuntimeContract('reporting', databaseKey);
 
-  const referenceDate = cairoToday();
+  const operatingSettings = await loadOperatingSettings({ cafeId, databaseKey });
+  const referenceDate = operatingSettings.currentBusinessDate;
   const customStartDate = typeof input.startDate === 'string' && input.startDate ? input.startDate : null;
   const customEndDate = typeof input.endDate === 'string' && input.endDate ? input.endDate : null;
   const hasCustomRange = Boolean(customStartDate && customEndDate);
@@ -1679,6 +1672,7 @@ export async function buildReportsWorkspace(
     };
     return {
       referenceDate,
+      operatingSettings,
       currentShift: null,
       currentProducts: [],
       currentAddons: [],
@@ -1774,6 +1768,7 @@ export async function buildReportsWorkspace(
 
   return {
     referenceDate,
+    operatingSettings,
     currentShift,
     currentProducts,
     currentAddons,

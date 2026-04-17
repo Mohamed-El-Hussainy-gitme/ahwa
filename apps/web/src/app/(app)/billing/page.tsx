@@ -6,7 +6,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
-import type { BillingTotals, BillingWorkspace } from '@/lib/ops/types';
+import type { BillingTotals, BillingWorkspace, CustomerProfile } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
 import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
 import { applyBillingToWorkspace } from '@/lib/ops/workspacePatches';
@@ -116,6 +116,8 @@ export default function BillingPage() {
   const requestedSessionId = String(searchParams.get('sessionId') ?? '').trim();
 
   const [debtorName, setDebtorName] = useState('');
+  const [selectedCustomerId, setSelectedCustomerId] = useState<string | null>(null);
+  const [customerProfiles, setCustomerProfiles] = useState<CustomerProfile[]>([]);
   const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
   const [localError, setLocalError] = useState<string | null>(null);
   const [lastReceiptUrl, setLastReceiptUrl] = useState<string | null>(null);
@@ -130,6 +132,21 @@ export default function BillingPage() {
     pollIntervalMs: billingEnabled ? 4000 : undefined,
     shouldReloadOnEvent: shouldReloadBillingWorkspace,
   });
+
+  useEffect(() => {
+    if (!billingEnabled) return;
+    let active = true;
+    void opsClient.customerLookupProfiles().then((payload) => {
+      if (!active) return;
+      setCustomerProfiles(payload.items ?? []);
+    }).catch(() => {
+      if (!active) return;
+      setCustomerProfiles([]);
+    });
+    return () => {
+      active = false;
+    };
+  }, [billingEnabled]);
 
   const effectiveSessionId = useMemo(() => {
     const sessions = data?.sessions ?? [];
@@ -215,9 +232,10 @@ export default function BillingPage() {
     async () => {
       const currentSessionId = effectiveSessionId;
       const selected = allocations();
-      const result = await opsClient.deferAndClose(debtorName, selected);
+      const result = await opsClient.deferAndClose(debtorName, selected, selectedCustomerId);
       setSelectedQty({});
       setDebtorName('');
+      setSelectedCustomerId(null);
       rememberReceipt(result.receiptUrl, currentSessionId, result.totals);
       setData((currentWorkspace) => applyBillingToWorkspace(currentWorkspace, currentSessionId, selected, 'defer'));
     },
@@ -238,9 +256,10 @@ export default function BillingPage() {
   const deferFullCommand = useOpsCommand(
     async () => {
       const currentSessionId = effectiveSessionId;
-      const result = await opsClient.deferAndClose(debtorName, printableAllocations);
+      const result = await opsClient.deferAndClose(debtorName, printableAllocations, selectedCustomerId);
       setSelectedQty({});
       setDebtorName('');
+      setSelectedCustomerId(null);
       rememberReceipt(result.receiptUrl, currentSessionId, result.totals);
       setData((currentWorkspace) => applyBillingToWorkspace(currentWorkspace, currentSessionId, printableAllocations, 'defer'));
     },
@@ -272,6 +291,14 @@ export default function BillingPage() {
     return sum + item.quantity * Number(match?.unitPrice ?? 0);
   }, 0);
   const selectedTotals = computeBillingTotals(selectedSubtotal, data?.billingSettings);
+
+  const matchedCustomers = useMemo(() => {
+    const normalized = debtorName.trim().toLowerCase();
+    const base = normalized
+      ? customerProfiles.filter((item) => [item.fullName, item.phoneRaw, item.favoriteDrinkLabel ?? ''].join(' ').toLowerCase().includes(normalized))
+      : customerProfiles;
+    return base.slice(0, 6);
+  }, [customerProfiles, debtorName]);
 
   const printableQtyTotal = printableAllocations.reduce((sum, item) => sum + item.quantity, 0);
   const printableSubtotal = printableAllocations.reduce((sum, item) => {
@@ -537,7 +564,32 @@ export default function BillingPage() {
 
       <section className={[opsSurface, 'mt-3 p-3'].join(' ')}>
         <div className="text-right text-sm font-semibold text-[#3d3128]">الترحيل إلى الآجل</div>
-        <input value={debtorName} onChange={(e) => setDebtorName(e.target.value)} placeholder="اسم الأجل" className={[opsInput, 'mt-3'].join(' ')} />
+        <input value={debtorName} onChange={(e) => { setDebtorName(e.target.value); setSelectedCustomerId(null); }} placeholder="اسم الأجل" className={[opsInput, 'mt-3'].join(' ')} />
+        {selectedCustomerId ? (
+          <div className="mt-2 rounded-[18px] border border-[#d8ccb8] bg-[#fff8ef] px-3 py-2 text-right text-xs text-[#6b5a4c]">
+            تم اختيار ملف عميل معروف وسيتم ربط الترحيل به مباشرة.
+          </div>
+        ) : null}
+        {matchedCustomers.length ? (
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            {matchedCustomers.map((customer) => (
+              <button
+                key={customer.id}
+                type="button"
+                onClick={() => {
+                  setDebtorName(customer.fullName);
+                  setSelectedCustomerId(customer.id);
+                }}
+                className={[
+                  'rounded-[18px] border px-3 py-2 text-sm whitespace-nowrap',
+                  selectedCustomerId === customer.id ? 'border-[#9b6b2e] bg-[#9b6b2e] text-white' : 'border-[#dac9b6] bg-[#fffaf3] text-[#5e4d3f]',
+                ].join(' ')}
+              >
+                {customer.fullName}
+              </button>
+            ))}
+          </div>
+        ) : null}
         {(data?.deferredNames?.length ?? 0) > 0 ? (
           <div className="mt-2">
             <div className="mb-2 text-right text-xs font-semibold text-[#7d6a59]">اختيار سريع</div>

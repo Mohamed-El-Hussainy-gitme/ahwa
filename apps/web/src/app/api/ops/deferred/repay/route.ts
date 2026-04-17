@@ -11,6 +11,7 @@ import {
   requireOpsActorContext,
   requireOpenOpsShift,
 } from '@/app/api/ops/_helpers';
+import { linkCustomerByDeferredName } from '@/lib/ops/owner-admin';
 
 type RepaymentRpcResult = {
   ok?: boolean;
@@ -22,10 +23,11 @@ export async function POST(req: Request) {
   let mutation: BegunIdempotentMutation | null = null;
 
   try {
-    const { debtorName, amount, notes } = (await req.json()) as {
+    const { debtorName, amount, notes, customerId } = (await req.json()) as {
       debtorName?: string;
       amount?: number;
       notes?: string;
+      customerId?: string;
     };
     const name = String(debtorName ?? '').trim();
     const numericAmount = Number(amount ?? 0);
@@ -59,6 +61,17 @@ export async function POST(req: Request) {
     if (!rpc.ok || !paymentId) {
       throw new Error('INVALID_RPC_RESPONSE:ops_record_repayment');
     }
+
+    await linkCustomerByDeferredName({
+      cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
+      debtorName: name,
+      customerId: customerId ? String(customerId).trim() : null,
+      paymentId,
+      actorOwnerId: ctx.actorOwnerId,
+      actorStaffId: ctx.actorStaffId,
+      source: 'deferred_runtime',
+    });
 
     kickOpsOutboxDispatch(ctx);
 

@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { callOpsRpc } from '@/app/api/ops/_rpc';
 import { dispatchStationOrderSubmittedInBackground, requireOrderSelectionStationCodes } from '@/app/api/ops/orders/_station-events';
 import { persistOrderItemAddons } from '@/app/api/ops/orders/_addons';
+import { persistOrderNotePreset } from '@/app/api/ops/_order-note-presets';
 import { requirePublicOrderingContext, resolveFallbackOwnerActor } from '@/lib/public-ordering';
 import { z } from 'zod';
 
@@ -60,7 +61,7 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       qty: item.quantity,
     }));
 
-    const { productStationCodes } = await requireOrderSelectionStationCodes(
+    const { stationCodes, productStationCodes } = await requireOrderSelectionStationCodes(
       {
         cafeId: cafe.cafeId,
         tenantSlug: cafe.cafeSlug,
@@ -121,6 +122,13 @@ export async function POST(request: Request, context: { params: Promise<{ slug: 
       orderId,
       databaseKey: cafe.databaseKey,
       items: requestedItems,
+    });
+
+    await persistOrderNotePreset({
+      cafeId: cafe.cafeId,
+      databaseKey: cafe.databaseKey,
+      note: parsed.data.notes,
+      productStationCodes: stationCodes,
     });
 
     dispatchStationOrderSubmittedInBackground(

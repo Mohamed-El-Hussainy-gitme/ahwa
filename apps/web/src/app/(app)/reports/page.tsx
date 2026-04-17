@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { AccessDenied } from '@/ui/AccessState';
@@ -656,21 +656,27 @@ export default function ReportsPage() {
   const [rangePreset, setRangePreset] = useState<RangePreset>('day');
   const [rangeStart, setRangeStart] = useState(todayIsoDate());
   const [rangeEnd, setRangeEnd] = useState(todayIsoDate());
-  const referenceDateSeed = todayIsoDate();
-  const initialRangeRequest = buildRangeRequest(rangePreset, referenceDateSeed, rangeStart, rangeEnd);
+  const [referenceDateHint, setReferenceDateHint] = useState(todayIsoDate());
+  const effectiveRangeRequestSeed = buildRangeRequest(rangePreset, referenceDateHint, rangeStart, rangeEnd);
   const loader = useCallback(
-    () => opsClient.reportsWorkspace(initialRangeRequest ?? undefined),
-    [initialRangeRequest?.endDate, initialRangeRequest?.startDate],
+    () => opsClient.reportsWorkspace(effectiveRangeRequestSeed ?? undefined),
+    [effectiveRangeRequestSeed?.endDate, effectiveRangeRequestSeed?.startDate],
   );
   const { data, loading, error, reload } = useOpsWorkspace<ReportsWorkspace>(loader, {
     enabled: session.user?.baseRole === 'owner',
-    cacheKey: `workspace:reports:${initialRangeRequest?.startDate ?? ''}:${initialRangeRequest?.endDate ?? ''}`,
+    cacheKey: `workspace:reports:${effectiveRangeRequestSeed?.startDate ?? ''}:${effectiveRangeRequestSeed?.endDate ?? ''}`,
     staleTimeMs: 60_000,
   });
 
+  useEffect(() => {
+    if (data?.referenceDate && data.referenceDate !== referenceDateHint) {
+      setReferenceDateHint(data.referenceDate);
+    }
+  }, [data?.referenceDate, referenceDateHint]);
+
   const isBranchManager = session.user?.ownerLabel === 'branch_manager';
   const safeTab: ReportTab = isBranchManager ? (tab === 'deferred' ? 'current' : tab) : tab;
-  const effectiveReferenceDate = data?.referenceDate ?? referenceDateSeed;
+  const effectiveReferenceDate = data?.referenceDate ?? referenceDateHint;
   const effectiveRangeRequest = buildRangeRequest(rangePreset, effectiveReferenceDate, rangeStart, rangeEnd);
   const selectedPeriod = useMemo<PeriodReport | CustomRangeReport | null>(() => {
     if (!data || safeTab !== 'range') return null;
@@ -723,6 +729,7 @@ export default function ReportsPage() {
           <div className="min-w-0">
             <div className="font-semibold">التقارير</div>
             <div className="mt-1 text-xs text-[#8a7763]">مرجع التقرير: {data?.referenceDate ?? '--'}</div>
+            <div className="mt-1 text-xs text-[#8a7763]">بداية اليوم التشغيلي: {data?.operatingSettings.businessDayStartTime ?? '--'} • {data?.operatingSettings.operationalWindowLabel ?? '--'}</div>
           </div>
 
           <div className="flex items-center gap-2">

@@ -52,6 +52,113 @@ export type BillingReceiptLine = { orderItemId: string; productName: string; qua
 export type BillingReceipt = { mode: 'preview' | 'final'; paymentId: string | null; paymentKind: 'cash' | 'deferred' | 'mixed' | 'repayment' | 'adjustment' | 'preview'; sessionId: string; sessionLabel: string; cafeName: string; debtorName: string | null; notes: string | null; createdAt: string; actorLabel: string; totals: BillingTotals; settings: BillingExtrasSettings; lines: BillingReceiptLine[] };
 export type BillingSession = { sessionId: string; sessionLabel: string; items: BillableItem[]; totalBillableAmount: number; totalBillableQty: number };
 export type BillingWorkspace = { shift: OpsShift | null; sessions: BillingSession[]; deferredNames: string[]; billingSettings: BillingExtrasSettings };
+export type OperatingSettings = { businessDayStartTime: string; businessDayStartMinutes: number; timezone: string; currentBusinessDate: string; operationalWindowLabel: string };
+export type CustomerProfile = {
+  id: string;
+  fullName: string;
+  normalizedName: string;
+  phoneRaw: string;
+  phoneNormalized: string;
+  address: string | null;
+  favoriteDrinkLabel: string | null;
+  notes: string | null;
+  isActive: boolean;
+  lastSeenAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomerDirectoryWorkspace = {
+  items: CustomerProfile[];
+};
+
+export type CustomerAliasSource = 'manual' | 'deferred_runtime' | 'billing_runtime' | 'imported';
+
+export type CustomerAlias = {
+  id: string;
+  aliasText: string;
+  normalizedAlias: string;
+  source: CustomerAliasSource;
+  usageCount: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type CustomerActivityLinkSource = 'deferred_payment' | 'deferred_session' | 'manual';
+
+export type CustomerActivityLink = {
+  id: string;
+  paymentId: string | null;
+  serviceSessionId: string | null;
+  linkSource: CustomerActivityLinkSource;
+  linkedAt: string;
+  notes: string | null;
+};
+
+export type CustomerDeferredAggregate = {
+  outstandingBalance: number;
+  debtTotal: number;
+  repaymentTotal: number;
+  entryCount: number;
+  activeAliases: number;
+  lastEntryAt: string | null;
+};
+
+export type CustomerRecentSession = {
+  serviceSessionId: string;
+  sessionLabel: string;
+  debtorName: string | null;
+  totalAmount: number;
+  openedAt: string;
+  closedAt: string | null;
+  paymentCreatedAt: string | null;
+};
+
+export type CustomerRecommendedProduct = {
+  productName: string;
+  count: number;
+  quantity: number;
+  lastOrderedAt: string | null;
+};
+
+export type CustomerRecommendedAddon = {
+  addonName: string;
+  count: number;
+  quantity: number;
+  lastOrderedAt: string | null;
+};
+
+export type CustomerRecommendedNote = {
+  noteText: string;
+  count: number;
+  lastUsedAt: string | null;
+};
+
+export type CustomerRecommendedBasket = {
+  label: string;
+  count: number;
+  itemCount: number;
+  lastOrderedAt: string | null;
+};
+
+export type CustomerIntelligenceWorkspace = {
+  customer: CustomerProfile;
+  aliases: CustomerAlias[];
+  deferredSummary: CustomerDeferredAggregate;
+  recentLedger: DeferredLedgerEntry[];
+  recentSessions: CustomerRecentSession[];
+  recentLinks: CustomerActivityLink[];
+  recommendedProducts: CustomerRecommendedProduct[];
+  recommendedAddons: CustomerRecommendedAddon[];
+  recommendedNotes: CustomerRecommendedNote[];
+  recommendedBaskets: CustomerRecommendedBasket[];
+};
+
+export type ShiftKind = 'morning' | 'evening';
+export type ShiftRoleCode = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
+export type ShiftTemplateAssignment = { userId: string; role: ShiftRoleCode; actorType: 'owner' | 'staff'; fullName: string | null; isActive: boolean; employmentStatus?: StaffEmploymentStatus };
+export type ShiftAssignmentTemplate = { id: string; kind: ShiftKind; label: string; updatedAt: string; assignments: ShiftTemplateAssignment[]; availableAssignmentsCount: number; inactiveAssignmentsCount: number };
 export type OpsQueueHealth = {
   oldestPendingMinutes: number | null;
   oldestReadyMinutes: number | null;
@@ -283,6 +390,7 @@ export type CustomRangeReport = Omit<PeriodReport, 'key' | 'label'> & {
 
 export type ReportsWorkspace = {
   referenceDate: string;
+  operatingSettings: OperatingSettings;
   currentShift: ReportShiftRow | null;
   currentProducts: ProductReportRow[];
   currentAddons: AddonReportRow[];

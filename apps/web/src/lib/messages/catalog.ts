@@ -35,6 +35,11 @@ const MESSAGE_CATALOG: Record<string, string> = {
   another_shift_is_already_open: 'هناك وردية مفتوحة بالفعل. لا يمكن فتح وردية ثانية قبل إنهائها.',
   cannot_resume_shift_after_next_shift_started: 'لا يمكن متابعة هذه الوردية لأن الشيفت التالي بدأ بالفعل.',
   SUPERVISOR_REQUIRED: 'يجب تحديد مشرف واحد فقط قبل فتح الوردية.',
+  CUSTOMERS_LOAD_FAILED: 'تعذر تحميل ملف العملاء الآن.',
+  CUSTOMER_CREATE_FAILED: 'تعذر إنشاء ملف العميل الآن.',
+  CUSTOMER_UPDATE_FAILED: 'تعذر تحديث ملف العميل الآن.',
+  CUSTOMER_STATUS_UPDATE_FAILED: 'تعذر تحديث حالة ملف العميل.',
+  CUSTOMER_PHONE_EXISTS: 'رقم الهاتف مسجل بالفعل داخل ملف عميل آخر.',
 };
 
 export function resolveMessage(value: string | null | undefined, fallback = 'تعذر إتمام الطلب الآن. حاول مرة أخرى.') {

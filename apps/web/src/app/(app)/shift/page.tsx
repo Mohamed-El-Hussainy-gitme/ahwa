@@ -5,6 +5,7 @@ import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { AccessDenied } from '@/ui/AccessState';
 import { apiPost } from '@/lib/http/client';
+import type { OperatingSettings, ShiftAssignmentTemplate } from '@/lib/ops/types';
 import { extractApiErrorMessage } from '@/lib/api/errors';
 import { RecoveryPanel } from '@/ui/ops/RecoveryPanel';
 import {
@@ -230,6 +231,23 @@ function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>, submit: () => 
   submit();
 }
 
+function buildAssignmentsFromTemplate(template: ShiftAssignmentTemplate | null | undefined, actors: AssignableActorRow[]) {
+  const activeActorKeys = new Set(
+    actors
+      .filter((item) => item.isActive && (item.employmentStatus ?? 'active') === 'active')
+      .map((item) => `${item.actorType}:${item.id}`),
+  );
+
+  const nextAssignments: Record<string, ShiftRole | ''> = {};
+  for (const assignment of template?.assignments ?? []) {
+    const actorKey = `${assignment.actorType}:${assignment.userId}`;
+    if (!activeActorKeys.has(actorKey)) continue;
+    nextAssignments[assignment.userId] = assignment.role as ShiftRole;
+  }
+
+  return nextAssignments;
+}
+
 export default function ShiftPage() {
   const { can, effectiveRole } = useAuthz();
   const [busy, setBusy] = useState(false);
@@ -237,6 +255,11 @@ export default function ShiftPage() {
   const [actors, setActors] = useState<AssignableActorRow[]>([]);
   const [shift, setShift] = useState<ShiftRow | null>(null);
   const [history, setHistory] = useState<ShiftHistoryRow[]>([]);
+  const [operatingSettings, setOperatingSettings] = useState<OperatingSettings | null>(null);
+  const [templates, setTemplates] = useState<ShiftAssignmentTemplate[]>([]);
+  const [businessDayStartTime, setBusinessDayStartTime] = useState('00:00');
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [templateBusy, setTemplateBusy] = useState(false);
   const [assignments, setAssignments] = useState<Record<string, ShiftRole | ''>>({});
   const [currentAssignments, setCurrentAssignments] = useState<AssignmentRow[]>([]);
   const [kind, setKind] = useState<ShiftKind>('morning');
@@ -255,6 +278,9 @@ export default function ShiftPage() {
     [assignments],
   );
 
+  const templateByKind = useMemo(() => new Map(templates.map((item) => [item.kind, item] as const)), [templates]);
+  const selectedTemplateKind = shift?.kind ?? kind;
+  const selectedTemplate = useMemo(() => templateByKind.get(selectedTemplateKind) ?? null, [selectedTemplateKind, templateByKind]);
   const snapshotView = useMemo(() => normalizeSnapshot(selectedSnapshot), [selectedSnapshot]);
 
   const canViewShift = can.viewShift;
@@ -263,25 +289,43 @@ export default function ShiftPage() {
   const load = useCallback(async () => {
     setMessage(null);
 
-    const requests: Array<Promise<Response>> = [
-      fetch('/api/owner/shift/state', { cache: 'no-store' }),
-      fetch('/api/owner/shift/history', { cache: 'no-store' }),
-    ];
+    const requests: Array<Promise<Response>> = [fetch('/api/owner/operating-settings', { cache: 'no-store' })];
 
     if (canManageShift) {
-      requests.unshift(fetch('/api/owner/shift/assignable-actors', { cache: 'no-store' }));
+      requests.push(fetch('/api/owner/shift/assignable-actors', { cache: 'no-store' }));
+      requests.push(fetch('/api/owner/shift/templates', { cache: 'no-store' }));
     }
+
+    requests.push(fetch('/api/owner/shift/state', { cache: 'no-store' }));
+    requests.push(fetch('/api/owner/shift/history', { cache: 'no-store' }));
 
     const responses = await Promise.all(requests);
     const payloads = await Promise.all(responses.map((response) => response.json().catch(() => null)));
 
-    const actorsJson = canManageShift ? payloads[0] : null;
-    const stateJson = canManageShift ? payloads[1] : payloads[0];
-    const historyJson = canManageShift ? payloads[2] : payloads[1];
+    let index = 0;
+    const settingsJson = payloads[index++];
+    const actorsJson = canManageShift ? payloads[index++] : null;
+    const templatesJson = canManageShift ? payloads[index++] : null;
+    const stateJson = payloads[index++];
+    const historyJson = payloads[index];
+
+    if (!settingsJson?.ok) {
+      setOperatingSettings(null);
+      setBusinessDayStartTime('00:00');
+      setMessage(extractApiErrorMessage(settingsJson, 'FAILED_TO_LOAD_OPERATING_SETTINGS'));
+      return;
+    }
 
     if (canManageShift && !actorsJson?.ok) {
       setActors([]);
+      setTemplates([]);
       setMessage(extractApiErrorMessage(actorsJson, 'FAILED_TO_LOAD_SHIFT_ASSIGNABLE_ACTORS'));
+      return;
+    }
+
+    if (canManageShift && !templatesJson?.ok) {
+      setTemplates([]);
+      setMessage(extractApiErrorMessage(templatesJson, 'FAILED_TO_LOAD_SHIFT_TEMPLATES'));
       return;
     }
 
@@ -292,7 +336,11 @@ export default function ShiftPage() {
       return;
     }
 
-    setActors(canManageShift ? (actorsJson.actors as AssignableActorRow[]) : []);
+    const nextOperatingSettings = (settingsJson.settings as OperatingSettings | null) ?? null;
+    setOperatingSettings(nextOperatingSettings);
+    setBusinessDayStartTime(nextOperatingSettings?.businessDayStartTime ?? '00:00');
+    setActors(canManageShift && Array.isArray(actorsJson?.actors) ? (actorsJson.actors as AssignableActorRow[]) : []);
+    setTemplates(canManageShift && Array.isArray(templatesJson?.templates) ? (templatesJson.templates as ShiftAssignmentTemplate[]) : []);
     setShift((stateJson.shift as ShiftRow | null) ?? null);
     setCurrentAssignments(Array.isArray(stateJson?.assignments) ? (stateJson.assignments as AssignmentRow[]) : []);
     setHistory(Array.isArray(historyJson?.shifts) ? (historyJson.shifts as ShiftHistoryRow[]) : []);
@@ -314,19 +362,124 @@ export default function ShiftPage() {
     void load();
   }, [canViewShift, load]);
 
+  useEffect(() => {
+    if (!canManageShift || !!shift) return;
+    setAssignments(buildAssignmentsFromTemplate(templateByKind.get(kind), activeAssignableActors));
+  }, [activeAssignableActors, canManageShift, kind, shift, templateByKind]);
+
   function setRole(userId: string, role: ShiftRole | '') {
     setAssignments((current) => ({ ...current, [userId]: role }));
   }
 
-  async function openShift() {
+  function buildPayloadAssignments() {
     const actorTypeById = new Map(actors.map((item) => [item.id, item.actorType] as const));
-    const payloadAssignments = Object.entries(assignments)
+    return Object.entries(assignments)
       .filter(([, role]) => !!role)
       .map(([userId, role]) => ({
         userId,
         role: role as ShiftRole,
         actorType: actorTypeById.get(userId) ?? 'staff',
       }));
+  }
+
+  function applySavedTemplate(nextKind: ShiftKind) {
+    setAssignments(buildAssignmentsFromTemplate(templateByKind.get(nextKind), activeAssignableActors));
+  }
+
+  async function saveTemplate(nextKind: ShiftKind) {
+    const payloadAssignments = buildPayloadAssignments();
+    if (payloadAssignments.length === 0) {
+      setMessage('اختر أعضاء الوردية أولًا ثم احفظهم كنمط متكرر.');
+      return;
+    }
+
+    if (payloadAssignments.filter((item) => item.role === 'supervisor').length !== 1) {
+      setMessage('يجب تحديد مشرف واحد فقط قبل حفظ النمط.');
+      return;
+    }
+
+    setTemplateBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/owner/shift/templates', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: nextKind,
+          assignments: payloadAssignments,
+        }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!json?.ok) {
+        setMessage(extractApiErrorMessage(json, 'FAILED_TO_SAVE_SHIFT_TEMPLATE'));
+        return;
+      }
+
+      const nextTemplate = (json.template as ShiftAssignmentTemplate | null) ?? null;
+      setTemplates((current) => {
+        const filtered = current.filter((item) => item.kind !== nextKind);
+        return nextTemplate ? [...filtered, nextTemplate] : filtered;
+      });
+      if (!shift && nextKind === kind) {
+        applySavedTemplate(nextKind);
+      }
+      setMessage(typeof json?.message === 'string' ? json.message : 'تم حفظ النمط.');
+    } finally {
+      setTemplateBusy(false);
+    }
+  }
+
+  async function deleteTemplate(nextKind: ShiftKind) {
+    setTemplateBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/owner/shift/templates', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ kind: nextKind }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!json?.ok) {
+        setMessage(extractApiErrorMessage(json, 'FAILED_TO_DELETE_SHIFT_TEMPLATE'));
+        return;
+      }
+
+      setTemplates((current) => current.filter((item) => item.kind !== nextKind));
+      if (!shift && nextKind === kind) {
+        setAssignments({});
+      }
+      setMessage(typeof json?.message === 'string' ? json.message : 'تم حذف النمط.');
+    } finally {
+      setTemplateBusy(false);
+    }
+  }
+
+  async function saveOperatingSettings() {
+    if (!canManageShift) return;
+    setSettingsBusy(true);
+    setMessage(null);
+    try {
+      const res = await fetch('/api/owner/operating-settings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ businessDayStartTime }),
+      });
+      const json = await res.json().catch(() => null);
+      if (!json?.ok) {
+        setMessage(extractApiErrorMessage(json, 'FAILED_TO_SAVE_OPERATING_SETTINGS'));
+        return;
+      }
+      const nextSettings = (json.settings as OperatingSettings | null) ?? null;
+      setOperatingSettings(nextSettings);
+      setBusinessDayStartTime(nextSettings?.businessDayStartTime ?? businessDayStartTime);
+      setMessage('تم حفظ بداية اليوم التشغيلي. سيتم استخدام التاريخ الجديد عند فتح الوردية التالية وعرض التقارير.');
+    } finally {
+      setSettingsBusy(false);
+    }
+  }
+
+  async function openShift() {
+    const payloadAssignments = buildPayloadAssignments();
 
     if (payloadAssignments.filter((item) => item.role === 'supervisor').length !== 1) {
       setMessage('يجب تحديد مشرف واحد فقط قبل فتح الوردية.');
@@ -362,10 +515,7 @@ export default function ShiftPage() {
 
   async function updateAssignments() {
     if (!shift) return;
-    const actorTypeById = new Map(actors.map((item) => [item.id, item.actorType] as const));
-    const payloadAssignments = Object.entries(assignments)
-      .filter(([, role]) => !!role)
-      .map(([userId, role]) => ({ userId, role: role as ShiftRole, actorType: actorTypeById.get(userId) ?? 'staff' }));
+    const payloadAssignments = buildPayloadAssignments();
     if (payloadAssignments.filter((item) => item.role === 'supervisor').length !== 1) {
       setMessage('يجب تحديد مشرف واحد فقط داخل الوردية.');
       return;
@@ -464,6 +614,47 @@ export default function ShiftPage() {
         </div>
       </section>
 
+      <section className={[opsSurface, 'mb-3 p-4'].join(' ')}>
+        <div className="flex items-start justify-between gap-3">
+          <div className="text-right">
+            <div className="text-sm font-semibold text-[#1e1712]">اليوم التشغيلي</div>
+            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
+              تاريخ التشغيل الحالي: <b>{operatingSettings?.currentBusinessDate ?? '--'}</b>
+            </div>
+            <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
+              بداية اليوم: <b>{operatingSettings?.businessDayStartTime ?? '--'}</b> • {operatingSettings?.operationalWindowLabel ?? '---'}
+            </div>
+          </div>
+          <div className={opsBadge('info')}>مرجع التقارير</div>
+        </div>
+
+        {canManageShift ? (
+          <div className={[opsInset, 'mt-4 p-3'].join(' ')}>
+            <div className="text-right text-sm font-semibold text-[#1e1712]">بداية اليوم التشغيلي</div>
+            <div className="mt-1 text-right text-xs leading-6 text-[#7d6a59]">
+              هذه الساعة تحدد تاريخ الوردية والتقارير. مثال: إذا كانت البداية 07:00 فالفترة من 07:00 حتى 06:59 في اليوم التالي تُحسب كيوم تشغيل واحد.
+            </div>
+            <div className="mt-3 flex items-center gap-2">
+              <button
+                type="button"
+                disabled={settingsBusy}
+                onClick={saveOperatingSettings}
+                className={[opsAccentButton, 'shrink-0'].join(' ')}
+              >
+                {settingsBusy ? '...' : 'حفظ'}
+              </button>
+              <input
+                type="time"
+                step={60}
+                className="w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-sm text-[#1e1712] outline-none"
+                value={businessDayStartTime}
+                onChange={(event) => setBusinessDayStartTime(event.target.value)}
+              />
+            </div>
+          </div>
+        ) : null}
+      </section>
+
       {shift ? (
         <>
           <section className={[opsSurface, 'p-4'].join(' ')}>
@@ -512,6 +703,63 @@ export default function ShiftPage() {
 
             {canManageShift ? (
               <>
+                <div className={[opsInset, 'mt-4 p-3'].join(' ')}>
+                  <div className="mb-2 text-right text-sm font-semibold text-[#1e1712]">النمط المحفوظ لـ {kindLabel(shift.kind)}</div>
+                  {selectedTemplate ? (
+                    <>
+                      <div className="text-right text-xs leading-6 text-[#7d6a59]">
+                        آخر تحديث: <b>{formatDateTime(selectedTemplate.updatedAt)}</b> • الأسماء الجاهزة الآن: <b>{selectedTemplate.availableAssignmentsCount}</b>
+                        {selectedTemplate.inactiveAssignmentsCount > 0 ? (
+                          <>
+                            {' '}• خارج الخدمة أو غير نشط: <b>{selectedTemplate.inactiveAssignmentsCount}</b>
+                          </>
+                        ) : null}
+                      </div>
+                      <div className="mt-3 space-y-2">
+                        {selectedTemplate.assignments.map((item) => (
+                          <div key={`${item.actorType}-${item.userId}-${item.role}`} className={[opsInset, 'flex items-center justify-between gap-2 p-2'].join(' ')}>
+                            <div className={opsBadge(item.isActive ? 'accent' : 'warning')}>{roleLabel(item.role as ShiftRole)}</div>
+                            <div className="flex-1 text-right text-sm text-[#1e1712]">
+                              {item.fullName ?? item.userId}
+                              {!item.isActive ? ' • يحتاج مراجعة' : ''}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <div className={[opsDashed, 'p-3 text-right text-sm text-[#6b5a4c]'].join(' ')}>
+                      لا يوجد نمط محفوظ لهذه الوردية بعد.
+                    </div>
+                  )}
+                  <div className="mt-3 grid grid-cols-3 gap-2">
+                    <button
+                      type="button"
+                      disabled={!selectedTemplate || templateBusy}
+                      onClick={() => applySavedTemplate(shift.kind)}
+                      className={[opsGhostButton, 'w-full disabled:opacity-50'].join(' ')}
+                    >
+                      تحميل النمط
+                    </button>
+                    <button
+                      type="button"
+                      disabled={templateBusy}
+                      onClick={() => void saveTemplate(shift.kind)}
+                      className={[opsAccentButton, 'w-full disabled:opacity-50'].join(' ')}
+                    >
+                      {templateBusy ? '...' : 'حفظ الحالي'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!selectedTemplate || templateBusy}
+                      onClick={() => void deleteTemplate(shift.kind)}
+                      className={[opsGhostButton, 'w-full text-[#9a3e35] disabled:opacity-50'].join(' ')}
+                    >
+                      حذف النمط
+                    </button>
+                  </div>
+                </div>
+
                 <div className={[opsInset, 'mt-4 p-3'].join(' ')}>
                   <div className="mb-2 text-right text-sm font-semibold text-[#1e1712]">تعديل فريق الوردية المفتوحة</div>
                   <div className="mb-2 text-right text-xs leading-6 text-[#7d6a59]">يمكنك إضافة عضو أو إخراجه أو تغيير دوره أثناء الوردية دون تعطيل التشغيل، مع بقاء مشرف واحد فقط.</div>
@@ -604,6 +852,71 @@ export default function ShiftPage() {
             </button>
           </div>
 
+          <div className={[opsInset, 'mt-4 p-3'].join(' ')}>
+            <div className="mb-2 text-right text-sm font-semibold text-[#1e1712]">النمط المحفوظ لـ {kindLabel(kind)}</div>
+            {selectedTemplate ? (
+              <>
+                <div className="text-right text-xs leading-6 text-[#7d6a59]">
+                  آخر تحديث: <b>{formatDateTime(selectedTemplate.updatedAt)}</b> • الأسماء الجاهزة الآن: <b>{selectedTemplate.availableAssignmentsCount}</b>
+                  {selectedTemplate.inactiveAssignmentsCount > 0 ? (
+                    <>
+                      {' '}• خارج الخدمة أو غير نشط: <b>{selectedTemplate.inactiveAssignmentsCount}</b>
+                    </>
+                  ) : null}
+                </div>
+                <div className="mt-3 space-y-2">
+                  {selectedTemplate.assignments.map((item) => (
+                    <div key={`${item.actorType}-${item.userId}-${item.role}`} className={[opsInset, 'flex items-center justify-between gap-2 p-2'].join(' ')}>
+                      <div className={opsBadge(item.isActive ? 'accent' : 'warning')}>{roleLabel(item.role as ShiftRole)}</div>
+                      <div className="flex-1 text-right text-sm text-[#1e1712]">
+                        {item.fullName ?? item.userId}
+                        {!item.isActive ? ' • يحتاج مراجعة' : ''}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <div className={[opsDashed, 'p-3 text-right text-sm text-[#6b5a4c]'].join(' ')}>
+                لا يوجد نمط محفوظ لهذه الوردية بعد. اختر الأسماء مرة واحدة ثم احفظها لتظهر تلقائيًا بعد ذلك.
+              </div>
+            )}
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              <button
+                type="button"
+                disabled={!selectedTemplate || templateBusy}
+                onClick={() => applySavedTemplate(kind)}
+                className={[opsGhostButton, 'w-full disabled:opacity-50'].join(' ')}
+              >
+                تحميل
+              </button>
+              <button
+                type="button"
+                disabled={templateBusy}
+                onClick={() => void saveTemplate(kind)}
+                className={[opsAccentButton, 'w-full disabled:opacity-50'].join(' ')}
+              >
+                {templateBusy ? '...' : 'حفظ'}
+              </button>
+              <button
+                type="button"
+                disabled={!selectedTemplate || templateBusy}
+                onClick={() => void deleteTemplate(kind)}
+                className={[opsGhostButton, 'w-full text-[#9a3e35] disabled:opacity-50'].join(' ')}
+              >
+                حذف
+              </button>
+              <button
+                type="button"
+                disabled={templateBusy}
+                onClick={() => setAssignments({})}
+                className={[opsGhostButton, 'w-full disabled:opacity-50'].join(' ')}
+              >
+                مسح
+              </button>
+            </div>
+          </div>
+
           <div className="mt-4">
             <label className="block text-right text-xs font-semibold text-[#7d6a59]">ملاحظات الافتتاح</label>
             <textarea
@@ -653,6 +966,10 @@ export default function ShiftPage() {
                 );
               })}
             </div>
+          </div>
+
+          <div className="mt-3 rounded-[20px] border border-[#e5d7c7] bg-[#f8f1e7] p-3 text-right text-xs leading-6 text-[#6b5a4c]">
+            الوردية الجديدة ستُفتح على تاريخ التشغيل <b>{operatingSettings?.currentBusinessDate ?? '--'}</b> حسب بداية اليوم <b>{operatingSettings?.businessDayStartTime ?? '--'}</b>.
           </div>
 
           <div className="mt-3 rounded-[20px] border border-[#e5d7c7] bg-[#f8f1e7] p-3 text-right text-xs leading-6 text-[#6b5a4c]">

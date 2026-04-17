@@ -127,11 +127,16 @@ function normalizeOrderNotePreset(value: unknown): string | null {
   return normalized || null;
 }
 
-async function loadOrderNotePresets(
+export type OrderNotePresetOption = {
+  noteText: string;
+  stationCode: StationCode | null;
+};
+
+export async function listOrderNotePresetOptions(
   cafeId: string,
   databaseKey: string,
   allowedStationCodes?: readonly StationCode[] | null,
-): Promise<string[]> {
+): Promise<OrderNotePresetOption[]> {
   const stationCodes = (allowedStationCodes ?? []).filter(Boolean).sort();
   const scopedKey = stationCodes.length ? stationCodes.join(',') : 'all';
 
@@ -143,7 +148,7 @@ async function loadOrderNotePresets(
       .eq('is_active', true)
       .order('usage_count', { ascending: false })
       .order('last_used_at', { ascending: false })
-      .limit(8);
+      .limit(stationCodes.length ? 8 : 18);
 
     if (stationCodes.length) {
       query = query.or(`station_code.is.null,station_code.in.(${stationCodes.join(',')})`);
@@ -153,17 +158,42 @@ async function loadOrderNotePresets(
     if (error) throw error;
 
     const seen = new Set<string>();
-    const presets: string[] = [];
+    const presets: OrderNotePresetOption[] = [];
     for (const row of data ?? []) {
       const normalized = normalizeOrderNotePreset((row as any)?.note_text);
-      if (!normalized || seen.has(normalized)) {
+      const stationCode = normalizeNullableStationCode((row as any)?.station_code);
+      const dedupeKey = `${stationCode ?? 'all'}:${normalized ?? ''}`;
+      if (!normalized || seen.has(dedupeKey)) {
         continue;
       }
-      seen.add(normalized);
-      presets.push(normalized);
+      seen.add(dedupeKey);
+      presets.push({
+        noteText: normalized,
+        stationCode,
+      });
     }
     return presets;
   });
+}
+
+async function loadOrderNotePresets(
+  cafeId: string,
+  databaseKey: string,
+  allowedStationCodes?: readonly StationCode[] | null,
+): Promise<string[]> {
+  const options = await listOrderNotePresetOptions(cafeId, databaseKey, allowedStationCodes);
+  const seen = new Set<string>();
+  const presets: string[] = [];
+
+  for (const option of options) {
+    if (seen.has(option.noteText)) {
+      continue;
+    }
+    seen.add(option.noteText);
+    presets.push(option.noteText);
+  }
+
+  return presets;
 }
 
 export async function listBillableRows(cafeId: string, databaseKey: string, shiftId?: string | null, openSessionIds?: string[]): Promise<BillableItem[]> {
