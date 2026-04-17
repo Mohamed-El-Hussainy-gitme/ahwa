@@ -210,7 +210,7 @@ export default function StaffPage() {
           <div className="text-right">
             <div className="text-base font-bold text-[#1e1712]">إضافة عضو للفريق</div>
             <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
-              أنشئ حسابات الفريق بصياغة واضحة: اسم التسجيل، رمز الدخول، وكود الموظف الظاهر في التشغيل.
+              إضافة حساب جديد للفريق.
             </div>
           </div>
           <div className={opsBadge('accent')}>الإدارة</div>
@@ -237,7 +237,7 @@ export default function StaffPage() {
         </button>
 
         <div className="mt-2 text-right text-xs leading-6 text-[#7d6a59]">
-          تسجيل دخول عضو الفريق: يدخل <b>اسمه أو كوده</b> + <b>PIN</b> داخل شاشة القهوة.
+          الدخول بالاسم أو الكود مع PIN.
         </div>
       </section>
 
@@ -247,7 +247,7 @@ export default function StaffPage() {
           <div className="text-right">
             <div className="text-base font-bold text-[#1e1712]">إدارة مدير الفرع</div>
             <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
-              أنشئ حساب مدير فرع من داخل الإدارة بدون الرجوع إلى البلاتفورم. هذا الحساب يدخل من مسار المالك لكن بصلاحيات المدير المحدودة.
+              إنشاء أو مراجعة حساب مدير الفرع.
             </div>
           </div>
           <div className={opsBadge('info')}>الإدارة العليا</div>
@@ -318,7 +318,7 @@ export default function StaffPage() {
         </div>
 
         <div className="mt-3 text-right text-xs leading-6 text-[#7d6a59]">
-          القائمة اليومية تبدأ بالنشطين فقط حتى تبقى الإدارة أخف، ويمكن إظهار الموقوفين أو من غادروا عند المراجعة.
+          تصفية سريعة لحالة الفريق.
         </div>
 
         {visibleStaff.length === 0 ? (

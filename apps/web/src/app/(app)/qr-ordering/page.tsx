@@ -20,7 +20,7 @@ export default function QrOrderingPage() {
           <div className="text-[11px] font-semibold tracking-[0.24em] text-[#9b6b2e]">QR ORDERING</div>
           <h1 className="mt-2 text-[26px] font-black leading-tight text-[#1e1712] md:text-[32px]">بطاقة QR للطلب الذاتي</h1>
           <p className="mt-2 max-w-4xl text-sm leading-7 text-[#6b5a4c] md:text-[15px]">
-            اطبع البطاقة وعلّقها داخل المقهى ليتمكن الزبائن من فتح المنيو والطلب مباشرة من هواتفهم. على الديسكتوب تم توزيع الصفحة بين بطاقة الطباعة ومحتوى الأصناف لتسهيل الإدارة.
+            اطبع البطاقة وادِر وصف وصور أصناف QR من نفس الصفحة.
           </p>
         </div>
 

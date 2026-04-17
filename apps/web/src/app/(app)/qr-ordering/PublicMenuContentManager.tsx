@@ -83,7 +83,7 @@ function ProductContentCard({
       });
       setPublicDescription(payload.item?.publicDescription ?? '');
       setImageAlt(payload.item?.imageAlt ?? '');
-      setMessage('تم حفظ النص الخاص بصفحة QR.');
+      setMessage('تم حفظ النص.');
     } catch (saveError) {
       setError(saveError instanceof Error ? saveError.message : 'تعذر حفظ الوصف الآن.');
     } finally {
@@ -117,7 +117,7 @@ function ProductContentCard({
       });
       setImageAlt(payload.item?.imageAlt ?? '');
       setSelectedFile(null);
-      setMessage('تم رفع الصورة الخاصة بصفحة QR.');
+      setMessage('تم رفع الصورة.');
     } catch (uploadError) {
       setError(uploadError instanceof Error ? uploadError.message : 'تعذر رفع الصورة الآن.');
     } finally {
@@ -145,7 +145,7 @@ function ProductContentCard({
         publicImageAlt: payload.item?.imageAlt ?? null,
       });
       setImageAlt(payload.item?.imageAlt ?? '');
-      setMessage('تم حذف الصورة من صفحة QR.');
+      setMessage('تم حذف الصورة.');
     } catch (removeError) {
       setError(removeError instanceof Error ? removeError.message : 'تعذر حذف الصورة الآن.');
     } finally {
@@ -167,7 +167,7 @@ function ProductContentCard({
               />
             ) : (
               <div className="flex h-[180px] items-center justify-center px-4 text-center text-xs leading-6 text-[#8d7662]">
-                لا توجد صورة مخصصة لهذا الصنف في صفحة QR.
+                لا توجد صورة لهذا الصنف.
               </div>
             )}
           </div>
@@ -178,7 +178,7 @@ function ProductContentCard({
             <div>{formatMoney(product.unitPrice)} ج.م</div>
             {product.isActive === false ? (
               <div className="mt-2 inline-flex rounded-full border border-[#e9c9b0] bg-[#fff4ec] px-3 py-1 font-semibold text-[#a95a2a]">
-                الصنف غير نشط داخل التشغيل حاليًا
+                غير نشط
               </div>
             ) : null}
           </div>
@@ -188,7 +188,7 @@ function ProductContentCard({
           <div>
             <h3 className="text-xl font-black text-[#1e1712]">{product.name}</h3>
             <p className="mt-1 text-sm leading-7 text-[#6d5848]">
-              هذا المحتوى يظهر داخل صفحة الزبون عبر QR فقط، ولن يغيّر منيو التشغيل الداخلي.
+              يظهر في QR فقط.
             </p>
           </div>
 
@@ -327,7 +327,7 @@ export function PublicMenuContentManager() {
         <div className="text-[11px] font-semibold tracking-[0.24em] text-[#9b6b2e]">PUBLIC QR CONTENT</div>
         <h2 className="mt-2 text-[24px] font-black text-[#1e1712]">صور ووصف أصناف صفحة QR</h2>
         <p className="mt-2 text-sm leading-7 text-[#6b5a4c]">
-          من هنا تدير المحتوى المرئي والتوصيف النصي الذي يراه الزبون عند فتح منيو QR. هذا القسم لا يغيّر شاشات التشغيل الداخلية.
+          إدارة صور ووصف أصناف QR فقط.
         </p>
       </div>
 
@@ -341,7 +341,7 @@ export function PublicMenuContentManager() {
               <div className="rounded-[22px] border border-[#ead7bf] bg-[#fff8ef] px-4 py-3">
                 <div className="text-base font-black text-[#1e1712]">{section.title}</div>
                 <div className="text-xs leading-6 text-[#7b6552]">
-                  {section.stationCode === 'shisha' ? 'أصناف محطة الشيشة' : 'أصناف محطة الباريستا'}
+                  {section.stationCode === 'shisha' ? 'الشيشة' : 'الباريستا'}
                 </div>
               </div>
 

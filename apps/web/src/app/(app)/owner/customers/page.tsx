@@ -159,10 +159,10 @@ export default function OwnerCustomersPage() {
           <div className="text-right">
             <div className={opsSectionTitle}>دليل العملاء</div>
             <div className={[opsSectionHint, 'mt-1'].join(' ')}>
-              ملف عميل مستقل عن الجلسات الحالية. الاسم ورقم الهاتف هما أساس التعرف على العميل لاحقًا بدون خلط.
+              ملف عميل مستقل عن الجلسات.
             </div>
           </div>
-          <div className={opsBadge('accent')}>خطوة 3</div>
+          
         </div>
 
         {message ? <div className={[opsAlert(message.includes('تم ') ? 'success' : 'danger'), 'mt-3'].join(' ')}>{message}</div> : null}
@@ -180,7 +180,7 @@ export default function OwnerCustomersPage() {
           <div className="text-right">
             <div className={opsSectionTitle}>{selectedId ? 'تعديل ملف عميل' : 'إضافة عميل جديد'}</div>
             <div className={[opsSectionHint, 'mt-1'].join(' ')}>
-              رقم الهاتف مطلوب لتقليل التكرار. العنوان والمشروب المفضل والملاحظات تظل بيانات مرنة بدون التأثير على التشغيل الحالي.
+              الاسم والهاتف أساس الملف.
             </div>
           </div>
           {selectedCustomer ? <div className={opsBadge(selectedCustomer.isActive ? 'success' : 'warning')}>{selectedCustomer.isActive ? 'نشط' : 'موقوف'}</div> : null}
@@ -243,7 +243,7 @@ export default function OwnerCustomersPage() {
           <div className="text-right">
             <div className={opsSectionTitle}>الملفات الحالية</div>
             <div className={[opsSectionHint, 'mt-1'].join(' ')}>
-              هذه المرحلة تحفظ الملف الأساسي فقط. الربط الذكي بالطلبات والآجل سيتم في الخطوة التالية بدون تعديل الجلسات الحالية.
+              بحث وتعديل وتفعيل ملفات العملاء.
             </div>
           </div>
           <div className={opsBadge('info')}>{filteredItems.length} نتيجة</div>

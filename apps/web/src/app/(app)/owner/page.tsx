@@ -42,7 +42,7 @@ export default function OwnerPage() {
                 <div className="text-[11px] font-semibold tracking-[0.24em] text-[#9b6b2e]">لوحة الإدارة</div>
                 <h1 className="mt-2 text-[26px] font-black leading-tight text-[#1e1712] md:text-[32px]">مساحة الإدارة</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-7 text-[#6b5a4c] md:text-[15px]">
-                  وصول مركزي لفريق العمل، المنيو، الورديات، والتقارير ضمن واجهة أوضح على الديسكتوب مع المحافظة على بساطة الموبايل.
+                  وصول سريع للورديات، الفريق، المنيو، والتقارير.
                 </p>
               </div>
               <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[18px] border border-[#ead5b8] bg-white/80 text-[#9b6b2e] shadow-sm">
@@ -52,20 +52,11 @@ export default function OwnerPage() {
           </div>
 
           <aside className="rounded-[28px] border border-[#dccdbb] bg-white/90 p-5 shadow-[0_18px_40px_rgba(30,23,18,0.06)] xl:sticky xl:top-24">
-            <div className="text-[11px] font-semibold tracking-[0.24em] text-[#9b6b2e]">DESKTOP READY</div>
-            <div className="mt-2 text-xl font-black text-[#1e1712]">لوحة أسرع للإدارة</div>
-            <p className="mt-2 text-sm leading-7 text-[#6b5a4c]">
-              جميع صفحات الإدارة الآن تستخدم عرضًا أوسع على الشاشات الكبيرة، مع بقاء الموبايل كما هو.
-            </p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-[20px] border border-[#ead7bc] bg-[#fff8ef] p-3 text-right text-[#7c5222]">
-                <div className="text-xs opacity-80">الأقسام</div>
-                <div className="mt-2 text-2xl font-black">{cards.length}</div>
-              </div>
-              <div className="rounded-[20px] border border-[#d6dee5] bg-[#f9fbfc] p-3 text-right text-[#3c617c]">
-                <div className="text-xs opacity-80">الوضع</div>
-                <div className="mt-2 text-sm font-black">Desktop / Mobile</div>
-              </div>
+            <div className="text-[11px] font-semibold tracking-[0.24em] text-[#9b6b2e]">الإدارة</div>
+            <div className="mt-2 text-xl font-black text-[#1e1712]">اختصارات سريعة</div>
+            <div className="mt-4 rounded-[20px] border border-[#ead7bc] bg-[#fff8ef] p-3 text-right text-[#7c5222]">
+              <div className="text-xs opacity-80">الأقسام</div>
+              <div className="mt-2 text-2xl font-black">{cards.length}</div>
             </div>
           </aside>
         </div>

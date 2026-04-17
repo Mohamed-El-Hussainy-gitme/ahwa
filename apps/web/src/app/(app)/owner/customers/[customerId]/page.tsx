@@ -142,7 +142,7 @@ export default function OwnerCustomerDetailPage() {
           <div className="text-right">
             <div className={opsSectionTitle}>ملف العميل الذكي</div>
             <div className={[opsSectionHint, 'mt-1'].join(' ')}>
-              الربط هنا يعتمد فقط على الاسم المطابق المحفوظ أو الاسم البديل الذي أضفته يدويًا. لا يوجد دمج تلقائي عند الشك.
+              الربط يعتمد على المطابقة المؤكدة فقط.
             </div>
           </div>
           <div className={opsBadge(customer?.isActive ? 'success' : 'warning')}>{customer?.isActive ? 'نشط' : 'موقوف'}</div>
@@ -181,7 +181,7 @@ export default function OwnerCustomerDetailPage() {
           <div className="text-right">
             <div className={opsSectionTitle}>الأسماء البديلة المؤكدة</div>
             <div className={[opsSectionHint, 'mt-1'].join(' ')}>
-              أضف فقط الاسم الذي ظهر فعليًا في دفتر الآجل أو في الترحيل. أي اسم بديل هنا يربط كل الحركات المطابقة له حرفيًا بهذا العميل.
+              أضف الاسم كما ظهر فعليًا في الآجل أو الترحيل.
             </div>
           </div>
           <div className={opsBadge('info')}>{workspace?.aliases.length ?? 0}</div>
@@ -225,7 +225,7 @@ export default function OwnerCustomerDetailPage() {
       </section>
 
       <section className="mt-4 grid gap-4 lg:grid-cols-2">
-        <InsightCard title="الطلبات المرشحة" hint="مبنية فقط على جلسات الترحيل المرتبطة بأسماء مؤكدة لهذا العميل.">
+        <InsightCard title="الطلبات المرشحة" hint="من التاريخ المؤكد فقط.">
           {(workspace?.recommendedProducts ?? []).length === 0 ? (
             <EmptyText text="لا توجد جلسات ترحيل كافية لاستخراج أصناف مرشحة بعد." />
           ) : (
@@ -243,7 +243,7 @@ export default function OwnerCustomerDetailPage() {
           )}
         </InsightCard>
 
-        <InsightCard title="الإضافات المرشحة" hint="أكثر الإضافات تكرارًا في الجلسات المرحّلة المؤكدة.">
+        <InsightCard title="الإضافات المرشحة" hint="الأكثر تكرارًا.">
           {(workspace?.recommendedAddons ?? []).length === 0 ? (
             <EmptyText text="لا توجد إضافات مرتبطة كفاية حتى الآن." />
           ) : (
@@ -263,7 +263,7 @@ export default function OwnerCustomerDetailPage() {
       </section>
 
       <section className="mt-4 grid gap-4 lg:grid-cols-2">
-        <InsightCard title="ملاحظات متكررة" hint="يتم احتسابها من الملاحظات الحرة داخل الأصناف المرحّلة فقط.">
+        <InsightCard title="ملاحظات متكررة" hint="ملاحظات متكررة.">
           {(workspace?.recommendedNotes ?? []).length === 0 ? (
             <EmptyText text="لا توجد ملاحظات متكررة مؤكدة بعد." />
           ) : (
@@ -281,7 +281,7 @@ export default function OwnerCustomerDetailPage() {
           )}
         </InsightCard>
 
-        <InsightCard title="طلبات معتادة" hint="تجميع للباسكت المكررة كما ظهرت في جلسات الترحيل نفسها.">
+        <InsightCard title="طلبات معتادة" hint="باسكت متكررة.">
           {(workspace?.recommendedBaskets ?? []).length === 0 ? (
             <EmptyText text="لا توجد باسكت متكررة بدرجة كافية بعد." />
           ) : (
@@ -301,7 +301,7 @@ export default function OwnerCustomerDetailPage() {
       </section>
 
       <section className="mt-4 grid gap-4 lg:grid-cols-2">
-        <InsightCard title="آخر جلسات مترابطة" hint="جلسات ناتجة عن ترحيل فواتير مرتبطة بأسماء مؤكدة لهذا العميل.">
+        <InsightCard title="آخر جلسات مترابطة" hint="آخر جلسات مرتبطة.">
           {(workspace?.recentSessions ?? []).length === 0 ? (
             <EmptyText text="لا توجد جلسات مرحّلة مرتبطة بعد." />
           ) : (
@@ -321,7 +321,7 @@ export default function OwnerCustomerDetailPage() {
           )}
         </InsightCard>
 
-        <InsightCard title="آخر حركات الآجل" hint="الحركات المعروضة هنا هي فقط للحسابات المرتبطة بالاسم الرئيسي أو الأسماء البديلة المؤكدة.">
+        <InsightCard title="آخر حركات الآجل" hint="آخر حركات مرتبطة.">
           {(workspace?.recentLedger ?? []).length === 0 ? (
             <EmptyText text="لا توجد حركات آجل مرتبطة بعد." />
           ) : (
@@ -346,12 +346,12 @@ export default function OwnerCustomerDetailPage() {
   );
 }
 
-function InsightCard({ title, hint, children }: { title: string; hint: string; children: ReactNode }) {
+function InsightCard({ title, hint, children }: { title: string; hint?: string; children: ReactNode }) {
   return (
     <section className={[opsSurface, 'p-4'].join(' ')}>
       <div className="text-right">
         <div className={opsSectionTitle}>{title}</div>
-        <div className={[opsSectionHint, 'mt-1'].join(' ')}>{hint}</div>
+        {hint ? <div className={[opsSectionHint, 'mt-1 hidden lg:block'].join(' ')}>{hint}</div> : null}
       </div>
       <div className="mt-4">{children}</div>
     </section>

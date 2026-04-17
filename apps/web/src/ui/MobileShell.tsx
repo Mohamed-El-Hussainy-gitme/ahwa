@@ -372,26 +372,26 @@ export function MobileShell({
     desktopMode === 'mobile'
       ? 'md:my-6 md:min-h-[calc(100dvh-3rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)]'
       : desktopMode === 'ops'
-        ? 'md:my-3 md:min-h-[calc(100dvh-1.5rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)] xl:rounded-[36px]'
-        : 'md:my-4 md:min-h-[calc(100dvh-2rem)] md:rounded-[32px] md:border md:border-[#d9cabb] md:shadow-[0_28px_72px_rgba(30,23,18,0.12)] xl:rounded-[36px]';
+        ? 'lg:my-3 lg:min-h-[calc(100dvh-1.5rem)] lg:rounded-[32px] lg:border lg:border-[#d9cabb] lg:shadow-[0_28px_72px_rgba(30,23,18,0.12)] xl:rounded-[36px]'
+        : 'lg:my-4 lg:min-h-[calc(100dvh-2rem)] lg:rounded-[32px] lg:border lg:border-[#d9cabb] lg:shadow-[0_28px_72px_rgba(30,23,18,0.12)] xl:rounded-[36px]';
   const headerPaddingClass =
     desktopMode === 'mobile'
       ? 'px-4 py-3'
       : desktopMode === 'ops'
-        ? 'px-4 py-3 md:px-6 md:py-4 xl:px-8 2xl:px-10'
-        : 'px-4 py-3 md:px-5 md:py-4 xl:px-7';
+        ? 'px-4 py-3 lg:px-6 lg:py-4 xl:px-8 2xl:px-10'
+        : 'px-4 py-3 lg:px-5 lg:py-4 xl:px-7';
   const mainPaddingClass =
     desktopMode === 'mobile'
       ? 'px-3 pt-3'
       : desktopMode === 'ops'
-        ? 'px-3 pt-3 md:px-6 md:pt-5 xl:px-8 xl:pt-6 2xl:px-10'
-        : 'px-3 pt-3 md:px-5 md:pt-5 xl:px-7 xl:pt-6';
+        ? 'px-3 pt-3 lg:px-6 lg:pt-5 xl:px-8 xl:pt-6 2xl:px-10'
+        : 'px-3 pt-3 lg:px-5 lg:pt-5 xl:px-7 xl:pt-6';
   const dockPaddingClass =
     desktopMode === 'mobile'
       ? 'px-2'
       : desktopMode === 'ops'
-        ? 'px-3 md:px-6 xl:px-8 2xl:px-10'
-        : 'px-3 md:px-5 xl:px-7';
+        ? 'px-3 lg:px-6 xl:px-8 2xl:px-10'
+        : 'px-3 lg:px-5 xl:px-7';
 
   const stickyFooterOffset = useMemo(() => {
     const bottomNavHeight = bottomNavBox.height || 82;
