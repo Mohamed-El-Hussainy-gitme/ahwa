@@ -13,6 +13,8 @@ const Input = z.object({
   itemCode: z.string().optional().nullable(),
   categoryLabel: z.string().optional().nullable(),
   unitLabel: z.string().min(1).optional(),
+  purchaseUnitLabel: z.string().optional().nullable(),
+  purchaseToStockFactor: z.coerce.number().positive().max(1_000_000).optional().nullable(),
   lowStockThreshold: z.coerce.number().min(0).max(1_000_000).optional(),
   notes: z.string().optional().nullable(),
   isActive: z.boolean().optional(),
@@ -56,8 +58,10 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ it
     const itemName = cleanInventoryText(parsed.data.itemName ?? '');
     const normalizedName = normalizeInventoryText(itemName ?? '');
     const unitLabel = cleanInventoryText(parsed.data.unitLabel ?? '');
+    const purchaseUnitLabel = cleanInventoryText(parsed.data.purchaseUnitLabel);
+    const purchaseToStockFactor = purchaseUnitLabel ? (parsed.data.purchaseToStockFactor ?? 1) : null;
     if (!itemName || !normalizedName || !unitLabel) {
-      return NextResponse.json({ ok: false, error: { code: 'INVALID_INPUT', message: 'اسم الخامة ووحدة القياس مطلوبان.' } }, { status: 400 });
+      return NextResponse.json({ ok: false, error: { code: 'INVALID_INPUT', message: 'اسم الخامة ووحدة التشغيل مطلوبان.' } }, { status: 400 });
     }
 
     await updateInventoryItem({
@@ -70,6 +74,8 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ it
       itemCode: cleanInventoryText(parsed.data.itemCode),
       categoryLabel: cleanInventoryText(parsed.data.categoryLabel),
       unitLabel,
+      purchaseUnitLabel,
+      purchaseToStockFactor,
       lowStockThreshold: parsed.data.lowStockThreshold ?? 0,
       notes: cleanInventoryText(parsed.data.notes),
       isActive: parsed.data.isActive ?? true,

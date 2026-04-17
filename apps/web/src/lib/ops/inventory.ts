@@ -19,6 +19,15 @@ type CafeDatabaseScope = {
   databaseKey: string;
 };
 
+type InventoryEntryUnitMode = 'stock' | 'purchase';
+
+type InventoryEntryResolution = {
+  deltaQuantity: number;
+  inputQuantity: number;
+  inputUnitLabel: string;
+  conversionFactor: number;
+};
+
 const INVENTORY_ANALYSIS_WINDOW_DAYS = 30;
 
 function ops(databaseKey: string) {
@@ -31,6 +40,93 @@ export function cleanInventoryText(value: string | null | undefined): string | n
 
 export function normalizeInventoryText(value: string): string {
   return normalizeCustomerName(value);
+}
+
+function normalizePurchaseUnitConfig(purchaseUnitLabel: string | null | undefined, purchaseToStockFactor: number | null | undefined) {
+  const cleanedPurchaseUnitLabel = cleanInventoryText(purchaseUnitLabel);
+  if (!cleanedPurchaseUnitLabel) {
+    return { purchaseUnitLabel: null, purchaseToStockFactor: 1 };
+  }
+  const factor = Number(purchaseToStockFactor ?? 1);
+  return {
+    purchaseUnitLabel: cleanedPurchaseUnitLabel,
+    purchaseToStockFactor: Number.isFinite(factor) && factor > 0 ? factor : 1,
+  };
+}
+
+function resolveInventoryEntry(input: {
+  quantity: number;
+  entryUnitMode?: InventoryEntryUnitMode | null;
+  item: Pick<InventoryItem, 'unitLabel' | 'purchaseUnitLabel' | 'purchaseToStockFactor'>;
+}): InventoryEntryResolution {
+  const quantity = Number(input.quantity ?? 0);
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    throw new Error('inventory_entry_quantity_invalid');
+  }
+
+  if (input.entryUnitMode === 'purchase' && input.item.purchaseUnitLabel) {
+    const factor = Number(input.item.purchaseToStockFactor ?? 1);
+    const safeFactor = Number.isFinite(factor) && factor > 0 ? factor : 1;
+    return {
+      deltaQuantity: quantity * safeFactor,
+      inputQuantity: quantity,
+      inputUnitLabel: input.item.purchaseUnitLabel,
+      conversionFactor: safeFactor,
+    } satisfies InventoryEntryResolution;
+  }
+
+  return {
+    deltaQuantity: quantity,
+    inputQuantity: quantity,
+    inputUnitLabel: input.item.unitLabel,
+    conversionFactor: 1,
+  } satisfies InventoryEntryResolution;
+}
+
+async function getInventoryItem(scope: CafeDatabaseScope, itemId: string): Promise<InventoryItem | null> {
+  const { data, error } = await ops(scope.databaseKey)
+    .from('inventory_items')
+    .select('id, item_name, normalized_name, item_code, category_label, unit_label, purchase_unit_label, purchase_to_stock_factor, current_balance, low_stock_threshold, notes, is_active, last_movement_at, created_at, updated_at')
+    .eq('cafe_id', scope.cafeId)
+    .eq('id', itemId)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!data) return null;
+
+  const currentBalance = Number(data.current_balance ?? 0);
+  const lowStockThreshold = Number(data.low_stock_threshold ?? 0);
+  const isActive = !!data.is_active;
+  return {
+    id: String(data.id),
+    itemName: String(data.item_name ?? ''),
+    normalizedName: String(data.normalized_name ?? ''),
+    itemCode: data.item_code ? String(data.item_code) : null,
+    categoryLabel: data.category_label ? String(data.category_label) : null,
+    unitLabel: String(data.unit_label ?? ''),
+    purchaseUnitLabel: data.purchase_unit_label ? String(data.purchase_unit_label) : null,
+    purchaseToStockFactor: Number(data.purchase_to_stock_factor ?? 1),
+    currentBalance,
+    lowStockThreshold,
+    notes: data.notes ? String(data.notes) : null,
+    isActive,
+    lastMovementAt: data.last_movement_at ? String(data.last_movement_at) : null,
+    createdAt: String(data.created_at),
+    updatedAt: String(data.updated_at),
+    stockStatus: mapStockStatus(currentBalance, lowStockThreshold, isActive),
+  } satisfies InventoryItem;
+}
+
+export async function resolveInventoryMovementEntry(input: CafeDatabaseScope & {
+  inventoryItemId: string;
+  quantity: number;
+  entryUnitMode?: InventoryEntryUnitMode | null;
+}) {
+  const item = await getInventoryItem({ cafeId: input.cafeId, databaseKey: input.databaseKey }, input.inventoryItemId);
+  if (!item) {
+    throw new Error('inventory_item_not_found');
+  }
+  return resolveInventoryEntry({ quantity: input.quantity, entryUnitMode: input.entryUnitMode, item });
 }
 
 function mapStockStatus(currentBalance: number, threshold: number, isActive: boolean): InventoryItem['stockStatus'] {
@@ -47,7 +143,7 @@ function mapStationCode(value: unknown): StationCode {
 export async function listInventoryItems(scope: CafeDatabaseScope, includeInactive = true): Promise<InventoryItem[]> {
   let query = ops(scope.databaseKey)
     .from('inventory_items')
-    .select('id, item_name, normalized_name, item_code, category_label, unit_label, current_balance, low_stock_threshold, notes, is_active, last_movement_at, created_at, updated_at')
+    .select('id, item_name, normalized_name, item_code, category_label, unit_label, purchase_unit_label, purchase_to_stock_factor, current_balance, low_stock_threshold, notes, is_active, last_movement_at, created_at, updated_at')
     .eq('cafe_id', scope.cafeId)
     .order('updated_at', { ascending: false })
     .order('item_name', { ascending: true });
@@ -70,6 +166,8 @@ export async function listInventoryItems(scope: CafeDatabaseScope, includeInacti
       itemCode: item.item_code ? String(item.item_code) : null,
       categoryLabel: item.category_label ? String(item.category_label) : null,
       unitLabel: String(item.unit_label ?? ''),
+      purchaseUnitLabel: item.purchase_unit_label ? String(item.purchase_unit_label) : null,
+      purchaseToStockFactor: Number(item.purchase_to_stock_factor ?? 1),
       currentBalance,
       lowStockThreshold,
       notes: item.notes ? String(item.notes) : null,
@@ -89,10 +187,14 @@ export async function createInventoryItem(input: CafeDatabaseScope & {
   itemCode?: string | null;
   categoryLabel?: string | null;
   unitLabel: string;
+  purchaseUnitLabel?: string | null;
+  purchaseToStockFactor?: number | null;
   lowStockThreshold?: number;
   notes?: string | null;
   openingBalance?: number;
+  openingBalanceEntryUnit?: InventoryEntryUnitMode | null;
 }) {
+  const purchaseConfig = normalizePurchaseUnitConfig(input.purchaseUnitLabel, input.purchaseToStockFactor);
   const { data, error } = await ops(input.databaseKey)
     .from('inventory_items')
     .insert({
@@ -102,6 +204,8 @@ export async function createInventoryItem(input: CafeDatabaseScope & {
       item_code: input.itemCode ?? null,
       category_label: input.categoryLabel ?? null,
       unit_label: input.unitLabel,
+      purchase_unit_label: purchaseConfig.purchaseUnitLabel,
+      purchase_to_stock_factor: purchaseConfig.purchaseToStockFactor,
       low_stock_threshold: input.lowStockThreshold ?? 0,
       notes: input.notes ?? null,
       updated_at: new Date().toISOString(),
@@ -114,13 +218,25 @@ export async function createInventoryItem(input: CafeDatabaseScope & {
   const itemId = String(data.id);
 
   if ((input.openingBalance ?? 0) > 0) {
+    const openingEntry = resolveInventoryEntry({
+      quantity: input.openingBalance ?? 0,
+      entryUnitMode: input.openingBalanceEntryUnit ?? 'stock',
+      item: {
+        unitLabel: input.unitLabel,
+        purchaseUnitLabel: purchaseConfig.purchaseUnitLabel,
+        purchaseToStockFactor: purchaseConfig.purchaseToStockFactor,
+      },
+    });
     await recordInventoryMovement({
       cafeId: input.cafeId,
       databaseKey: input.databaseKey,
       actorOwnerId: input.actorOwnerId,
       inventoryItemId: itemId,
       movementKind: 'adjustment',
-      deltaQuantity: input.openingBalance ?? 0,
+      deltaQuantity: openingEntry.deltaQuantity,
+      inputQuantity: openingEntry.inputQuantity,
+      inputUnitLabel: openingEntry.inputUnitLabel,
+      conversionFactor: openingEntry.conversionFactor,
       notes: 'رصيد افتتاحي',
     });
   }
@@ -136,10 +252,13 @@ export async function updateInventoryItem(input: CafeDatabaseScope & {
   itemCode?: string | null;
   categoryLabel?: string | null;
   unitLabel: string;
+  purchaseUnitLabel?: string | null;
+  purchaseToStockFactor?: number | null;
   lowStockThreshold?: number;
   notes?: string | null;
   isActive?: boolean;
 }) {
+  const purchaseConfig = normalizePurchaseUnitConfig(input.purchaseUnitLabel, input.purchaseToStockFactor);
   const { error } = await ops(input.databaseKey)
     .from('inventory_items')
     .update({
@@ -148,6 +267,8 @@ export async function updateInventoryItem(input: CafeDatabaseScope & {
       item_code: input.itemCode ?? null,
       category_label: input.categoryLabel ?? null,
       unit_label: input.unitLabel,
+      purchase_unit_label: purchaseConfig.purchaseUnitLabel,
+      purchase_to_stock_factor: purchaseConfig.purchaseToStockFactor,
       low_stock_threshold: input.lowStockThreshold ?? 0,
       notes: input.notes ?? null,
       is_active: typeof input.isActive === 'boolean' ? input.isActive : true,
@@ -281,6 +402,9 @@ type InventoryMovementRow = {
   movement_kind: string;
   delta_quantity: number | string;
   unit_label: string;
+  input_quantity: number | string | null;
+  input_unit_label: string | null;
+  conversion_factor: number | string | null;
   notes: string | null;
   occurred_at: string;
   created_at: string;
@@ -289,7 +413,7 @@ type InventoryMovementRow = {
 async function listInventoryMovementRows(scope: CafeDatabaseScope, limit = 60): Promise<InventoryMovementRow[]> {
   const { data, error } = await ops(scope.databaseKey)
     .from('inventory_movements')
-    .select('id, inventory_item_id, supplier_id, movement_kind, delta_quantity, unit_label, notes, occurred_at, created_at')
+    .select('id, inventory_item_id, supplier_id, movement_kind, delta_quantity, unit_label, input_quantity, input_unit_label, conversion_factor, notes, occurred_at, created_at')
     .eq('cafe_id', scope.cafeId)
     .order('occurred_at', { ascending: false })
     .order('created_at', { ascending: false })
@@ -303,6 +427,9 @@ async function listInventoryMovementRows(scope: CafeDatabaseScope, limit = 60): 
     movement_kind: String(row.movement_kind),
     delta_quantity: row.delta_quantity ?? 0,
     unit_label: String(row.unit_label ?? ''),
+    input_quantity: row.input_quantity ?? null,
+    input_unit_label: row.input_unit_label ? String(row.input_unit_label) : null,
+    conversion_factor: row.conversion_factor ?? null,
     notes: row.notes ? String(row.notes) : null,
     occurred_at: String(row.occurred_at),
     created_at: String(row.created_at),
@@ -314,6 +441,9 @@ export async function recordInventoryMovement(input: CafeDatabaseScope & {
   inventoryItemId: string;
   movementKind: InventoryMovementKind;
   deltaQuantity: number;
+  inputQuantity?: number | null;
+  inputUnitLabel?: string | null;
+  conversionFactor?: number | null;
   supplierId?: string | null;
   notes?: string | null;
   occurredAt?: string | null;
@@ -327,10 +457,20 @@ export async function recordInventoryMovement(input: CafeDatabaseScope & {
     p_notes: input.notes ?? null,
     p_occurred_at: input.occurredAt ?? null,
     p_actor_owner_id: input.actorOwnerId,
+    p_input_quantity: input.inputQuantity ?? null,
+    p_input_unit_label: input.inputUnitLabel ?? null,
+    p_conversion_factor: input.conversionFactor ?? null,
   });
 
   if (rpc.error) throw rpc.error;
-  return (rpc.data ?? {}) as { movement_id?: string | null; new_balance?: number | null; unit_label?: string | null };
+  return (rpc.data ?? {}) as {
+    movement_id?: string | null;
+    new_balance?: number | null;
+    unit_label?: string | null;
+    input_quantity?: number | null;
+    input_unit_label?: string | null;
+    conversion_factor?: number | null;
+  };
 }
 
 async function listMenuProductSummaries(scope: CafeDatabaseScope): Promise<InventoryMenuProductSummary[]> {
@@ -781,6 +921,9 @@ export async function loadInventoryWorkspace(scope: CafeDatabaseScope): Promise<
     movementKind: (row.movement_kind === 'outbound' || row.movement_kind === 'waste' || row.movement_kind === 'adjustment' ? row.movement_kind : 'inbound') as InventoryMovementKind,
     deltaQuantity: Number(row.delta_quantity ?? 0),
     unitLabel: row.unit_label,
+    inputQuantity: row.input_quantity === null ? null : Number(row.input_quantity ?? 0),
+    inputUnitLabel: row.input_unit_label,
+    conversionFactor: row.conversion_factor === null ? null : Number(row.conversion_factor ?? 1),
     notes: row.notes,
     occurredAt: row.occurred_at,
     createdAt: row.created_at,

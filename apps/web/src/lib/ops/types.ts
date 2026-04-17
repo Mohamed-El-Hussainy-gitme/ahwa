@@ -168,6 +168,8 @@ export type InventoryItem = {
   itemCode: string | null;
   categoryLabel: string | null;
   unitLabel: string;
+  purchaseUnitLabel: string | null;
+  purchaseToStockFactor: number;
   currentBalance: number;
   lowStockThreshold: number;
   notes: string | null;
@@ -198,6 +200,9 @@ export type InventoryMovement = {
   movementKind: InventoryMovementKind;
   deltaQuantity: number;
   unitLabel: string;
+  inputQuantity: number | null;
+  inputUnitLabel: string | null;
+  conversionFactor: number | null;
   notes: string | null;
   occurredAt: string;
   createdAt: string;

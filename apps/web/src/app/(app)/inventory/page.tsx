@@ -34,8 +34,11 @@ function emptyItemForm() {
     itemCode: '',
     categoryLabel: '',
     unitLabel: 'قطعة',
+    purchaseUnitLabel: '',
+    purchaseToStockFactor: '',
     lowStockThreshold: '',
     openingBalance: '',
+    openingBalanceUnit: 'stock' as 'stock' | 'purchase',
     notes: '',
   };
 }
@@ -53,6 +56,7 @@ function emptyMovementForm(itemId = '') {
     inventoryItemId: itemId,
     movementKind: 'inbound' as InventoryMovement['movementKind'],
     quantity: '',
+    entryUnit: 'stock' as 'stock' | 'purchase',
     adjustmentDirection: 'increase' as 'increase' | 'decrease',
     supplierId: '',
     notes: '',
@@ -170,6 +174,30 @@ function recipeTone(isActive: boolean) {
   return isActive ? 'accent' : 'neutral';
 }
 
+function formatItemUnitSummary(item: Pick<InventoryItem, 'unitLabel' | 'purchaseUnitLabel' | 'purchaseToStockFactor'>) {
+  if (item.purchaseUnitLabel) {
+    return `التشغيل: ${item.unitLabel} • الشراء: ${item.purchaseUnitLabel} × ${formatQty(item.purchaseToStockFactor)}`;
+  }
+  return `التشغيل: ${item.unitLabel}`;
+}
+
+function previewEntryInStockUnit(item: Pick<InventoryItem, 'unitLabel' | 'purchaseUnitLabel' | 'purchaseToStockFactor'> | null, quantityText: string, entryUnit: 'stock' | 'purchase') {
+  const quantity = Number(quantityText || 0);
+  if (!item || !Number.isFinite(quantity) || quantity <= 0) return null;
+  if (entryUnit === 'purchase' && item.purchaseUnitLabel) {
+    return {
+      stockQuantity: quantity * (item.purchaseToStockFactor || 1),
+      inputUnitLabel: item.purchaseUnitLabel,
+      stockUnitLabel: item.unitLabel,
+    };
+  }
+  return {
+    stockQuantity: quantity,
+    inputUnitLabel: item.unitLabel,
+    stockUnitLabel: item.unitLabel,
+  };
+}
+
 export default function InventoryPage() {
   const { can } = useAuthz();
   const [workspace, setWorkspace] = useState<InventoryWorkspace>(emptyWorkspace());
@@ -224,6 +252,11 @@ export default function InventoryPage() {
     [workspace.suppliers, supplierId],
   );
 
+  const selectedMovementItem = useMemo(
+    () => workspace.items.find((item) => item.id === movementForm.inventoryItemId) ?? null,
+    [workspace.items, movementForm.inventoryItemId],
+  );
+
   const selectedProductRecipe = useMemo(
     () => workspace.productRecipes.find((item) => item.id === productRecipeId) ?? null,
     [workspace.productRecipes, productRecipeId],
@@ -244,7 +277,7 @@ export default function InventoryPage() {
           : stockFilter === 'inactive'
             ? !item.isActive
             : item.stockStatus === stockFilter;
-      const haystack = [item.itemName, item.itemCode ?? '', item.categoryLabel ?? '', item.unitLabel].join(' ').toLowerCase();
+      const haystack = [item.itemName, item.itemCode ?? '', item.categoryLabel ?? '', item.unitLabel, item.purchaseUnitLabel ?? ''].join(' ').toLowerCase();
       return matchesFilter && (!normalizedQuery || haystack.includes(normalizedQuery));
     });
   }, [workspace.items, query, stockFilter]);
@@ -256,6 +289,33 @@ export default function InventoryPage() {
       return [item.itemName, item.unitLabel].join(' ').toLowerCase().includes(normalizedQuery);
     });
   }, [workspace.estimatedConsumption, query]);
+
+  const openingBalancePreview = useMemo(
+    () => previewEntryInStockUnit(
+      {
+        unitLabel: itemForm.unitLabel || 'وحدة',
+        purchaseUnitLabel: itemForm.purchaseUnitLabel || null,
+        purchaseToStockFactor: Number(itemForm.purchaseToStockFactor || 1),
+      },
+      itemForm.openingBalance,
+      itemForm.openingBalanceUnit,
+    ),
+    [itemForm.openingBalance, itemForm.openingBalanceUnit, itemForm.purchaseToStockFactor, itemForm.purchaseUnitLabel, itemForm.unitLabel],
+  );
+
+  const movementPreview = useMemo(
+    () => previewEntryInStockUnit(selectedMovementItem, movementForm.quantity, movementForm.entryUnit),
+    [selectedMovementItem, movementForm.quantity, movementForm.entryUnit],
+  );
+
+  useEffect(() => {
+    setMovementForm((current) => {
+      const canUsePurchase = current.movementKind === 'inbound' && Boolean(selectedMovementItem?.purchaseUnitLabel);
+      const nextEntryUnit = canUsePurchase ? current.entryUnit : 'stock';
+      if (current.entryUnit === nextEntryUnit) return current;
+      return { ...current, entryUnit: nextEntryUnit };
+    });
+  }, [selectedMovementItem?.id, selectedMovementItem?.purchaseUnitLabel, movementForm.movementKind]);
 
   const stats = useMemo(() => ({
     totalItems: workspace.items.length,
@@ -294,8 +354,11 @@ export default function InventoryPage() {
       itemCode: item.itemCode ?? '',
       categoryLabel: item.categoryLabel ?? '',
       unitLabel: item.unitLabel,
+      purchaseUnitLabel: item.purchaseUnitLabel ?? '',
+      purchaseToStockFactor: item.purchaseUnitLabel ? String(item.purchaseToStockFactor) : '',
       lowStockThreshold: item.lowStockThreshold > 0 ? String(item.lowStockThreshold) : '',
       openingBalance: '',
+      openingBalanceUnit: 'stock',
       notes: item.notes ?? '',
     });
   }
@@ -345,8 +408,11 @@ export default function InventoryPage() {
           itemCode: itemForm.itemCode,
           categoryLabel: itemForm.categoryLabel,
           unitLabel: itemForm.unitLabel,
+          purchaseUnitLabel: itemForm.purchaseUnitLabel || null,
+          purchaseToStockFactor: itemForm.purchaseUnitLabel ? (itemForm.purchaseToStockFactor || 1) : null,
           lowStockThreshold: itemForm.lowStockThreshold || 0,
           openingBalance: itemId ? undefined : (itemForm.openingBalance || 0),
+          openingBalanceEntryUnit: itemId ? undefined : itemForm.openingBalanceUnit,
           notes: itemForm.notes,
           isActive: selectedItem?.isActive ?? true,
         }),
@@ -448,6 +514,7 @@ export default function InventoryPage() {
           inventoryItemId: movementForm.inventoryItemId,
           movementKind: movementForm.movementKind,
           quantity: movementForm.quantity,
+          entryUnit: movementForm.entryUnit,
           adjustmentDirection: movementForm.adjustmentDirection,
           supplierId: movementForm.supplierId || null,
           notes: movementForm.notes,
@@ -629,6 +696,23 @@ export default function InventoryPage() {
           </div>
         </div>
 
+        <section className={[opsSurface, 'p-4'].join(' ')}>
+          <div className="grid gap-3 lg:grid-cols-3">
+            <div className={[opsInset, 'p-3 text-right'].join(' ')}>
+              <div className="text-sm font-bold text-[#1e1712]">1) اختر وحدة التشغيل أولاً</div>
+              <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">هي أصغر وحدة تفهمها الوصفة، مثل ملعقة أو قطعة. الرصيد والتقارير سيعملان بها.</div>
+            </div>
+            <div className={[opsInset, 'p-3 text-right'].join(' ')}>
+              <div className="text-sm font-bold text-[#1e1712]">2) اجعل الشراء بوحدة منفصلة</div>
+              <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">مثال: بن تشغيله ملعقة وشراؤه كيلو. اكتب: 1 كيلو = 100 ملعقة، ثم سجل الوارد بالكيلو والنظام يحول تلقائيًا.</div>
+            </div>
+            <div className={[opsInset, 'p-3 text-right'].join(' ')}>
+              <div className="text-sm font-bold text-[#1e1712]">3) المتغيرات اجعلها إضافات</div>
+              <div className="mt-1 text-xs leading-6 text-[#6b5a4c]">السكر أو الزيادة لا تُكتب كملاحظة حرة إذا أردت دقة. اجعلها إضافات لها وصفات منفصلة.</div>
+            </div>
+          </div>
+        </section>
+
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(360px,0.95fr)] xl:items-start">
           <div className="space-y-4">
             <section className={[opsSurface, 'p-4'].join(' ')}>
@@ -754,8 +838,8 @@ export default function InventoryPage() {
                         <div className="mt-1 text-2xl font-black text-[#1e1712]">{formatQty(item.currentBalance)}</div>
                       </div>
                       <div className="text-right text-xs text-[#7d6a59]">
-                        <div>الوحدة: {item.unitLabel}</div>
-                        <div className="mt-1">حد التنبيه: {formatQty(item.lowStockThreshold)}</div>
+                        <div>{formatItemUnitSummary(item)}</div>
+                        <div className="mt-1">حد التنبيه: {formatQty(item.lowStockThreshold)} {item.unitLabel}</div>
                         <div className="mt-1">آخر حركة: {formatDateTime(item.lastMovementAt)}</div>
                       </div>
                     </div>
@@ -790,6 +874,12 @@ export default function InventoryPage() {
                     <div className="mt-3 flex items-center justify-between gap-3">
                       <div className="text-sm font-black text-[#1e1712]">
                         {movement.deltaQuantity > 0 ? '+' : ''}{formatQty(movement.deltaQuantity)} {movement.unitLabel}
+                        {movement.inputUnitLabel && movement.inputUnitLabel !== movement.unitLabel ? (
+                          <div className="mt-1 text-[11px] font-medium text-[#7d6a59]">
+                            إدخال: {formatQty(movement.inputQuantity ?? Math.abs(movement.deltaQuantity))} {movement.inputUnitLabel}
+                            {movement.conversionFactor && movement.conversionFactor !== 1 ? ` × ${formatQty(movement.conversionFactor)}` : ''}
+                          </div>
+                        ) : null}
                       </div>
                       <div className="text-right text-xs text-[#7d6a59]">
                         {movement.supplierName ? <div>المورد: {movement.supplierName}</div> : null}
@@ -875,7 +965,7 @@ export default function InventoryPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="text-right">
                   <div className={opsSectionTitle}>{itemId ? 'تعديل خامة' : 'إضافة خامة'}</div>
-                  <div className={[opsSectionHint, 'mt-1'].join(' ')}>الرصيد الافتتاحي عند الإنشاء فقط.</div>
+                  <div className={[opsSectionHint, 'mt-1'].join(' ')}>عرّف وحدة التشغيل أولاً، ثم أضف وحدة الشراء إذا كنت تشتريها بشكل مختلف.</div>
                 </div>
                 {itemId ? <button type="button" className={opsGhostButton} onClick={resetItemForm}>جديد</button> : null}
               </div>
@@ -883,19 +973,34 @@ export default function InventoryPage() {
                 <input className={opsInput} placeholder="اسم الخامة" value={itemForm.itemName} onChange={(e) => setItemForm((current) => ({ ...current, itemName: e.target.value }))} />
                 <input className={opsInput} placeholder="كود داخلي" value={itemForm.itemCode} onChange={(e) => setItemForm((current) => ({ ...current, itemCode: e.target.value }))} />
                 <input className={opsInput} placeholder="التصنيف" value={itemForm.categoryLabel} onChange={(e) => setItemForm((current) => ({ ...current, categoryLabel: e.target.value }))} />
-                <input className={opsInput} placeholder="الوحدة" value={itemForm.unitLabel} onChange={(e) => setItemForm((current) => ({ ...current, unitLabel: e.target.value }))} />
+                <input className={opsInput} placeholder="وحدة التشغيل (مثال: ملعقة / قطعة)" value={itemForm.unitLabel} onChange={(e) => setItemForm((current) => ({ ...current, unitLabel: e.target.value }))} />
+                <input className={opsInput} placeholder="وحدة الشراء - اختياري (مثال: كيلو / علبة)" value={itemForm.purchaseUnitLabel} onChange={(e) => setItemForm((current) => ({ ...current, purchaseUnitLabel: e.target.value, openingBalanceUnit: e.target.value.trim() ? current.openingBalanceUnit : 'stock' }))} />
+                <input className={opsInput} inputMode="decimal" placeholder="1 وحدة شراء = كم وحدة تشغيل" value={itemForm.purchaseToStockFactor} onChange={(e) => setItemForm((current) => ({ ...current, purchaseToStockFactor: e.target.value }))} disabled={!itemForm.purchaseUnitLabel.trim()} />
                 <input className={opsInput} inputMode="decimal" placeholder="حد التنبيه" value={itemForm.lowStockThreshold} onChange={(e) => setItemForm((current) => ({ ...current, lowStockThreshold: e.target.value }))} />
                 {!itemId ? <input className={opsInput} inputMode="decimal" placeholder="رصيد افتتاحي" value={itemForm.openingBalance} onChange={(e) => setItemForm((current) => ({ ...current, openingBalance: e.target.value }))} /> : null}
               </div>
+              {!itemId && itemForm.purchaseUnitLabel.trim() ? (
+                <div className="mt-2 grid gap-2 sm:grid-cols-[minmax(0,1fr)_160px]">
+                  <div className={[opsInset, 'p-3 text-right text-xs leading-6 text-[#6b5a4c]'].join(' ')}>
+                    {openingBalancePreview
+                      ? `المعاينة: ${formatQty(Number(itemForm.openingBalance || 0))} ${itemForm.openingBalanceUnit === 'purchase' ? itemForm.purchaseUnitLabel : itemForm.unitLabel} = ${formatQty(openingBalancePreview.stockQuantity)} ${itemForm.unitLabel}`
+                      : 'يمكنك إدخال الرصيد الافتتاحي بوحدة التشغيل أو بوحدة الشراء.'}
+                  </div>
+                  <select className={opsSelect} value={itemForm.openingBalanceUnit} onChange={(e) => setItemForm((current) => ({ ...current, openingBalanceUnit: e.target.value as 'stock' | 'purchase' }))}>
+                    <option value="stock">الرصيد بوحدة التشغيل</option>
+                    <option value="purchase">الرصيد بوحدة الشراء</option>
+                  </select>
+                </div>
+              ) : null}
               <textarea className={[opsInput, 'mt-2 min-h-[96px] resize-y'].join(' ')} placeholder="ملاحظات" value={itemForm.notes} onChange={(e) => setItemForm((current) => ({ ...current, notes: e.target.value }))} />
-              <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitItem} disabled={busy || !itemForm.itemName.trim() || !itemForm.unitLabel.trim()}>
+              <button type="button" className={[opsAccentButton, 'mt-3 w-full'].join(' ')} onClick={submitItem} disabled={busy || !itemForm.itemName.trim() || !itemForm.unitLabel.trim() || (Boolean(itemForm.purchaseUnitLabel.trim()) && !itemForm.purchaseToStockFactor.trim())}>
                 {busy ? '...' : itemId ? 'حفظ التعديل' : 'إضافة الخامة'}
               </button>
             </section>
 
             <section className={[opsSurface, 'p-4'].join(' ')}>
               <div className={opsSectionTitle}>تسجيل حركة</div>
-              <div className={[opsSectionHint, 'mt-1'].join(' ')}>وارد، صرف، هالك، أو تسوية.</div>
+              <div className={[opsSectionHint, 'mt-1'].join(' ')}>الوارد يمكن إدخاله بوحدة الشراء أو التشغيل. الصرف والهالك والتسوية بوحدة التشغيل فقط.</div>
               <div className="mt-4 grid gap-2">
                 <select className={opsSelect} value={movementForm.inventoryItemId} onChange={(e) => setMovementForm((current) => ({ ...current, inventoryItemId: e.target.value }))}>
                   <option value="">اختر الخامة</option>
@@ -903,6 +1008,7 @@ export default function InventoryPage() {
                     <option key={item.id} value={item.id}>{item.itemName}</option>
                   ))}
                 </select>
+                {selectedMovementItem ? <div className={[opsInset, 'p-3 text-right text-xs text-[#6b5a4c]'].join(' ')}>{formatItemUnitSummary(selectedMovementItem)}</div> : null}
                 <div className="grid gap-2 sm:grid-cols-2">
                   <select className={opsSelect} value={movementForm.movementKind} onChange={(e) => setMovementForm((current) => ({ ...current, movementKind: e.target.value as InventoryMovement['movementKind'] }))}>
                     <option value="inbound">وارد</option>
@@ -910,8 +1016,19 @@ export default function InventoryPage() {
                     <option value="waste">هالك</option>
                     <option value="adjustment">تسوية</option>
                   </select>
-                  <input className={opsInput} inputMode="decimal" placeholder="الكمية" value={movementForm.quantity} onChange={(e) => setMovementForm((current) => ({ ...current, quantity: e.target.value }))} />
+                  <input className={opsInput} inputMode="decimal" placeholder={movementForm.movementKind === 'inbound' && movementForm.entryUnit === 'purchase' && selectedMovementItem?.purchaseUnitLabel ? `الكمية بـ ${selectedMovementItem.purchaseUnitLabel}` : `الكمية بـ ${selectedMovementItem?.unitLabel ?? 'الوحدة'}`} value={movementForm.quantity} onChange={(e) => setMovementForm((current) => ({ ...current, quantity: e.target.value }))} />
                 </div>
+                {movementForm.movementKind === 'inbound' && selectedMovementItem?.purchaseUnitLabel ? (
+                  <select className={opsSelect} value={movementForm.entryUnit} onChange={(e) => setMovementForm((current) => ({ ...current, entryUnit: e.target.value as 'stock' | 'purchase' }))}>
+                    <option value="stock">الإدخال بوحدة التشغيل ({selectedMovementItem.unitLabel})</option>
+                    <option value="purchase">الإدخال بوحدة الشراء ({selectedMovementItem.purchaseUnitLabel})</option>
+                  </select>
+                ) : null}
+                {movementPreview ? (
+                  <div className={[opsInset, 'p-3 text-right text-xs leading-6 text-[#6b5a4c]'].join(' ')}>
+                    المعاينة: {formatQty(Number(movementForm.quantity || 0))} {movementPreview.inputUnitLabel} = {formatQty(movementPreview.stockQuantity)} {movementPreview.stockUnitLabel}
+                  </div>
+                ) : null}
                 {movementForm.movementKind === 'adjustment' ? (
                   <select className={opsSelect} value={movementForm.adjustmentDirection} onChange={(e) => setMovementForm((current) => ({ ...current, adjustmentDirection: e.target.value as 'increase' | 'decrease' }))}>
                     <option value="increase">زيادة</option>

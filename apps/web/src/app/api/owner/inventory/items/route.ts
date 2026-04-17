@@ -8,8 +8,11 @@ const Input = z.object({
   itemCode: z.string().optional().nullable(),
   categoryLabel: z.string().optional().nullable(),
   unitLabel: z.string().min(1),
+  purchaseUnitLabel: z.string().optional().nullable(),
+  purchaseToStockFactor: z.coerce.number().positive().max(1_000_000).optional().nullable(),
   lowStockThreshold: z.coerce.number().min(0).max(1_000_000).optional(),
   openingBalance: z.coerce.number().min(0).max(1_000_000).optional(),
+  openingBalanceEntryUnit: z.enum(['stock', 'purchase']).optional().nullable(),
   notes: z.string().optional().nullable(),
 });
 
@@ -37,8 +40,12 @@ export async function POST(request: Request) {
   const itemName = cleanInventoryText(parsed.data.itemName);
   const normalizedName = normalizeInventoryText(itemName ?? '');
   const unitLabel = cleanInventoryText(parsed.data.unitLabel);
+  const purchaseUnitLabel = cleanInventoryText(parsed.data.purchaseUnitLabel);
+  const purchaseToStockFactor = purchaseUnitLabel ? (parsed.data.purchaseToStockFactor ?? 1) : null;
+  const openingBalanceEntryUnit = purchaseUnitLabel ? (parsed.data.openingBalanceEntryUnit ?? 'stock') : 'stock';
+
   if (!itemName || !normalizedName || !unitLabel) {
-    return NextResponse.json({ ok: false, error: { code: 'INVALID_INPUT', message: 'اسم الخامة ووحدة القياس مطلوبان.' } }, { status: 400 });
+    return NextResponse.json({ ok: false, error: { code: 'INVALID_INPUT', message: 'اسم الخامة ووحدة التشغيل مطلوبان.' } }, { status: 400 });
   }
 
   try {
@@ -52,8 +59,11 @@ export async function POST(request: Request) {
       itemCode: cleanInventoryText(parsed.data.itemCode),
       categoryLabel: cleanInventoryText(parsed.data.categoryLabel),
       unitLabel,
+      purchaseUnitLabel,
+      purchaseToStockFactor,
       lowStockThreshold: parsed.data.lowStockThreshold ?? 0,
       openingBalance: parsed.data.openingBalance ?? 0,
+      openingBalanceEntryUnit,
       notes: cleanInventoryText(parsed.data.notes),
     });
     return NextResponse.json({ ok: true, itemId });
