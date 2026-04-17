@@ -9,6 +9,11 @@ import type {
   InventoryProductRecipe,
   InventorySupplier,
   InventoryWorkspace,
+  ShiftInventoryPostingSummary,
+  ShiftInventorySnapshot,
+  ShiftInventorySnapshotAddon,
+  ShiftInventorySnapshotLine,
+  ShiftInventorySnapshotProduct,
   StationCode,
 } from '@/lib/ops/types';
 import { cleanCustomerText, normalizeCustomerName } from '@/lib/ops/customers';
@@ -1018,8 +1023,567 @@ async function buildEstimatedConsumption(
     });
 }
 
+
+
+type ShiftSnapshotRow = {
+  id: string;
+  shift_id: string;
+  business_date: string | null;
+  shift_kind: string | null;
+  shift_status: string;
+  snapshot_phase: 'preview' | 'closed' | string;
+  generated_at: string;
+  inventory_posted_at: string | null;
+  inventory_posting_id: string | null;
+  inventory_posted_by_owner_id: string | null;
+  inventory_posting_summary_json: unknown;
+  summary_json: unknown;
+  snapshot_json: unknown;
+};
+
+type ShiftRowForInventorySnapshot = {
+  id: string;
+  business_date: string | null;
+  shift_kind: string | null;
+  status: string;
+  opened_at: string | null;
+  closed_at: string | null;
+};
+
+type OrderItemSnapshotRow = {
+  menu_product_id: string;
+  qty_total: number | string;
+  qty_delivered: number | string;
+  qty_replacement_delivered: number | string;
+};
+
+type OrderAddonSnapshotRow = {
+  menu_addon_id: string;
+  quantity: number | string;
+  addon_name_snapshot: string | null;
+  station_code: string | null;
+  order_items: {
+    qty_total?: number | string | null;
+    qty_delivered?: number | string | null;
+    qty_replacement_delivered?: number | string | null;
+  } | Array<{
+    qty_total?: number | string | null;
+    qty_delivered?: number | string | null;
+    qty_replacement_delivered?: number | string | null;
+  }> | null;
+};
+
+function roundSnapshotQty(value: number) {
+  return Number(value.toFixed(3));
+}
+
+function parseStoredShiftInventorySnapshot(row: ShiftSnapshotRow): ShiftInventorySnapshot {
+  const snapshot = (row.snapshot_json ?? {}) as Record<string, any>;
+  const summary = (snapshot.summary ?? row.summary_json ?? {}) as Record<string, any>;
+  const postingSummary = (row.inventory_posting_summary_json ?? snapshot.posting ?? {}) as Record<string, any>;
+  const lines = Array.isArray(snapshot.lines) ? snapshot.lines : [];
+  const products = Array.isArray(snapshot.products) ? snapshot.products : [];
+  const addons = Array.isArray(snapshot.addons) ? snapshot.addons : [];
+  const posting: ShiftInventoryPostingSummary = {
+    isPosted: !!(row.inventory_posted_at || row.inventory_posting_id || postingSummary.postedAt || postingSummary.postingId),
+    postingId: row.inventory_posting_id ? String(row.inventory_posting_id) : postingSummary.postingId ? String(postingSummary.postingId) : null,
+    postedAt: row.inventory_posted_at ? String(row.inventory_posted_at) : postingSummary.postedAt ? String(postingSummary.postedAt) : null,
+    postedByOwnerId: row.inventory_posted_by_owner_id ? String(row.inventory_posted_by_owner_id) : null,
+    totalInventoryItems: Number(postingSummary.totalInventoryItems ?? postingSummary.total_inventory_items ?? 0),
+    totalConsumptionQty: Number(postingSummary.totalConsumptionQty ?? postingSummary.total_consumption_qty ?? 0),
+    movementCount: Number(postingSummary.movementCount ?? postingSummary.movement_count ?? 0),
+    alreadyPosted: Boolean(postingSummary.alreadyPosted ?? postingSummary.already_posted ?? false),
+  };
+
+  return {
+    id: String(row.id),
+    shiftId: String(row.shift_id),
+    businessDate: row.business_date ? String(row.business_date) : null,
+    shiftKind: row.shift_kind ? String(row.shift_kind) : null,
+    shiftStatus: String(row.shift_status ?? 'open'),
+    snapshotPhase: String(row.snapshot_phase ?? 'preview') === 'closed' ? 'closed' : 'preview',
+    generatedAt: String(row.generated_at),
+    posting,
+    summary: {
+      totalInventoryItems: Number(summary.totalInventoryItems ?? summary.total_inventory_items ?? 0),
+      totalConsumptionQty: Number(summary.totalConsumptionQty ?? summary.total_consumption_qty ?? 0),
+      productConsumptionQty: Number(summary.productConsumptionQty ?? summary.product_consumption_qty ?? 0),
+      addonConsumptionQty: Number(summary.addonConsumptionQty ?? summary.addon_consumption_qty ?? 0),
+      remakeWasteQty: Number(summary.remakeWasteQty ?? summary.remake_waste_qty ?? 0),
+      remakeReplacementQty: Number(summary.remakeReplacementQty ?? summary.remake_replacement_qty ?? 0),
+      coveredProductsCount: Number(summary.coveredProductsCount ?? summary.covered_products_count ?? 0),
+      coveredAddonsCount: Number(summary.coveredAddonsCount ?? summary.covered_addons_count ?? 0),
+    },
+    lines: lines.map((line: any) => ({
+      inventoryItemId: String(line.inventoryItemId ?? line.inventory_item_id ?? ''),
+      itemName: String(line.itemName ?? line.item_name ?? ''),
+      unitLabel: String(line.unitLabel ?? line.unit_label ?? ''),
+      currentBalance: Number(line.currentBalance ?? line.current_balance ?? 0),
+      lowStockThreshold: Number(line.lowStockThreshold ?? line.low_stock_threshold ?? 0),
+      stockStatus: mapStockStatus(Number(line.currentBalance ?? line.current_balance ?? 0), Number(line.lowStockThreshold ?? line.low_stock_threshold ?? 0), String(line.stockStatus ?? line.stock_status ?? 'ok') !== 'inactive'),
+      fromProducts: Number(line.fromProducts ?? line.from_products ?? 0),
+      fromAddons: Number(line.fromAddons ?? line.from_addons ?? 0),
+      remakeWasteQty: Number(line.remakeWasteQty ?? line.remake_waste_qty ?? 0),
+      remakeReplacementQty: Number(line.remakeReplacementQty ?? line.remake_replacement_qty ?? 0),
+      totalConsumption: Number(line.totalConsumption ?? line.total_consumption ?? 0),
+      recipeSourcesCount: Number(line.recipeSourcesCount ?? line.recipe_sources_count ?? 0),
+    }) satisfies ShiftInventorySnapshotLine),
+    products: products.map((row: any) => ({
+      menuProductId: String(row.menuProductId ?? row.menu_product_id ?? ''),
+      productName: String(row.productName ?? row.product_name ?? ''),
+      stationCode: mapStationCode(row.stationCode ?? row.station_code),
+      acceptedOriginalQty: Number(row.acceptedOriginalQty ?? row.accepted_original_qty ?? 0),
+      remakeWasteQty: Number(row.remakeWasteQty ?? row.remake_waste_qty ?? 0),
+      remakeReplacementQty: Number(row.remakeReplacementQty ?? row.remake_replacement_qty ?? 0),
+      totalPreparedQty: Number(row.totalPreparedQty ?? row.total_prepared_qty ?? 0),
+      estimatedConsumptionQty: Number(row.estimatedConsumptionQty ?? row.estimated_consumption_qty ?? 0),
+      recipeLinesCount: Number(row.recipeLinesCount ?? row.recipe_lines_count ?? 0),
+    }) satisfies ShiftInventorySnapshotProduct),
+    addons: addons.map((row: any) => ({
+      menuAddonId: String(row.menuAddonId ?? row.menu_addon_id ?? ''),
+      addonName: String(row.addonName ?? row.addon_name ?? ''),
+      stationCode: mapStationCode(row.stationCode ?? row.station_code),
+      acceptedOriginalQty: Number(row.acceptedOriginalQty ?? row.accepted_original_qty ?? 0),
+      remakeWasteQty: Number(row.remakeWasteQty ?? row.remake_waste_qty ?? 0),
+      remakeReplacementQty: Number(row.remakeReplacementQty ?? row.remake_replacement_qty ?? 0),
+      totalPreparedQty: Number(row.totalPreparedQty ?? row.total_prepared_qty ?? 0),
+      estimatedConsumptionQty: Number(row.estimatedConsumptionQty ?? row.estimated_consumption_qty ?? 0),
+      recipeLinesCount: Number(row.recipeLinesCount ?? row.recipe_lines_count ?? 0),
+    }) satisfies ShiftInventorySnapshotAddon),
+  } satisfies ShiftInventorySnapshot;
+}
+
+export async function listRecentShiftInventorySnapshots(scope: CafeDatabaseScope, limit = 6): Promise<ShiftInventorySnapshot[]> {
+  const { data, error } = await ops(scope.databaseKey)
+    .from('shift_inventory_snapshots')
+    .select('id, shift_id, business_date, shift_kind, shift_status, snapshot_phase, generated_at, inventory_posted_at, inventory_posting_id, inventory_posted_by_owner_id, inventory_posting_summary_json, summary_json, snapshot_json')
+    .eq('cafe_id', scope.cafeId)
+    .order('generated_at', { ascending: false })
+    .limit(limit);
+
+  if (error) {
+    const message = String(error.message ?? '');
+    if (/shift_inventory_snapshots/i.test(message) || /does not exist/i.test(message)) {
+      return [];
+    }
+  }
+  if (error) throw error;
+  return ((data ?? []) as ShiftSnapshotRow[]).map(parseStoredShiftInventorySnapshot);
+}
+
+
+
+export async function buildShiftInventorySnapshot(input: CafeDatabaseScope & {
+  shiftId: string;
+  actorOwnerId?: string | null;
+  persist?: boolean;
+}): Promise<ShiftInventorySnapshot> {
+  const admin = ops(input.databaseKey);
+  const [shiftResult, items, menuProducts, menuAddons, productRecipeRows, addonRecipeRows, orderItemsResult, addonRowsResult] = await Promise.all([
+    admin
+      .from('shifts')
+      .select('id, business_date, shift_kind, status, opened_at, closed_at')
+      .eq('cafe_id', input.cafeId)
+      .eq('id', input.shiftId)
+      .maybeSingle(),
+    listInventoryItems({ cafeId: input.cafeId, databaseKey: input.databaseKey }, true),
+    listMenuProductSummaries({ cafeId: input.cafeId, databaseKey: input.databaseKey }),
+    listMenuAddonSummaries({ cafeId: input.cafeId, databaseKey: input.databaseKey }),
+    listProductRecipeRows({ cafeId: input.cafeId, databaseKey: input.databaseKey }),
+    listAddonRecipeRows({ cafeId: input.cafeId, databaseKey: input.databaseKey }),
+    admin
+      .from('order_items')
+      .select('menu_product_id, qty_total, qty_delivered, qty_replacement_delivered')
+      .eq('cafe_id', input.cafeId)
+      .eq('shift_id', input.shiftId),
+    admin
+      .from('order_item_addons')
+      .select('menu_addon_id, quantity, addon_name_snapshot, station_code, order_items!inner(qty_total, qty_delivered, qty_replacement_delivered)')
+      .eq('cafe_id', input.cafeId)
+      .eq('order_items.shift_id', input.shiftId),
+  ]);
+
+  if (shiftResult.error) throw shiftResult.error;
+  const shift = shiftResult.data as ShiftRowForInventorySnapshot | null;
+  if (!shift) {
+    throw new Error('shift_not_found');
+  }
+  if (orderItemsResult.error) throw orderItemsResult.error;
+  if (addonRowsResult.error) throw addonRowsResult.error;
+
+  const productRecipes = mapProductRecipes(productRecipeRows, menuProducts, items).filter((row) => row.isActive);
+  const addonRecipes = mapAddonRecipes(addonRecipeRows, menuAddons, items).filter((row) => row.isActive);
+  const itemMap = new Map(items.map((item) => [item.id, item]));
+  const productRecipeMap = new Map<string, InventoryProductRecipe[]>();
+  const addonRecipeMap = new Map<string, InventoryAddonRecipe[]>();
+
+  for (const recipe of productRecipes) {
+    const current = productRecipeMap.get(recipe.menuProductId) ?? [];
+    current.push(recipe);
+    productRecipeMap.set(recipe.menuProductId, current);
+  }
+  for (const recipe of addonRecipes) {
+    const current = addonRecipeMap.get(recipe.menuAddonId) ?? [];
+    current.push(recipe);
+    addonRecipeMap.set(recipe.menuAddonId, current);
+  }
+
+  const lineMap = new Map<string, ShiftInventorySnapshotLine>();
+  const sourceSetByItem = new Map<string, Set<string>>();
+  const productSummaryMap = new Map<string, ShiftInventorySnapshotProduct>();
+  const addonSummaryMap = new Map<string, ShiftInventorySnapshotAddon>();
+
+  function ensureLine(inventoryItemId: string) {
+    const existing = lineMap.get(inventoryItemId);
+    if (existing) return existing;
+    const item = itemMap.get(inventoryItemId);
+    if (!item) {
+      throw new Error('inventory_item_not_found_for_snapshot');
+    }
+    const created: ShiftInventorySnapshotLine = {
+      inventoryItemId,
+      itemName: item.itemName,
+      unitLabel: item.unitLabel,
+      currentBalance: Number(item.currentBalance ?? 0),
+      lowStockThreshold: Number(item.lowStockThreshold ?? 0),
+      stockStatus: item.stockStatus,
+      fromProducts: 0,
+      fromAddons: 0,
+      remakeWasteQty: 0,
+      remakeReplacementQty: 0,
+      totalConsumption: 0,
+      recipeSourcesCount: 0,
+    };
+    lineMap.set(inventoryItemId, created);
+    sourceSetByItem.set(inventoryItemId, new Set());
+    return created;
+  }
+
+  for (const row of (orderItemsResult.data ?? []) as OrderItemSnapshotRow[]) {
+    const menuProductId = String(row.menu_product_id ?? '').trim();
+    if (!menuProductId) continue;
+    const deliveredQty = Number(row.qty_delivered ?? 0);
+    const replacementDeliveredQty = Number(row.qty_replacement_delivered ?? 0);
+    const acceptedOriginalQty = Math.max(deliveredQty - replacementDeliveredQty, 0);
+    const remakeWasteQty = Math.max(replacementDeliveredQty, 0);
+    const remakeReplacementQty = Math.max(replacementDeliveredQty, 0);
+    const totalPreparedQty = acceptedOriginalQty + remakeWasteQty + remakeReplacementQty;
+    const recipes = productRecipeMap.get(menuProductId) ?? [];
+    if (totalPreparedQty <= 0 || !recipes.length) continue;
+
+    let estimatedConsumptionQty = 0;
+    for (const recipe of recipes) {
+      const multiplier = recipeMultiplier(recipe.quantityPerUnit, recipe.wastagePercent);
+      const consumption = totalPreparedQty * multiplier;
+      const wasteConsumption = remakeWasteQty * multiplier;
+      const replacementConsumption = remakeReplacementQty * multiplier;
+      const line = ensureLine(recipe.inventoryItemId);
+      line.fromProducts += consumption;
+      line.remakeWasteQty += wasteConsumption;
+      line.remakeReplacementQty += replacementConsumption;
+      line.totalConsumption += consumption;
+      sourceSetByItem.get(recipe.inventoryItemId)?.add(`product:${menuProductId}`);
+      estimatedConsumptionQty += consumption;
+    }
+
+    const existingProduct = productSummaryMap.get(menuProductId);
+    if (existingProduct) {
+      existingProduct.acceptedOriginalQty += acceptedOriginalQty;
+      existingProduct.remakeWasteQty += remakeWasteQty;
+      existingProduct.remakeReplacementQty += remakeReplacementQty;
+      existingProduct.totalPreparedQty += totalPreparedQty;
+      existingProduct.estimatedConsumptionQty += estimatedConsumptionQty;
+      existingProduct.recipeLinesCount = Math.max(existingProduct.recipeLinesCount, recipes.length);
+    } else {
+      const product = menuProducts.find((item) => item.id === menuProductId);
+      productSummaryMap.set(menuProductId, {
+        menuProductId,
+        productName: product?.name ?? menuProductId,
+        stationCode: product?.stationCode ?? 'barista',
+        acceptedOriginalQty,
+        remakeWasteQty,
+        remakeReplacementQty,
+        totalPreparedQty,
+        estimatedConsumptionQty,
+        recipeLinesCount: recipes.length,
+      });
+    }
+  }
+
+  for (const row of (addonRowsResult.data ?? []) as OrderAddonSnapshotRow[]) {
+    const menuAddonId = String(row.menu_addon_id ?? '').trim();
+    if (!menuAddonId) continue;
+    const recipes = addonRecipeMap.get(menuAddonId) ?? [];
+    if (!recipes.length) continue;
+    const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
+    const totalQty = Number(orderItemRef?.qty_total ?? 0);
+    const deliveredQty = Number(orderItemRef?.qty_delivered ?? 0);
+    const replacementDeliveredQty = Number(orderItemRef?.qty_replacement_delivered ?? 0);
+    const acceptedOriginalQty = Math.max(deliveredQty - replacementDeliveredQty, 0);
+    const remakeWasteQty = Math.max(replacementDeliveredQty, 0);
+    const remakeReplacementQty = Math.max(replacementDeliveredQty, 0);
+    const totalPreparedQty = acceptedOriginalQty + remakeWasteQty + remakeReplacementQty;
+    const baseQuantity = Number(row.quantity ?? 0);
+    if (totalQty <= 0 || totalPreparedQty <= 0 || baseQuantity <= 0) continue;
+
+    const acceptedAddonUnits = baseQuantity * (acceptedOriginalQty / totalQty);
+    const remakeWasteAddonUnits = baseQuantity * (remakeWasteQty / totalQty);
+    const remakeReplacementAddonUnits = baseQuantity * (remakeReplacementQty / totalQty);
+    const totalAddonUnits = acceptedAddonUnits + remakeWasteAddonUnits + remakeReplacementAddonUnits;
+
+    let estimatedConsumptionQty = 0;
+    for (const recipe of recipes) {
+      const multiplier = recipeMultiplier(recipe.quantityPerUnit, recipe.wastagePercent);
+      const consumption = totalAddonUnits * multiplier;
+      const wasteConsumption = remakeWasteAddonUnits * multiplier;
+      const replacementConsumption = remakeReplacementAddonUnits * multiplier;
+      const line = ensureLine(recipe.inventoryItemId);
+      line.fromAddons += consumption;
+      line.remakeWasteQty += wasteConsumption;
+      line.remakeReplacementQty += replacementConsumption;
+      line.totalConsumption += consumption;
+      sourceSetByItem.get(recipe.inventoryItemId)?.add(`addon:${menuAddonId}`);
+      estimatedConsumptionQty += consumption;
+    }
+
+    const existingAddon = addonSummaryMap.get(menuAddonId);
+    if (existingAddon) {
+      existingAddon.acceptedOriginalQty += acceptedAddonUnits;
+      existingAddon.remakeWasteQty += remakeWasteAddonUnits;
+      existingAddon.remakeReplacementQty += remakeReplacementAddonUnits;
+      existingAddon.totalPreparedQty += totalAddonUnits;
+      existingAddon.estimatedConsumptionQty += estimatedConsumptionQty;
+      existingAddon.recipeLinesCount = Math.max(existingAddon.recipeLinesCount, recipes.length);
+    } else {
+      const addon = menuAddons.find((item) => item.id === menuAddonId);
+      addonSummaryMap.set(menuAddonId, {
+        menuAddonId,
+        addonName: addon?.name ?? String(row.addon_name_snapshot ?? menuAddonId),
+        stationCode: addon?.stationCode ?? mapStationCode(row.station_code),
+        acceptedOriginalQty: acceptedAddonUnits,
+        remakeWasteQty: remakeWasteAddonUnits,
+        remakeReplacementQty: remakeReplacementAddonUnits,
+        totalPreparedQty: totalAddonUnits,
+        estimatedConsumptionQty,
+        recipeLinesCount: recipes.length,
+      });
+    }
+  }
+
+  const lines = Array.from(lineMap.values())
+    .map((line) => ({
+      ...line,
+      fromProducts: roundSnapshotQty(line.fromProducts),
+      fromAddons: roundSnapshotQty(line.fromAddons),
+      remakeWasteQty: roundSnapshotQty(line.remakeWasteQty),
+      remakeReplacementQty: roundSnapshotQty(line.remakeReplacementQty),
+      totalConsumption: roundSnapshotQty(line.totalConsumption),
+      recipeSourcesCount: sourceSetByItem.get(line.inventoryItemId)?.size ?? 0,
+    }))
+    .sort((a, b) => (b.totalConsumption - a.totalConsumption) || a.itemName.localeCompare(b.itemName, 'ar'));
+
+  const products = Array.from(productSummaryMap.values())
+    .map((row) => ({
+      ...row,
+      acceptedOriginalQty: roundSnapshotQty(row.acceptedOriginalQty),
+      remakeWasteQty: roundSnapshotQty(row.remakeWasteQty),
+      remakeReplacementQty: roundSnapshotQty(row.remakeReplacementQty),
+      totalPreparedQty: roundSnapshotQty(row.totalPreparedQty),
+      estimatedConsumptionQty: roundSnapshotQty(row.estimatedConsumptionQty),
+    }))
+    .sort((a, b) => (b.estimatedConsumptionQty - a.estimatedConsumptionQty) || a.productName.localeCompare(b.productName, 'ar'));
+
+  const addons = Array.from(addonSummaryMap.values())
+    .map((row) => ({
+      ...row,
+      acceptedOriginalQty: roundSnapshotQty(row.acceptedOriginalQty),
+      remakeWasteQty: roundSnapshotQty(row.remakeWasteQty),
+      remakeReplacementQty: roundSnapshotQty(row.remakeReplacementQty),
+      totalPreparedQty: roundSnapshotQty(row.totalPreparedQty),
+      estimatedConsumptionQty: roundSnapshotQty(row.estimatedConsumptionQty),
+    }))
+    .sort((a, b) => (b.estimatedConsumptionQty - a.estimatedConsumptionQty) || a.addonName.localeCompare(b.addonName, 'ar'));
+
+  const productConsumptionQty = roundSnapshotQty(lines.reduce((sum, line) => sum + line.fromProducts, 0));
+  const addonConsumptionQty = roundSnapshotQty(lines.reduce((sum, line) => sum + line.fromAddons, 0));
+  const remakeWasteQty = roundSnapshotQty(lines.reduce((sum, line) => sum + line.remakeWasteQty, 0));
+  const remakeReplacementQty = roundSnapshotQty(lines.reduce((sum, line) => sum + line.remakeReplacementQty, 0));
+  const summary = {
+    totalInventoryItems: lines.length,
+    totalConsumptionQty: roundSnapshotQty(productConsumptionQty + addonConsumptionQty),
+    productConsumptionQty,
+    addonConsumptionQty,
+    remakeWasteQty,
+    remakeReplacementQty,
+    coveredProductsCount: products.length,
+    coveredAddonsCount: addons.length,
+  };
+
+  const snapshotPayload = {
+    version: 1,
+    shift: {
+      shift_id: shift.id,
+      business_date: shift.business_date,
+      shift_kind: shift.shift_kind,
+      status: shift.status,
+      opened_at: shift.opened_at,
+      closed_at: shift.closed_at,
+      snapshotTakenAt: new Date().toISOString(),
+      snapshotPhase: shift.status === 'closed' ? 'closed' : 'preview',
+    },
+    summary,
+    lines,
+    products,
+    addons,
+  };
+
+  let snapshotId = input.shiftId;
+  let generatedAt = snapshotPayload.shift.snapshotTakenAt as string;
+  let posting: ShiftInventoryPostingSummary = {
+    isPosted: false,
+    postingId: null,
+    postedAt: null,
+    postedByOwnerId: null,
+    totalInventoryItems: 0,
+    totalConsumptionQty: 0,
+    movementCount: 0,
+    alreadyPosted: false,
+  };
+  if (input.persist !== false) {
+    const upsert = await admin
+      .from('shift_inventory_snapshots')
+      .upsert({
+        cafe_id: input.cafeId,
+        shift_id: input.shiftId,
+        business_date: shift.business_date,
+        shift_kind: shift.shift_kind,
+        shift_status: shift.status,
+        snapshot_phase: shift.status === 'closed' ? 'closed' : 'preview',
+        summary_json: summary,
+        snapshot_json: snapshotPayload,
+        generated_at: generatedAt,
+        created_by_owner_id: input.actorOwnerId ?? null,
+      }, { onConflict: 'cafe_id,shift_id' })
+      .select('id, generated_at, inventory_posted_at, inventory_posting_id, inventory_posted_by_owner_id, inventory_posting_summary_json')
+      .single();
+    if (upsert.error) {
+      const message = String(upsert.error.message ?? '');
+      if (!/does not exist/i.test(message)) {
+        throw upsert.error;
+      }
+    } else {
+      snapshotId = String(upsert.data.id);
+      generatedAt = String(upsert.data.generated_at ?? generatedAt);
+      const persistedPostingSummary = (upsert.data.inventory_posting_summary_json ?? {}) as Record<string, unknown>;
+      posting = {
+        isPosted: !!(upsert.data.inventory_posted_at ?? upsert.data.inventory_posting_id),
+        postingId: upsert.data.inventory_posting_id ? String(upsert.data.inventory_posting_id) : null,
+        postedAt: upsert.data.inventory_posted_at ? String(upsert.data.inventory_posted_at) : null,
+        postedByOwnerId: upsert.data.inventory_posted_by_owner_id ? String(upsert.data.inventory_posted_by_owner_id) : null,
+        totalInventoryItems: Number(persistedPostingSummary.totalInventoryItems ?? persistedPostingSummary.total_inventory_items ?? 0),
+        totalConsumptionQty: Number(persistedPostingSummary.totalConsumptionQty ?? persistedPostingSummary.total_consumption_qty ?? 0),
+        movementCount: Number(persistedPostingSummary.movementCount ?? persistedPostingSummary.movement_count ?? 0),
+        alreadyPosted: Boolean(persistedPostingSummary.alreadyPosted ?? persistedPostingSummary.already_posted ?? false),
+      };
+      const deleteLines = await admin
+        .from('shift_inventory_snapshot_lines')
+        .delete()
+        .eq('cafe_id', input.cafeId)
+        .eq('shift_id', input.shiftId);
+      if (deleteLines.error && !/does not exist/i.test(String(deleteLines.error.message ?? ''))) {
+        throw deleteLines.error;
+      }
+      if (lines.length) {
+        const insertLines = await admin
+          .from('shift_inventory_snapshot_lines')
+          .insert(lines.map((line) => ({
+            cafe_id: input.cafeId,
+            shift_inventory_snapshot_id: snapshotId,
+            shift_id: input.shiftId,
+            inventory_item_id: line.inventoryItemId,
+            item_name_snapshot: line.itemName,
+            unit_label_snapshot: line.unitLabel,
+            current_balance_snapshot: line.currentBalance,
+            low_stock_threshold_snapshot: line.lowStockThreshold,
+            stock_status_snapshot: line.stockStatus,
+            from_products: line.fromProducts,
+            from_addons: line.fromAddons,
+            remake_waste_qty: line.remakeWasteQty,
+            remake_replacement_qty: line.remakeReplacementQty,
+            total_consumption: line.totalConsumption,
+            recipe_sources_count: line.recipeSourcesCount,
+            detail_json: {
+              fromProducts: line.fromProducts,
+              fromAddons: line.fromAddons,
+              remakeWasteQty: line.remakeWasteQty,
+              remakeReplacementQty: line.remakeReplacementQty,
+            },
+          })));
+        if (insertLines.error && !/does not exist/i.test(String(insertLines.error.message ?? ''))) {
+          throw insertLines.error;
+        }
+      }
+    }
+  }
+
+  return {
+    id: snapshotId,
+    shiftId: input.shiftId,
+    businessDate: shift.business_date,
+    shiftKind: shift.shift_kind,
+    shiftStatus: shift.status,
+    snapshotPhase: shift.status === 'closed' ? 'closed' : 'preview',
+    generatedAt,
+    posting,
+    summary,
+    lines,
+    products,
+    addons,
+  } satisfies ShiftInventorySnapshot;
+}
+
+
+type ShiftInventoryPostingRpcResult = {
+  posting_id?: string | null;
+  already_posted?: boolean | null;
+  posted_at?: string | null;
+  total_inventory_items?: number | string | null;
+  total_consumption_qty?: number | string | null;
+  movement_count?: number | string | null;
+  shift_id?: string | null;
+  snapshot_id?: string | null;
+};
+
+export async function postShiftInventorySnapshot(input: CafeDatabaseScope & {
+  shiftId: string;
+  actorOwnerId: string;
+  notes?: string | null;
+}): Promise<ShiftInventoryPostingSummary> {
+  const rpc = await supabaseAdminForDatabase(input.databaseKey).rpc('ops_post_shift_inventory_snapshot', {
+    p_cafe_id: input.cafeId,
+    p_shift_id: input.shiftId,
+    p_actor_owner_id: input.actorOwnerId,
+    p_notes: input.notes ?? null,
+  });
+
+  if (rpc.error) throw rpc.error;
+
+  const data = ((rpc.data ?? {}) as ShiftInventoryPostingRpcResult);
+  return {
+    isPosted: true,
+    postingId: data.posting_id ? String(data.posting_id) : null,
+    postedAt: data.posted_at ? String(data.posted_at) : null,
+    postedByOwnerId: input.actorOwnerId,
+    totalInventoryItems: Number(data.total_inventory_items ?? 0),
+    totalConsumptionQty: Number(data.total_consumption_qty ?? 0),
+    movementCount: Number(data.movement_count ?? data.total_inventory_items ?? 0),
+    alreadyPosted: Boolean(data.already_posted ?? false),
+  } satisfies ShiftInventoryPostingSummary;
+}
+
+
 export async function loadInventoryWorkspace(scope: CafeDatabaseScope): Promise<InventoryWorkspace> {
-  const [items, suppliers, movementRows, menuProducts, menuAddons, productRecipeRows, addonRecipeRows] = await Promise.all([
+  const [items, suppliers, movementRows, menuProducts, menuAddons, productRecipeRows, addonRecipeRows, recentShiftSnapshots] = await Promise.all([
     listInventoryItems(scope, true),
     listInventorySuppliers(scope, true),
     listInventoryMovementRows(scope, 80),
@@ -1027,6 +1591,7 @@ export async function loadInventoryWorkspace(scope: CafeDatabaseScope): Promise<
     listMenuAddonSummaries(scope),
     listProductRecipeRows(scope),
     listAddonRecipeRows(scope),
+    listRecentShiftInventorySnapshots(scope, 8),
   ]);
 
   const itemMap = new Map(items.map((item) => [item.id, item]));
@@ -1062,6 +1627,7 @@ export async function loadInventoryWorkspace(scope: CafeDatabaseScope): Promise<
     productRecipes,
     addonRecipes,
     estimatedConsumption,
+    recentShiftSnapshots,
     analysisWindowDays: INVENTORY_ANALYSIS_WINDOW_DAYS,
   } satisfies InventoryWorkspace;
 }

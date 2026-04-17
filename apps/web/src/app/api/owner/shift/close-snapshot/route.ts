@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
+import { buildShiftInventorySnapshot } from '@/lib/ops/inventory';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { requireOpsActorContext, requireOwnerOrSupervisor } from '@/app/api/ops/_helpers';
 
@@ -50,6 +51,14 @@ export async function POST(request: Request) {
       throw rpc.error;
     }
 
+    const inventorySnapshot = await buildShiftInventorySnapshot({
+      cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
+      shiftId: String(shiftId),
+      actorOwnerId: ctx.actorOwnerId,
+      persist: true,
+    });
+
     publishOpsEvent({
       type: 'shift.snapshot_built',
       cafeId: ctx.cafeId,
@@ -57,7 +66,7 @@ export async function POST(request: Request) {
       entityId: String(shiftId),
     });
 
-    return NextResponse.json({ ok: true, snapshot: rpc.data });
+    return NextResponse.json({ ok: true, snapshot: { ...(rpc.data as Record<string, unknown>), inventory: inventorySnapshot } });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'SHIFT_CLOSE_SNAPSHOT_FAILED';
     return NextResponse.json({ ok: false, error: code }, { status: 400 });

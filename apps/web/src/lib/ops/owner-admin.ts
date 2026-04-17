@@ -18,6 +18,7 @@ import type {
 import { describeBusinessDayWindow, formatBusinessDayStartTime, normalizeBusinessDayStartMinutes, resolveBusinessDate, currentTimeZoneDate } from '@/lib/ops/business-day';
 import { normalizeCustomerName } from '@/lib/ops/customers';
 import { parseOrderItemNotes } from '@/lib/ops/orderItemNotes';
+import { buildShiftInventorySnapshot, postShiftInventorySnapshot } from '@/lib/ops/inventory';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 
 export type ShiftRole = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
@@ -1523,5 +1524,50 @@ export async function closeShift(input: CafeDatabaseScope & {
     p_notes: input.notes ?? null,
   });
   if (rpc.error) throw rpc.error;
+
+  let inventorySnapshot: unknown = null;
+  let inventorySnapshotError: string | null = null;
+  let inventoryPosting: unknown = null;
+  let inventoryPostingError: string | null = null;
+  try {
+    inventorySnapshot = await buildShiftInventorySnapshot({
+      cafeId: input.cafeId,
+      databaseKey: input.databaseKey,
+      shiftId: input.shiftId,
+      actorOwnerId: input.ownerUserId,
+      persist: true,
+    });
+    inventoryPosting = await postShiftInventorySnapshot({
+      cafeId: input.cafeId,
+      databaseKey: input.databaseKey,
+      shiftId: input.shiftId,
+      actorOwnerId: input.ownerUserId,
+      notes: input.notes ?? null,
+    });
+    inventorySnapshot = await buildShiftInventorySnapshot({
+      cafeId: input.cafeId,
+      databaseKey: input.databaseKey,
+      shiftId: input.shiftId,
+      actorOwnerId: input.ownerUserId,
+      persist: true,
+    });
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : 'SHIFT_INVENTORY_SNAPSHOT_FAILED';
+    if (!inventorySnapshot) {
+      inventorySnapshotError = message;
+    } else {
+      inventoryPostingError = message;
+    }
+  }
+
+  if (rpc.data && typeof rpc.data === 'object' && !Array.isArray(rpc.data)) {
+    return {
+      ...(rpc.data as Record<string, unknown>),
+      inventorySnapshot,
+      inventorySnapshotError,
+      inventoryPosting,
+      inventoryPostingError,
+    };
+  }
   return rpc.data;
 }

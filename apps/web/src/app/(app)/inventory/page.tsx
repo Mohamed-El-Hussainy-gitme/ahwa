@@ -152,6 +152,7 @@ function emptyWorkspace(): InventoryWorkspace {
     productRecipes: [],
     addonRecipes: [],
     estimatedConsumption: [],
+    recentShiftSnapshots: [],
     analysisWindowDays: 30,
   };
 }
@@ -262,6 +263,7 @@ export default function InventoryPage() {
   const [workspace, setWorkspace] = useState<InventoryWorkspace>(emptyWorkspace());
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [postingBusyFor, setPostingBusyFor] = useState<string | null>(null);
   const [query, setQuery] = useState('');
   const [stockFilter, setStockFilter] = useState<'all' | 'active' | 'low' | 'empty' | 'inactive'>('active');
   const [itemId, setItemId] = useState<string | null>(null);
@@ -314,6 +316,29 @@ export default function InventoryPage() {
       return sugarLikeItem?.id ?? current;
     });
     return true;
+  }
+
+
+  async function postShiftSnapshot(shiftId: string) {
+    setPostingBusyFor(shiftId);
+    setMessage(null);
+    try {
+      const response = await fetch('/api/owner/inventory/shift-postings', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ shiftId }),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!payload?.ok) {
+        setMessage(extractApiErrorMessage(payload, 'SHIFT_INVENTORY_POST_FAILED'));
+        return;
+      }
+      await refresh();
+      const posted = payload.posting?.alreadyPosted ? 'تم الترحيل مسبقًا لهذا السناب شوت.' : 'تم ترحيل استهلاك الوردية إلى المخزن.';
+      setMessage(posted);
+    } finally {
+      setPostingBusyFor(null);
+    }
   }
 
   useEffect(() => {
@@ -1005,6 +1030,88 @@ export default function InventoryPage() {
                     </article>
                   ))}
                   {!workspace.recentMovements.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c]'].join(' ')}>لا توجد حركات بعد.</div> : null}
+                </div>
+              </section>
+
+              <section className={[opsSurface, 'p-4'].join(' ')}>
+                <div className="flex items-start justify-between gap-3">
+                  <div className="text-right">
+                    <div className={opsSectionTitle}>سناب شوت استهلاك الورديات</div>
+                    <div className={[opsSectionHint, 'mt-1'].join(' ')}>ملخص مغلق أو معاينة محفوظة من الوردية. الوردية المقفلة يمكن ترحيلها مرة واحدة إلى المخزن.</div>
+                  </div>
+                  <div className={opsBadge('info')}>Snapshot</div>
+                </div>
+                <div className="mt-4 space-y-3">
+                  {workspace.recentShiftSnapshots.map((snapshot) => (
+                    <article key={snapshot.id} className={[opsInset, 'p-4'].join(' ')}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="text-right">
+                          <div className="text-sm font-bold text-[#1e1712]">{snapshot.shiftKind === 'morning' ? 'صباحية' : snapshot.shiftKind === 'evening' ? 'مسائية' : snapshot.shiftKind ?? 'وردية'} • {snapshot.businessDate ?? '—'}</div>
+                          <div className="mt-1 text-xs text-[#7d6a59]">{formatDateTime(snapshot.generatedAt)}</div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2">
+                          <div className={opsBadge(snapshot.snapshotPhase === 'closed' ? 'success' : 'warning')}>{snapshot.snapshotPhase === 'closed' ? 'مقفلة' : 'معاينة'}</div>
+                          <div className={opsBadge(snapshot.posting.isPosted ? 'accent' : 'info')}>
+                            {snapshot.posting.isPosted ? 'مرحل للمخزن' : 'غير مرحل'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid grid-cols-2 gap-2 text-right text-xs text-[#6b5a4c] sm:grid-cols-4 xl:grid-cols-6">
+                        <div className={[opsInset, 'p-3'].join(' ')}>
+                          <div>إجمالي الاستهلاك</div>
+                          <div className="mt-1 text-base font-black text-[#1e1712]">{formatQty(snapshot.summary.totalConsumptionQty)}</div>
+                        </div>
+                        <div className={[opsInset, 'p-3'].join(' ')}>
+                          <div>من المنتجات</div>
+                          <div className="mt-1 text-base font-black text-[#1e1712]">{formatQty(snapshot.summary.productConsumptionQty)}</div>
+                        </div>
+                        <div className={[opsInset, 'p-3'].join(' ')}>
+                          <div>من الإضافات</div>
+                          <div className="mt-1 text-base font-black text-[#1e1712]">{formatQty(snapshot.summary.addonConsumptionQty)}</div>
+                        </div>
+                        <div className={[opsInset, 'p-3'].join(' ')}>
+                          <div>Remake</div>
+                          <div className="mt-1 text-base font-black text-[#1e1712]">{formatQty(snapshot.summary.remakeWasteQty)} / {formatQty(snapshot.summary.remakeReplacementQty)}</div>
+                        </div>
+                        <div className={[opsInset, 'p-3'].join(' ')}>
+                          <div>الترحيل</div>
+                          <div className="mt-1 text-base font-black text-[#1e1712]">{snapshot.posting.isPosted ? formatQty(snapshot.posting.totalConsumptionQty) : '—'}</div>
+                        </div>
+                        <div className={[opsInset, 'p-3'].join(' ')}>
+                          <div>وقت الترحيل</div>
+                          <div className="mt-1 text-xs font-bold text-[#1e1712]">{snapshot.posting.postedAt ? formatDateTime(snapshot.posting.postedAt) : 'غير مرحل'}</div>
+                        </div>
+                      </div>
+                      {snapshot.snapshotPhase === 'closed' && !snapshot.posting.isPosted ? (
+                        <div className="mt-3 flex justify-start">
+                          <button
+                            type="button"
+                            className={opsAccentButton}
+                            onClick={() => void postShiftSnapshot(snapshot.shiftId)}
+                            disabled={postingBusyFor === snapshot.shiftId}
+                          >
+                            {postingBusyFor === snapshot.shiftId ? '...' : 'ترحيل هذه الوردية للمخزن'}
+                          </button>
+                        </div>
+                      ) : null}
+                      <div className="mt-3 space-y-2">
+                        {snapshot.lines.slice(0, 5).map((line) => (
+                          <div key={`${snapshot.id}-${line.inventoryItemId}`} className="flex items-center justify-between gap-3 rounded-2xl border border-[#eadfce] bg-[#fffaf3] px-3 py-2 text-right text-xs text-[#6b5a4c]">
+                            <div>
+                              <div className="font-bold text-[#1e1712]">{line.itemName}</div>
+                              <div className="mt-1">منتج {formatQty(line.fromProducts)} • إضافات {formatQty(line.fromAddons)}</div>
+                            </div>
+                            <div className="text-left">
+                              <div className="font-black text-[#1e1712]">{formatQty(line.totalConsumption)} {line.unitLabel}</div>
+                              <div className="mt-1">هالك {formatQty(line.remakeWasteQty)} • جديد {formatQty(line.remakeReplacementQty)}</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {!snapshot.lines.length ? <div className="mt-3 text-right text-xs text-[#7d6a59]">لا توجد خامات مرتبطة بوصفات في هذه الوردية.</div> : null}
+                    </article>
+                  ))}
+                  {!workspace.recentShiftSnapshots.length ? <div className={[opsInset, 'p-4 text-right text-sm text-[#6b5a4c]'].join(' ')}>لن تظهر السناب شوت هنا إلا بعد تطبيق migration الجديدة وتقفيل وردية أو بناء معاينة لها.</div> : null}
                 </div>
               </section>
             </div>

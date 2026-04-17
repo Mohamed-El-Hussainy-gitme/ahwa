@@ -269,6 +269,80 @@ export type InventoryEstimatedConsumptionItem = {
   recipeCount: number;
 };
 
+export type ShiftInventorySnapshotLine = {
+  inventoryItemId: string;
+  itemName: string;
+  unitLabel: string;
+  currentBalance: number;
+  lowStockThreshold: number;
+  stockStatus: InventoryStockStatus;
+  fromProducts: number;
+  fromAddons: number;
+  remakeWasteQty: number;
+  remakeReplacementQty: number;
+  totalConsumption: number;
+  recipeSourcesCount: number;
+};
+
+export type ShiftInventorySnapshotProduct = {
+  menuProductId: string;
+  productName: string;
+  stationCode: StationCode;
+  acceptedOriginalQty: number;
+  remakeWasteQty: number;
+  remakeReplacementQty: number;
+  totalPreparedQty: number;
+  estimatedConsumptionQty: number;
+  recipeLinesCount: number;
+};
+
+export type ShiftInventorySnapshotAddon = {
+  menuAddonId: string;
+  addonName: string;
+  stationCode: StationCode;
+  acceptedOriginalQty: number;
+  remakeWasteQty: number;
+  remakeReplacementQty: number;
+  totalPreparedQty: number;
+  estimatedConsumptionQty: number;
+  recipeLinesCount: number;
+};
+
+export type ShiftInventoryPostingSummary = {
+  isPosted: boolean;
+  postingId: string | null;
+  postedAt: string | null;
+  postedByOwnerId: string | null;
+  totalInventoryItems: number;
+  totalConsumptionQty: number;
+  movementCount: number;
+  alreadyPosted: boolean;
+};
+
+export type ShiftInventorySnapshot = {
+  id: string;
+  shiftId: string;
+  businessDate: string | null;
+  shiftKind: string | null;
+  shiftStatus: string;
+  snapshotPhase: 'preview' | 'closed';
+  generatedAt: string;
+  posting: ShiftInventoryPostingSummary;
+  summary: {
+    totalInventoryItems: number;
+    totalConsumptionQty: number;
+    productConsumptionQty: number;
+    addonConsumptionQty: number;
+    remakeWasteQty: number;
+    remakeReplacementQty: number;
+    coveredProductsCount: number;
+    coveredAddonsCount: number;
+  };
+  lines: ShiftInventorySnapshotLine[];
+  products: ShiftInventorySnapshotProduct[];
+  addons: ShiftInventorySnapshotAddon[];
+};
+
 export type InventoryWorkspace = {
   items: InventoryItem[];
   suppliers: InventorySupplier[];
@@ -278,6 +352,7 @@ export type InventoryWorkspace = {
   productRecipes: InventoryProductRecipe[];
   addonRecipes: InventoryAddonRecipe[];
   estimatedConsumption: InventoryEstimatedConsumptionItem[];
+  recentShiftSnapshots: ShiftInventorySnapshot[];
   analysisWindowDays: number;
 };
 

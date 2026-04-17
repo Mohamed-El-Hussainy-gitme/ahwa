@@ -5,7 +5,7 @@ import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { AccessDenied } from '@/ui/AccessState';
 import { apiPost } from '@/lib/http/client';
-import type { OperatingSettings, ShiftAssignmentTemplate } from '@/lib/ops/types';
+import type { OperatingSettings, ShiftAssignmentTemplate, ShiftInventorySnapshot } from '@/lib/ops/types';
 import { extractApiErrorMessage } from '@/lib/api/errors';
 import { RecoveryPanel } from '@/ui/ops/RecoveryPanel';
 import {
@@ -67,6 +67,7 @@ type ShiftHistoryRow = {
 };
 
 type RawShiftSnapshot = {
+  inventory?: ShiftInventorySnapshot | null;
   shift?: {
     shift_id?: string;
     shift_kind?: string;
@@ -113,6 +114,7 @@ type RawShiftSnapshot = {
 };
 
 type NormalizedSnapshot = {
+  inventory: ShiftInventorySnapshot | null;
   shift: {
     id: string;
     businessDate: string;
@@ -173,6 +175,10 @@ function formatMoney(value: string | number | null | undefined) {
   return toNumber(value).toLocaleString('ar-EG');
 }
 
+function formatQty(value: string | number | null | undefined) {
+  return toNumber(value).toLocaleString('ar-EG', { maximumFractionDigits: 3 });
+}
+
 function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapshot | null {
   if (!snapshot) return null;
 
@@ -205,6 +211,7 @@ function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapsho
   const reconciledNetSales = Math.max(itemNetSales, cashSales + deferredSales);
 
   return {
+    inventory: snapshot.inventory ?? null,
     shift: {
       id: snapshot.shift?.shift_id ?? '',
       businessDate: snapshot.shift?.business_date ?? '-',
@@ -1023,6 +1030,70 @@ export default function ShiftPage() {
               </div>
             </div>
           </div>
+
+          {snapshotView.inventory ? (
+            <div className={[opsInset, 'mt-3 p-3'].join(' ')}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-[#1e1712]">سناب شوت المخزن</div>
+                  <div className="mt-1 text-xs text-[#7d6a59]">الملخص محسوب من الوردية فقط. عند تقفيل الوردية يتم ترحيله للمخزن مرة واحدة إذا كانت الوصفات جاهزة.</div>
+                </div>
+                <div className="flex flex-col items-end gap-2">
+                  <div className={opsBadge(snapshotView.inventory.snapshotPhase === 'closed' ? 'success' : 'warning')}>
+                    {snapshotView.inventory.snapshotPhase === 'closed' ? 'مقفلة' : 'معاينة'}
+                  </div>
+                  <div className={opsBadge(snapshotView.inventory.posting.isPosted ? 'accent' : 'info')}>
+                    {snapshotView.inventory.posting.isPosted ? 'مرحل للمخزن' : 'غير مرحل'}
+                  </div>
+                </div>
+              </div>
+              <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-6">
+                <div className={opsMetricCard('accent')}>
+                  <div className="text-xs opacity-70">إجمالي الاستهلاك</div>
+                  <div className="mt-1 text-base font-bold">{formatQty(snapshotView.inventory.summary.totalConsumptionQty)}</div>
+                </div>
+                <div className={opsMetricCard('info')}>
+                  <div className="text-xs opacity-70">من المنتجات</div>
+                  <div className="mt-1 text-base font-bold">{formatQty(snapshotView.inventory.summary.productConsumptionQty)}</div>
+                </div>
+                <div className={opsMetricCard('success')}>
+                  <div className="text-xs opacity-70">من الإضافات</div>
+                  <div className="mt-1 text-base font-bold">{formatQty(snapshotView.inventory.summary.addonConsumptionQty)}</div>
+                </div>
+                <div className={opsMetricCard(snapshotView.inventory.summary.remakeWasteQty > 0 ? 'warning' : 'accent')}>
+                  <div className="text-xs opacity-70">Remake هالك / جديد</div>
+                  <div className="mt-1 text-base font-bold">{formatQty(snapshotView.inventory.summary.remakeWasteQty)} / {formatQty(snapshotView.inventory.summary.remakeReplacementQty)}</div>
+                </div>
+                <div className={opsMetricCard(snapshotView.inventory.posting.isPosted ? 'success' : 'info')}>
+                  <div className="text-xs opacity-70">ترحيل المخزن</div>
+                  <div className="mt-1 text-base font-bold">{snapshotView.inventory.posting.isPosted ? formatQty(snapshotView.inventory.posting.totalConsumptionQty) : '—'}</div>
+                </div>
+                <div className={opsMetricCard(snapshotView.inventory.posting.isPosted ? 'accent' : 'neutral')}>
+                  <div className="text-xs opacity-70">وقت الترحيل</div>
+                  <div className="mt-1 text-[11px] font-bold">{snapshotView.inventory.posting.postedAt ? formatDateTime(snapshotView.inventory.posting.postedAt) : 'غير مرحل'}</div>
+                </div>
+              </div>
+              <div className="mt-3 space-y-2">
+                {snapshotView.inventory.lines.slice(0, 6).map((line) => (
+                  <div key={line.inventoryItemId} className={[opsInset, 'flex items-center justify-between gap-2 p-2'].join(' ')}>
+                    <div className="flex-1 text-right">
+                      <div className="text-sm font-semibold text-[#1e1712]">{line.itemName}</div>
+                      <div className="mt-1 text-[11px] text-[#7d6a59]">منتج {formatQty(line.fromProducts)} • إضافات {formatQty(line.fromAddons)}</div>
+                    </div>
+                    <div className="text-left text-[11px] text-[#7d6a59]">
+                      <div className="text-sm font-black text-[#1e1712]">{formatQty(line.totalConsumption)} {line.unitLabel}</div>
+                      <div className="mt-1">هالك {formatQty(line.remakeWasteQty)} • جديد {formatQty(line.remakeReplacementQty)}</div>
+                    </div>
+                  </div>
+                ))}
+                {snapshotView.inventory.lines.length === 0 ? (
+                  <div className={[opsDashed, 'p-3 text-right text-sm text-[#6b5a4c]'].join(' ')}>
+                    لا توجد خامات مرتبطة بوصفات في هذه اللقطة.
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          ) : null}
 
           <div className={[opsInset, 'mt-3 p-3'].join(' ')}>
             <div className="text-right text-sm font-semibold text-[#1e1712]">ملخص الفريق</div>
