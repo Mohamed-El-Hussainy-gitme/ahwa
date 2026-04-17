@@ -176,7 +176,7 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
               <th className="px-3 py-2">سلّم طلبات</th>
               <th className="px-3 py-2">حاسب العملاء</th>
               <th className="px-3 py-2">كاش/آجل/سداد</th>
-              <th className="px-3 py-2">الشكاوى/الملاحظات</th>
+              <th className="px-3 py-2">الملاحظات والجودة</th>
             </tr>
           </thead>
           <tbody>
@@ -196,11 +196,11 @@ function ReportView({ period, title }: { period: PrintableReport | null; title: 
       </section>
 
       <section>
-        <div className="mb-2 text-sm font-bold">الملاحظات والشكاوى</div>
+        <div className="mb-2 text-sm font-bold">الملاحظات والجودة</div>
         <div className="grid gap-2 md:grid-cols-2">
           <div className="rounded-2xl border p-3 text-sm">
-            <div className="font-semibold">الشكاوى العامة</div>
-            <div className="mt-2 text-neutral-700">{period.complaints.length ? `إجمالي ${period.complaints.length}` : 'لا توجد شكاوى عامة.'}</div>
+            <div className="font-semibold">الملاحظات العامة على الجلسات</div>
+            <div className="mt-2 text-neutral-700">{period.complaints.length ? `إجمالي ${period.complaints.length}` : 'لا توجد ملاحظات عامة.'}</div>
           </div>
           <div className="rounded-2xl border p-3 text-sm">
             <div className="font-semibold">ملاحظات الأصناف</div>

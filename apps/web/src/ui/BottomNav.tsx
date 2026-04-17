@@ -50,7 +50,7 @@ function buildTabs(input: {
       { href: '/orders', label: 'الطلبات', icon: 'orders', badge: 0 },
       { href: '/billing', label: 'الحساب', icon: 'wallet', badge: summary?.billableQty ?? 0 },
       { href: '/customers', label: 'الآجل', icon: 'users', badge: summary?.deferredCustomerCount ?? 0 },
-      { href: '/complaints', label: 'الشكاوى', icon: 'lifebuoy', badge: 0 },
+      { href: '/complaints', label: 'الملاحظات والجودة', icon: 'lifebuoy', badge: 0 },
     ];
   }
 

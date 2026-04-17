@@ -7,6 +7,7 @@ import type {
   ComplaintItemCandidate,
   ComplaintRecord,
   ComplaintsWorkspace,
+  ItemIssueRecord,
   DashboardWorkspace,
   OpsNavSummary,
   OpsQueueHealth,
@@ -830,8 +831,10 @@ export async function buildComplaintsWorkspace(
   const [
     { data: sessionRows, error: sessionError },
     { data: itemRows, error: itemError },
-    { data: complaintRows, error: complaintError },
-    { data: issueRows, error: issueError },
+    { data: currentComplaintRows, error: currentComplaintError },
+    { data: carryComplaintRows, error: carryComplaintError },
+    { data: currentIssueRows, error: currentIssueError },
+    { data: carryIssueRows, error: carryIssueError },
   ] = await Promise.all([
     admin
       .from('service_sessions')
@@ -847,25 +850,44 @@ export async function buildComplaintsWorkspace(
       .order('created_at', { ascending: false }),
     admin
       .from('complaints')
-      .select('id, order_item_id, service_session_id, station_code, complaint_kind, complaint_scope, status, resolution_kind, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items(menu_products(product_name))')
+      .select('id, shift_id, order_item_id, service_session_id, station_code, complaint_kind, complaint_scope, status, resolution_kind, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items(menu_products(product_name))')
       .eq('cafe_id', cafeId)
       .eq('shift_id', normalizedShift.id)
       .eq('complaint_scope', 'general')
       .order('created_at', { ascending: false })
-      .limit(50),
+      .limit(80),
+    admin
+      .from('complaints')
+      .select('id, shift_id, order_item_id, service_session_id, station_code, complaint_kind, complaint_scope, status, resolution_kind, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items(menu_products(product_name))')
+      .eq('cafe_id', cafeId)
+      .neq('shift_id', normalizedShift.id)
+      .eq('complaint_scope', 'general')
+      .eq('status', 'open')
+      .order('created_at', { ascending: false })
+      .limit(24),
     admin
       .from('order_item_issues')
-      .select('id, order_item_id, service_session_id, station_code, issue_kind, action_kind, status, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items!inner(menu_products(product_name))')
+      .select('id, shift_id, order_item_id, service_session_id, station_code, issue_kind, action_kind, status, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items!inner(menu_products(product_name))')
       .eq('cafe_id', cafeId)
       .eq('shift_id', normalizedShift.id)
       .order('created_at', { ascending: false })
-      .limit(100),
+      .limit(120),
+    admin
+      .from('order_item_issues')
+      .select('id, shift_id, order_item_id, service_session_id, station_code, issue_kind, action_kind, status, requested_quantity, resolved_quantity, notes, created_at, resolved_at, created_by_staff_id, created_by_owner_id, resolved_by_staff_id, resolved_by_owner_id, service_sessions!inner(session_label), order_items!inner(menu_products(product_name))')
+      .eq('cafe_id', cafeId)
+      .neq('shift_id', normalizedShift.id)
+      .in('status', ['logged', 'applied'])
+      .order('created_at', { ascending: false })
+      .limit(36),
   ]);
 
   if (sessionError) throw sessionError;
   if (itemError) throw itemError;
-  if (complaintError) throw complaintError;
-  if (issueError) throw issueError;
+  if (currentComplaintError) throw currentComplaintError;
+  if (carryComplaintError) throw carryComplaintError;
+  if (currentIssueError) throw currentIssueError;
+  if (carryIssueError) throw carryIssueError;
 
   const sessions = (sessionRows ?? []).map(
     (row: any) => ({ id: String(row.id), label: String(row.session_label ?? '') }),
@@ -896,65 +918,77 @@ export async function buildComplaintsWorkspace(
     })
     .filter((item) => item.availableCancelQty > 0 || item.availableRemakeQty > 0 || item.availableWaiveQty > 0);
 
-  const complaints: ComplaintRecord[] = (complaintRows ?? [])
-    .filter((row: any) => {
-      if (!row.station_code) return true;
-      return allowStationCode(normalizeStationCode(row.station_code), scope.itemStationCodes);
-    })
-    .map((row: any) => {
-    const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
-    const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
-    return {
-      id: String(row.id),
-      orderItemId: row.order_item_id ? String(row.order_item_id) : null,
-      serviceSessionId: String(row.service_session_id),
-      sessionLabel: String(row.service_sessions?.session_label ?? ''),
-      productName: menuProductRef?.product_name ? String(menuProductRef.product_name) : null,
-      stationCode: row.station_code ? (normalizeStationCode(row.station_code)) : null,
-      complaintKind: String(row.complaint_kind) as ComplaintRecord['complaintKind'],
-      status: String(row.status) as ComplaintRecord['status'],
-      resolutionKind: row.resolution_kind && String(row.resolution_kind) === 'dismissed'
-        ? 'dismissed'
-        : row.status === 'resolved'
-          ? 'resolved'
-          : null,
-      requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
-      resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
-      notes: row.notes ? String(row.notes) : null,
-      createdAt: String(row.created_at),
-      resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
-      createdByLabel: row.created_by_owner_id ? 'owner' : row.created_by_staff_id ? 'staff' : null,
-      resolvedByLabel: row.resolved_by_owner_id ? 'owner' : row.resolved_by_staff_id ? 'staff' : null,
-    } satisfies ComplaintRecord;
-  });
+  const mergedComplaintRows = [...(currentComplaintRows ?? []), ...(carryComplaintRows ?? [])]
+    .filter((row: any, index: number, list: any[]) => list.findIndex((candidate) => String(candidate.id) === String(row.id)) === index);
 
-  const itemIssues = (issueRows ?? [])
+  const complaints: ComplaintRecord[] = mergedComplaintRows
     .filter((row: any) => {
       if (!row.station_code) return true;
       return allowStationCode(normalizeStationCode(row.station_code), scope.itemStationCodes);
     })
     .map((row: any) => {
-    const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
-    const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
-    return {
-      id: String(row.id),
-      orderItemId: String(row.order_item_id),
-      serviceSessionId: String(row.service_session_id),
-      sessionLabel: String(row.service_sessions?.session_label ?? ''),
-      productName: String(menuProductRef?.product_name ?? ''),
-      stationCode: row.station_code ? (normalizeStationCode(row.station_code)) : null,
-      issueKind: String(row.issue_kind ?? 'other') as ComplaintsWorkspace['itemIssues'][number]['issueKind'],
-      actionKind: String(row.action_kind ?? 'note') as ComplaintsWorkspace['itemIssues'][number]['actionKind'],
-      status: String(row.status ?? 'logged') as ComplaintsWorkspace['itemIssues'][number]['status'],
-      requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
-      resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
-      notes: row.notes ? String(row.notes) : null,
-      createdAt: String(row.created_at),
-      resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
-      createdByLabel: row.created_by_owner_id ? 'owner' : row.created_by_staff_id ? 'staff' : null,
-      resolvedByLabel: row.resolved_by_owner_id ? 'owner' : row.resolved_by_staff_id ? 'staff' : null,
-    } satisfies ComplaintsWorkspace['itemIssues'][number];
-  });
+      const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
+      const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
+      const shiftId = String(row.shift_id ?? '');
+      return {
+        id: String(row.id),
+        orderItemId: row.order_item_id ? String(row.order_item_id) : null,
+        serviceSessionId: String(row.service_session_id),
+        sessionLabel: String(row.service_sessions?.session_label ?? ''),
+        productName: menuProductRef?.product_name ? String(menuProductRef.product_name) : null,
+        stationCode: row.station_code ? normalizeStationCode(row.station_code) : null,
+        complaintKind: String(row.complaint_kind) as ComplaintRecord['complaintKind'],
+        status: String(row.status) as ComplaintRecord['status'],
+        resolutionKind: row.resolution_kind && String(row.resolution_kind) === 'dismissed'
+          ? 'dismissed'
+          : row.status === 'resolved'
+            ? 'resolved'
+            : null,
+        requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
+        resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
+        notes: row.notes ? String(row.notes) : null,
+        createdAt: String(row.created_at),
+        resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
+        createdByLabel: row.created_by_owner_id ? 'owner' : row.created_by_staff_id ? 'staff' : null,
+        resolvedByLabel: row.resolved_by_owner_id ? 'owner' : row.resolved_by_staff_id ? 'staff' : null,
+        shiftId,
+        isCarryOver: shiftId !== normalizedShift.id,
+      } satisfies ComplaintRecord;
+    });
+
+  const mergedIssueRows = [...(currentIssueRows ?? []), ...(carryIssueRows ?? [])]
+    .filter((row: any, index: number, list: any[]) => list.findIndex((candidate) => String(candidate.id) === String(row.id)) === index);
+
+  const itemIssues: ItemIssueRecord[] = mergedIssueRows
+    .filter((row: any) => {
+      if (!row.station_code) return true;
+      return allowStationCode(normalizeStationCode(row.station_code), scope.itemStationCodes);
+    })
+    .map((row: any) => {
+      const orderItemRef = Array.isArray(row.order_items) ? row.order_items[0] : row.order_items;
+      const menuProductRef = Array.isArray(orderItemRef?.menu_products) ? orderItemRef.menu_products[0] : orderItemRef?.menu_products;
+      const shiftId = String(row.shift_id ?? '');
+      return {
+        id: String(row.id),
+        orderItemId: String(row.order_item_id),
+        serviceSessionId: String(row.service_session_id),
+        sessionLabel: String(row.service_sessions?.session_label ?? ''),
+        productName: String(menuProductRef?.product_name ?? ''),
+        stationCode: row.station_code ? normalizeStationCode(row.station_code) : null,
+        issueKind: String(row.issue_kind ?? 'other') as ComplaintsWorkspace['itemIssues'][number]['issueKind'],
+        actionKind: String(row.action_kind ?? 'note') as ComplaintsWorkspace['itemIssues'][number]['actionKind'],
+        status: String(row.status ?? 'logged') as ComplaintsWorkspace['itemIssues'][number]['status'],
+        requestedQuantity: row.requested_quantity == null ? null : Number(row.requested_quantity),
+        resolvedQuantity: row.resolved_quantity == null ? null : Number(row.resolved_quantity),
+        notes: row.notes ? String(row.notes) : null,
+        createdAt: String(row.created_at),
+        resolvedAt: row.resolved_at ? String(row.resolved_at) : null,
+        createdByLabel: row.created_by_owner_id ? 'owner' : row.created_by_staff_id ? 'staff' : null,
+        resolvedByLabel: row.resolved_by_owner_id ? 'owner' : row.resolved_by_staff_id ? 'staff' : null,
+        shiftId,
+        isCarryOver: shiftId !== normalizedShift.id,
+      } satisfies ItemIssueRecord;
+    });
 
   return { shift: normalizedShift, sessions, items, complaints, itemIssues };
 }

@@ -214,7 +214,7 @@ function TotalsHero({
           label="فجوة المطابقة"
           value={`${formatMoney(totals.salesReconciliationGap)} ج`}
           tone={totals.salesReconciliationGap > 0 ? 'warning' : 'default'}
-          hint={`شكاوى ${totals.complaintTotal} • أصناف ${totals.itemIssueTotal}`}
+          hint={`ملاحظات عامة ${totals.complaintTotal} • أصناف ${totals.itemIssueTotal}`}
         />
       </div>
     </div>
@@ -233,7 +233,7 @@ function InsightStrip({
   const chips = [
     topProduct ? `الأعلى بيعًا: ${topProduct.productName} (${formatMoney(topProduct.netSales)} ج)` : 'لا يوجد منتج متصدر بعد',
     topStaff ? `الأعلى تحصيلًا: ${topStaff.actorLabel} (${formatMoney(topStaff.paymentTotal)} ج)` : 'لا يوجد بيع مسجل بعد',
-    `الجودة والملاحظات: ${totals.itemIssueNote} • إعادة مجانية: ${totals.remadeQty} • شكاوى عامة مفتوحة: ${totals.complaintOpen}`,
+    `الملاحظات والجودة: ${totals.itemIssueNote} • إعادة مجانية: ${totals.remadeQty} • ملاحظات عامة مفتوحة: ${totals.complaintOpen}`,
   ];
 
   return (
@@ -255,7 +255,7 @@ function DetailTabs({ value, onChange }: { value: DetailTab; onChange: (value: D
     { key: 'overview', label: 'الملخص' },
     { key: 'products', label: 'المنتجات' },
     { key: 'staff', label: 'العاملون' },
-    { key: 'issues', label: 'الجودة والملاحظات' },
+    { key: 'issues', label: 'الملاحظات والجودة' },
   ];
 
   return (
@@ -394,7 +394,7 @@ function StaffList({ items }: { items: StaffPerformanceRow[] }) {
                 بدائل مجانية {row.replacementDeliveredQty} • أُعيد تجهيزها {row.remadeQty} • إلغاء {row.cancelledQty} • إسقاط {row.waivedQty}
               </div>
               <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
-                شكاوى {row.complaintCount} • ملاحظات أصناف {row.itemIssueCount}
+                ملاحظات عامة {row.complaintCount} • ملاحظات أصناف {row.itemIssueCount}
               </div>
             </div>
           </div>
@@ -416,7 +416,7 @@ function ShiftList({ items }: { items: ReportShiftRow[] }) {
               <div className="font-semibold">{shiftKindLabel(row.kind)}</div>
               <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">{row.businessDate ?? ''}</div>
               <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
-                {row.status === 'open' ? 'مفتوحة' : 'مقفولة'} • جلسات {row.totalSessions} • شكاوى {row.complaintTotal} • ملاحظات أصناف {row.itemIssueTotal}
+                {row.status === 'open' ? 'مفتوحة' : 'مقفولة'} • جلسات {row.totalSessions} • ملاحظات عامة {row.complaintTotal} • ملاحظات أصناف {row.itemIssueTotal}
               </div>
             </div>
             <div className="shrink-0 text-left">
@@ -441,7 +441,7 @@ function DayBreakdown({ period }: { period: PeriodReport | CustomRangeReport }) 
             <div className="min-w-0 flex-1 text-right">
               <div className="font-semibold">{row.businessDate}</div>
               <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
-                ورديات {row.shiftCount} • جلسات {row.totalSessions} • شكاوى {row.complaintTotal} • ملاحظات أصناف {row.itemIssueTotal}
+                ورديات {row.shiftCount} • جلسات {row.totalSessions} • ملاحظات عامة {row.complaintTotal} • ملاحظات أصناف {row.itemIssueTotal}
               </div>
             </div>
             <div className="shrink-0 text-left">
@@ -487,7 +487,7 @@ function DeferredList({ items }: { items: DeferredCustomerSummary[] }) {
 }
 
 function ComplaintTimeline({ items }: { items: ReportComplaintEntry[] }) {
-  if (!items.length) return <EmptyState text="لا توجد شكاوى عامة محفوظة في هذه الفترة." />;
+  if (!items.length) return <EmptyState text="لا توجد ملاحظات عامة عامة محفوظة في هذه الفترة." />;
 
   return (
     <div className="space-y-2">
@@ -820,8 +820,17 @@ export default function ReportsPage() {
           {detailTab === 'staff' ? <div className="ahwa-card p-3"><div className="font-semibold">كل العاملين</div><div className="mt-3"><StaffList items={currentStaff} /></div></div> : null}
           {detailTab === 'issues' ? (
             <div className="space-y-3">
-              <div className="ahwa-card p-3"><div className="font-semibold">الشكاوى العامة</div><div className="mt-3"><ComplaintTimeline items={currentComplaints} /></div></div>
-              <div className="ahwa-card p-3"><div className="font-semibold">ملاحظات وإجراءات الأصناف</div><div className="mt-3"><ItemIssueTimeline items={currentItemIssues} /></div></div>
+              <div className="ahwa-card p-3">
+                <div className="font-semibold">ملخص الملاحظات والجودة</div>
+                <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                  <MetricCard label="ملاحظات عامة" value={String(currentShift?.complaintTotal ?? 0)} tone={(currentShift?.complaintTotal ?? 0) > 0 ? 'warning' : 'default'} />
+                  <MetricCard label="مفتوحة الآن" value={String(currentShift?.complaintOpen ?? 0)} tone={(currentShift?.complaintOpen ?? 0) > 0 ? 'warning' : 'default'} />
+                  <MetricCard label="إجراءات أصناف" value={String(currentShift?.itemIssueTotal ?? 0)} tone={(currentShift?.itemIssueTotal ?? 0) > 0 ? 'warning' : 'default'} />
+                  <MetricCard label="إعادات وإلغاءات" value={String((currentShift?.complaintRemake ?? 0) + (currentShift?.complaintCancel ?? 0) + (currentShift?.complaintWaive ?? 0))} tone={((currentShift?.complaintRemake ?? 0) + (currentShift?.complaintCancel ?? 0) + (currentShift?.complaintWaive ?? 0)) > 0 ? 'warning' : 'default'} />
+                </div>
+              </div>
+              <div className="ahwa-card p-3"><div className="font-semibold">الملاحظات العامة على الجلسات</div><div className="mt-3"><ComplaintTimeline items={currentComplaints} /></div></div>
+              <div className="ahwa-card p-3"><div className="font-semibold">إجراءات الجودة على الأصناف</div><div className="mt-3"><ItemIssueTimeline items={currentItemIssues} /></div></div>
             </div>
           ) : null}
         </section>
@@ -846,8 +855,17 @@ export default function ReportsPage() {
           {detailTab === 'staff' ? <div className="ahwa-card p-3"><div className="font-semibold">كل العاملين</div><div className="mt-3"><StaffList items={selectedPeriod.staff} /></div></div> : null}
           {detailTab === 'issues' ? (
             <div className="space-y-3">
-              <div className="ahwa-card p-3"><div className="font-semibold">الشكاوى العامة</div><div className="mt-3"><ComplaintTimeline items={selectedPeriod.complaints} /></div></div>
-              <div className="ahwa-card p-3"><div className="font-semibold">ملاحظات وإجراءات الأصناف</div><div className="mt-3"><ItemIssueTimeline items={selectedPeriod.itemIssues} /></div></div>
+              <div className="ahwa-card p-3">
+                <div className="font-semibold">ملخص الملاحظات والجودة</div>
+                <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                  <MetricCard label="ملاحظات عامة" value={String(selectedPeriod.totals.complaintTotal)} tone={selectedPeriod.totals.complaintTotal > 0 ? 'warning' : 'default'} />
+                  <MetricCard label="مفتوحة بنهاية الفترة" value={String(selectedPeriod.totals.complaintOpen)} tone={selectedPeriod.totals.complaintOpen > 0 ? 'warning' : 'default'} />
+                  <MetricCard label="إجراءات أصناف" value={String(selectedPeriod.totals.itemIssueTotal)} tone={selectedPeriod.totals.itemIssueTotal > 0 ? 'warning' : 'default'} />
+                  <MetricCard label="إعادات وإلغاءات" value={String(selectedPeriod.totals.complaintRemake + selectedPeriod.totals.complaintCancel + selectedPeriod.totals.complaintWaive)} tone={(selectedPeriod.totals.complaintRemake + selectedPeriod.totals.complaintCancel + selectedPeriod.totals.complaintWaive) > 0 ? 'warning' : 'default'} />
+                </div>
+              </div>
+              <div className="ahwa-card p-3"><div className="font-semibold">الملاحظات العامة على الجلسات</div><div className="mt-3"><ComplaintTimeline items={selectedPeriod.complaints} /></div></div>
+              <div className="ahwa-card p-3"><div className="font-semibold">إجراءات الجودة على الأصناف</div><div className="mt-3"><ItemIssueTimeline items={selectedPeriod.itemIssues} /></div></div>
             </div>
           ) : null}
         </section>

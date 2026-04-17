@@ -630,7 +630,7 @@ export type ComplaintSessionOption = {
 
 export type ItemIssueActionKind = 'note' | 'remake' | 'cancel_undelivered' | 'waive_delivered';
 
-export type ItemIssueStatus = 'logged' | 'applied' | 'dismissed';
+export type ItemIssueStatus = 'logged' | 'applied' | 'verified' | 'dismissed';
 
 export type ItemIssueRecord = {
   id: string;
@@ -649,6 +649,9 @@ export type ItemIssueRecord = {
   resolvedAt: string | null;
   createdByLabel: string | null;
   resolvedByLabel: string | null;
+  shiftId?: string;
+  businessDate?: string | null;
+  isCarryOver?: boolean;
 };
 export type ComplaintRecord = {
   id: string;
@@ -667,6 +670,9 @@ export type ComplaintRecord = {
   resolvedAt: string | null;
   createdByLabel: string | null;
   resolvedByLabel: string | null;
+  shiftId?: string;
+  businessDate?: string | null;
+  isCarryOver?: boolean;
 };
 
 export type ReportComplaintEntry = ComplaintRecord & {

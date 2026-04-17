@@ -68,6 +68,8 @@ type ShiftHistoryRow = {
 
 type RawShiftSnapshot = {
   inventory?: ShiftInventorySnapshot | null;
+  complaints?: Array<Record<string, unknown>>;
+  item_issues?: Array<Record<string, unknown>>;
   shift?: {
     shift_id?: string;
     shift_kind?: string;
@@ -87,6 +89,13 @@ type RawShiftSnapshot = {
     net_sales?: string | number | null;
     recognized_sales?: string | number | null;
     sales_reconciliation_gap?: string | number | null;
+    complaint_total?: string | number | null;
+    complaint_open?: string | number | null;
+    item_issue_total?: string | number | null;
+    item_issue_note?: string | number | null;
+    complaint_remake?: string | number | null;
+    complaint_cancel?: string | number | null;
+    complaint_waive?: string | number | null;
   };
   staff?: Array<{
     actor_label?: string | null;
@@ -130,6 +139,13 @@ type NormalizedSnapshot = {
     deferredSales: number;
     deliveredItemCount: number;
     remadeItemCount: number;
+    qualityNoteCount: number;
+    qualityOpenCount: number;
+    itemIssueCount: number;
+    itemIssueNoteCount: number;
+    remakeIssueCount: number;
+    cancelIssueCount: number;
+    waiveIssueCount: number;
   };
   employees: Array<{
     userId: string;
@@ -227,6 +243,13 @@ function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapsho
       deferredSales,
       deliveredItemCount: toNumber(snapshot.summary?.deliveredItemCount ?? snapshot.totals?.delivered_qty),
       remadeItemCount: toNumber(snapshot.summary?.remadeItemCount ?? snapshot.totals?.remade_qty),
+      qualityNoteCount: toNumber(snapshot.totals?.complaint_total),
+      qualityOpenCount: toNumber(snapshot.totals?.complaint_open),
+      itemIssueCount: toNumber(snapshot.totals?.item_issue_total),
+      itemIssueNoteCount: toNumber(snapshot.totals?.item_issue_note),
+      remakeIssueCount: toNumber(snapshot.totals?.complaint_remake),
+      cancelIssueCount: toNumber(snapshot.totals?.complaint_cancel),
+      waiveIssueCount: toNumber(snapshot.totals?.complaint_waive),
     },
     employees,
   };
@@ -1028,6 +1051,25 @@ export default function ShiftPage() {
               <div className="mt-1 text-base font-bold">
                 {snapshotView.summary.deliveredItemCount} / {snapshotView.summary.remadeItemCount}
               </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+            <div className={opsMetricCard(snapshotView.summary.qualityOpenCount > 0 ? 'warning' : 'neutral')}>
+              <div className="text-xs text-[#8a7763]">ملاحظات عامة مفتوحة</div>
+              <div className="mt-1 text-base font-bold">{formatQty(snapshotView.summary.qualityOpenCount)}</div>
+            </div>
+            <div className={opsMetricCard(snapshotView.summary.qualityNoteCount > 0 ? 'accent' : 'neutral')}>
+              <div className="text-xs text-[#8a7763]">إجمالي الملاحظات العامة</div>
+              <div className="mt-1 text-base font-bold">{formatQty(snapshotView.summary.qualityNoteCount)}</div>
+            </div>
+            <div className={opsMetricCard(snapshotView.summary.itemIssueCount > 0 ? 'warning' : 'neutral')}>
+              <div className="text-xs text-[#8a7763]">إجراءات وملاحظات الأصناف</div>
+              <div className="mt-1 text-base font-bold">{formatQty(snapshotView.summary.itemIssueCount)}</div>
+            </div>
+            <div className={opsMetricCard((snapshotView.summary.remakeIssueCount + snapshotView.summary.cancelIssueCount + snapshotView.summary.waiveIssueCount) > 0 ? 'warning' : 'neutral')}>
+              <div className="text-xs text-[#8a7763]">إجراءات تنفيذية</div>
+              <div className="mt-1 text-base font-bold">{formatQty(snapshotView.summary.remakeIssueCount + snapshotView.summary.cancelIssueCount + snapshotView.summary.waiveIssueCount)}</div>
             </div>
           </div>
 

@@ -12,7 +12,7 @@ const cards = [
   { href: '/owner/customers', title: 'ملف العملاء', icon: 'users', description: 'بيانات الزبائن الأساسية: الهاتف، العنوان، والمشروب المفضل.' },
   { href: '/inventory', title: 'المخزن', icon: 'building', description: 'الخامات، الحركات، والموردون داخل المخزن.' },
   { href: '/customers', title: 'دفتر الآجل', icon: 'users', description: 'الأرصدة، السداد، وحركة العملاء اليومية.' },
-  { href: '/complaints', title: 'الشكاوى', icon: 'lifebuoy', description: 'المعالجة والإعادة ومراجعة مستوى الخدمة.' },
+  { href: '/complaints', title: 'الملاحظات والجودة', icon: 'lifebuoy', description: 'المعالجة والإعادة ومراجعة مستوى الخدمة.' },
   { href: '/staff', title: 'فريق العمل', icon: 'crown', description: 'البيانات، الحالة، والصلاحيات التشغيلية.' },
   { href: '/menu', title: 'المنيو', icon: 'menu', description: 'الأقسام والأصناف والأسعار داخل القهوة.' },
   { href: '/reports', title: 'التقارير', icon: 'chart', description: 'تقارير يومية وأسبوعية وشهرية للإدارة.' },

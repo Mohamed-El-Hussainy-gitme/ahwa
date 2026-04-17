@@ -171,7 +171,7 @@ function buildRoleConfig(role: RoleView, data: OpsNavSummary | undefined, deferr
         { href: '/shift', label: 'الوردية', description: 'فتح الوردية، توزيع الأدوار، وضبط بداية التشغيل.', tone: 'primary', icon: 'clock' },
         { href: '/orders', label: 'الطلبات', description: 'متابعة الجلسات والطلبات الجارية والتسليم المباشر.', icon: 'orders' },
         { href: '/billing', label: 'الحساب', description: 'تحصيل الفواتير أو ترحيلها إلى الآجل عند الحاجة.', icon: 'wallet' },
-        { href: '/complaints', label: 'الشكاوى', description: 'مراجعة المعالجات والإعادة لضمان جودة الخدمة.', icon: 'lifebuoy' },
+        { href: '/complaints', label: 'الملاحظات والجودة', description: 'مراجعة المعالجات والإعادة لضمان جودة الخدمة.', icon: 'lifebuoy' },
         { href: '/owner', label: 'الإدارة', description: 'المنيو، فريق العمل، والتقارير في مساحة واحدة.', icon: 'crown' },
         { href: '/support?source=in_app&page=/dashboard', label: 'الدعم', description: 'بلاغ تشغيلي أو وصول مؤقت للدعم الفني.', tone: 'support', icon: 'support' },
       ],
@@ -193,7 +193,7 @@ function buildRoleConfig(role: RoleView, data: OpsNavSummary | undefined, deferr
         { href: '/ready', label: 'الجاهز', description: 'مراجعة الجاهز للتسليم وإنهاء الحركة بسرعة.', icon: 'checkCircle' },
         { href: '/billing', label: 'الحساب', description: 'تحصيل أو ترحيل إلى الآجل حسب حالة العميل.', icon: 'wallet' },
         { href: '/customers', label: 'دفتر الآجل', description: 'مراجعة الأرصدة والسداد وحركة العملاء.', icon: 'users' },
-        { href: '/complaints', label: 'الشكاوى', description: 'تسجيل الشكوى وتنفيذ المعالجة التشغيلية.', icon: 'lifebuoy' },
+        { href: '/complaints', label: 'الملاحظات والجودة', description: 'تسجيل الشكوى وتنفيذ المعالجة التشغيلية.', icon: 'lifebuoy' },
         { href: '/support?source=in_app&page=/dashboard', label: 'الدعم', description: 'بلاغ تشغيل أو مشكلة مباشرة أثناء الوردية.', tone: 'support', icon: 'support' },
       ],
     };
