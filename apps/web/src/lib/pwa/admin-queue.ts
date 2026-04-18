@@ -56,7 +56,7 @@ let inMemoryState: AdminQueueSnapshot = {
 };
 let loaded = false;
 let activeFlush: Promise<void> | null = null;
-let retryTimer: ReturnType<typeof window.setTimeout> | null = null;
+let retryTimer: number | null = null;
 
 function ensureLoaded() {
   if (loaded) return;
@@ -139,7 +139,8 @@ function isRetryableStatus(status: number) {
 }
 
 function computeRetryDelayMs(attempts: number) {
-  return RETRY_BACKOFF_STEPS_MS[Math.min(Math.max(attempts - 1, 0), RETRY_BACKOFF_STEPS_MS.length - 1)];
+  const index = Math.min(Math.max(attempts - 1, 0), RETRY_BACKOFF_STEPS_MS.length - 1);
+  return RETRY_BACKOFF_STEPS_MS[index] ?? RETRY_BACKOFF_STEPS_MS[RETRY_BACKOFF_STEPS_MS.length - 1] ?? 300_000;
 }
 
 async function executeEntry(entry: AdminQueueEntry) {
