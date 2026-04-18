@@ -105,3 +105,4 @@ execSync('node ./scripts/verify-phase9-explicit-db-propagation.mjs', { stdio: 'i
 execSync('node ./scripts/verify-platform-response-hardening.mjs', { stdio: 'inherit' });
 
 execSync('node ./scripts/verify-runtime-public-freshness.mjs', { stdio: 'inherit' });
+execSync('node ./scripts/verify-ops-admin-resilience.mjs', { stdio: 'inherit' });

@@ -32,6 +32,7 @@ npm run dev:web
 - `npm run verify:phase9` checks post-phase-9 runtime localization.
 - `npm run verify:phase10` checks that the regression/smoke assets for the unified runtime remain in place.
 - `npm run smoke:phase10` runs the full HTTP + cookie end-to-end smoke flow against a running local web app.
+- `npm run verify:ops-admin-resilience` checks that admin-safe offline queue/draft/checklist assets remain wired in the active web package.
 
 
 ## Phase 9 operational database propagation

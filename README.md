@@ -67,11 +67,13 @@ The platform surface should not expose detailed per-cafe operating sales, compla
 - `npm run verify:phase9`
 - `npm run verify:phase10`
 - `npm run smoke:phase10`
+- `npm run verify:ops-admin-resilience`
 
 ## Deployment hardening
 
 - GitHub CI: `.github/workflows/ci.yml`
 - Release readiness check: `npm run verify:release`
+- Admin resilience manual smoke: `docs/execution/ops-admin-resilience-smoke-runbook.md`
 - GitHub/Vercel checklist: `docs/deployment/github-vercel-checklist.md`
 - First production runbook: `docs/deployment/first-production-release-runbook.md`
 - Secret handling and key rotation notes: `docs/security/secrets-and-key-rotation.md`

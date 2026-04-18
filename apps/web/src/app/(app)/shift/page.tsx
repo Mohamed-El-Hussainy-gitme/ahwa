@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { AccessDenied } from '@/ui/AccessState';
@@ -541,7 +541,7 @@ function buildAssignmentsFromTemplate(template: ShiftAssignmentTemplate | null |
 
 export default function ShiftPage() {
   const { can, effectiveRole } = useAuthz();
-  const { enqueueMutation, isOnline } = useOpsPwa();
+  const { enqueueMutation, isOnline, lastSyncAt } = useOpsPwa();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [actors, setActors] = useState<AssignableActorRow[]>([]);
@@ -563,6 +563,7 @@ export default function ShiftPage() {
   const [openingChecklist, setOpeningChecklist, openingChecklistDraft] = usePersistentDraft<ShiftChecklistFormState>(SHIFT_DRAFT_KEYS.openingChecklist, createChecklistFormState);
   const [closingChecklist, setClosingChecklist, closingChecklistDraft] = usePersistentDraft<ShiftChecklistFormState>(SHIFT_DRAFT_KEYS.closingChecklist, createChecklistFormState);
   const [checklistBusyStage, setChecklistBusyStage] = useState<ChecklistStage | null>(null);
+  const lastQueueSyncAtRef = useRef<number | null>(null);
 
   const activeAssignableActors = useMemo(
     () => actors.filter((item) => item.isActive && (item.employmentStatus ?? 'active') === 'active'),
@@ -665,6 +666,19 @@ export default function ShiftPage() {
     if (!canViewShift) return;
     void load();
   }, [canViewShift, load]);
+
+  useEffect(() => {
+    if (!canViewShift || lastSyncAt === null) return;
+    if (lastQueueSyncAtRef.current === null) {
+      lastQueueSyncAtRef.current = lastSyncAt;
+      return;
+    }
+    if (lastQueueSyncAtRef.current === lastSyncAt) {
+      return;
+    }
+    lastQueueSyncAtRef.current = lastSyncAt;
+    void load();
+  }, [canViewShift, lastSyncAt, load]);
 
   useEffect(() => {
     if (!canManageShift || !!shift) return;
@@ -871,6 +885,7 @@ export default function ShiftPage() {
           method: 'POST',
           body: payload,
           label: `${checklistStageLabel(stage)} محفوظ محليًا حتى عودة الاتصال.`,
+          clearDraftKeys: [stage === 'opening' ? SHIFT_DRAFT_KEYS.openingChecklist : SHIFT_DRAFT_KEYS.closingChecklist],
         }));
         setMessage(`${checklistStageLabel(stage)} محفوظ محليًا حتى عودة الاتصال.`);
         return;
@@ -902,6 +917,7 @@ export default function ShiftPage() {
           method: 'POST',
           body: payload,
           label: `${checklistStageLabel(stage)} محفوظ محليًا حتى عودة الاتصال.`,
+          clearDraftKeys: [stage === 'opening' ? SHIFT_DRAFT_KEYS.openingChecklist : SHIFT_DRAFT_KEYS.closingChecklist],
         }));
         setMessage(`${checklistStageLabel(stage)} محفوظ محليًا حتى عودة الاتصال.`);
         return;

@@ -44,7 +44,8 @@
     "soak:ops": "node ./scripts/load/run-ops-soak.mjs",
     "failure:ops": "node ./scripts/load/run-ops-failure-lab.mjs",
     "report:capacity": "node ./scripts/load/build-capacity-report.mjs",
-    "verify:phase30": "node ./scripts/verify-phase30-load-lab.mjs"
+    "verify:phase30": "node ./scripts/verify-phase30-load-lab.mjs",
+    "verify:ops-admin-resilience": "node ./scripts/verify-ops-admin-resilience.mjs"
   },
   "packageManager": "npm@10.8.2"
 }
