@@ -5,13 +5,29 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { opsClient } from '@/lib/ops/client';
+import { OPS_CACHE_TAGS } from '@/lib/ops/cache-tags';
+import { isOfflineLikeError } from '@/lib/pwa/admin-queue';
+import { buildQueuedMutation, useOpsPwa } from '@/lib/pwa/provider';
+import { usePersistentDraft } from '@/lib/pwa/use-persistent-draft';
+import { useWorkspaceSnapshot } from '@/lib/pwa/workspace-snapshot';
 import type { ComplaintItemCandidate, ComplaintRecord, ComplaintsWorkspace, ItemIssueRecord } from '@/lib/ops/types';
 import { AccessDenied, ShiftRequired } from '@/ui/AccessState';
-import { useOpsCommand, useOpsWorkspace } from '@/lib/ops/hooks';
+import { useOpsCommand } from '@/lib/ops/hooks';
 import { QuantityStepper } from '@/ui/ops/QuantityStepper';
 
 type ItemAction = 'none' | 'remake' | 'cancel_undelivered' | 'waive_delivered';
 type QualityTab = 'active' | 'log' | 'done' | 'history';
+
+const COMPLAINTS_DRAFT_KEYS = {
+  workspace: 'ahwa:workspace:complaints:v1',
+  generalSessionId: 'ahwa:draft:complaints:general-session:v1',
+  itemSessionId: 'ahwa:draft:complaints:item-session:v1',
+  generalKind: 'ahwa:draft:complaints:general-kind:v1',
+  generalNotes: 'ahwa:draft:complaints:general-notes:v1',
+  qualityTab: 'ahwa:draft:complaints:quality-tab:v1',
+  selectedQty: 'ahwa:draft:complaints:selected-qty:v1',
+  notesByItem: 'ahwa:draft:complaints:notes-by-item:v1',
+} as const;
 
 function complaintKindForAction(action: Exclude<ItemAction, 'none'>) {
   if (action === 'remake') return 'quality_issue' as const;
@@ -94,22 +110,26 @@ function formatIssueTime(value: string) {
 
 export default function ComplaintsPage() {
   const { can, shift, effectiveRole } = useAuthz();
+  const { enqueueMutation, isOnline } = useOpsPwa();
   const [localError, setLocalError] = useState<string | null>(null);
-  const [selectedQty, setSelectedQty] = useState<Record<string, number>>({});
-  const [notesByItem, setNotesByItem] = useState<Record<string, string>>({});
+  const [selectedQty, setSelectedQty, selectedQtyDraft] = usePersistentDraft<Record<string, number>>(COMPLAINTS_DRAFT_KEYS.selectedQty, {});
+  const [notesByItem, setNotesByItem, notesByItemDraft] = usePersistentDraft<Record<string, string>>(COMPLAINTS_DRAFT_KEYS.notesByItem, {});
   const [expandedByItem, setExpandedByItem] = useState<Record<string, boolean>>({});
-  const [generalSessionId, setGeneralSessionId] = useState('');
-  const [itemSessionId, setItemSessionId] = useState('');
-  const [generalKind, setGeneralKind] = useState<ComplaintRecord['complaintKind']>('other');
-  const [generalNotes, setGeneralNotes] = useState('');
-  const [qualityTab, setQualityTab] = useState<QualityTab>('active');
+  const [generalSessionId, setGeneralSessionId, generalSessionDraft] = usePersistentDraft(COMPLAINTS_DRAFT_KEYS.generalSessionId, '');
+  const [itemSessionId, setItemSessionId, itemSessionDraft] = usePersistentDraft(COMPLAINTS_DRAFT_KEYS.itemSessionId, '');
+  const [generalKind, setGeneralKind, generalKindDraft] = usePersistentDraft<ComplaintRecord['complaintKind']>(COMPLAINTS_DRAFT_KEYS.generalKind, 'other');
+  const [generalNotes, setGeneralNotes, generalNotesDraft] = usePersistentDraft(COMPLAINTS_DRAFT_KEYS.generalNotes, '');
+  const [qualityTab, setQualityTab] = usePersistentDraft<QualityTab>(COMPLAINTS_DRAFT_KEYS.qualityTab, 'active');
 
-  const loader = useCallback(() => opsClient.complaintsWorkspace(), []);
-  const { data, error } = useOpsWorkspace<ComplaintsWorkspace>(loader, {
+  const complaintsWorkspace = useWorkspaceSnapshot<ComplaintsWorkspace>(useCallback(() => opsClient.complaintsWorkspace(), []), {
     cacheKey: 'workspace:complaints',
     staleTimeMs: 20_000,
     enabled: Boolean(shift),
+    invalidationTags: [OPS_CACHE_TAGS.complaints, OPS_CACHE_TAGS.orders, OPS_CACHE_TAGS.sessions, OPS_CACHE_TAGS.billing, OPS_CACHE_TAGS.reports],
+    storageKey: COMPLAINTS_DRAFT_KEYS.workspace,
   });
+  const data = complaintsWorkspace.data;
+  const error = complaintsWorkspace.error;
 
   const canManageComplaintActions = can.owner || can.billing;
   const sessions = data?.sessions ?? [];
@@ -149,17 +169,68 @@ export default function ComplaintsPage() {
   const historyItemIssues = itemIssues.filter((item) => item.status !== 'logged' || item.isCarryOver).slice(0, 40);
   const carryOverCount = activeGeneral.filter((item) => item.isCarryOver).length + activeItemIssues.filter((item) => item.isCarryOver).length;
 
+  const queueTags = [OPS_CACHE_TAGS.complaints, OPS_CACHE_TAGS.orders, OPS_CACHE_TAGS.sessions, OPS_CACHE_TAGS.billing, OPS_CACHE_TAGS.reports] as const;
+
+  const runQueueableComplaintMutation = useCallback(async (options: {
+    url: string;
+    body: unknown;
+    successMessage: string;
+    queuedMessage: string;
+    onSuccess?: () => void;
+    onQueued?: () => void;
+  }) => {
+    if (!isOnline) {
+      await enqueueMutation(buildQueuedMutation({ url: options.url, method: 'POST', body: options.body, label: options.queuedMessage, invalidateTags: queueTags }));
+      options.onQueued?.();
+      setLocalError(options.queuedMessage);
+      return;
+    }
+    try {
+      const response = await fetch(options.url, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(options.body),
+        cache: 'no-store',
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error || payload?.message || 'REQUEST_FAILED');
+      }
+      await complaintsWorkspace.reload();
+      options.onSuccess?.();
+      setLocalError(options.successMessage);
+    } catch (error) {
+      if (!isOfflineLikeError(error)) {
+        throw error;
+      }
+      await enqueueMutation(buildQueuedMutation({ url: options.url, method: 'POST', body: options.body, label: options.queuedMessage, invalidateTags: queueTags }));
+      options.onQueued?.();
+      setLocalError(options.queuedMessage);
+    }
+  }, [complaintsWorkspace, enqueueMutation, isOnline]);
+
   const generalComplaintCommand = useOpsCommand(
     async () => {
       if (!effectiveGeneralSessionId || !generalNotes.trim()) throw new Error('INVALID_INPUT');
-      await opsClient.createComplaint({
-        mode: 'general',
-        serviceSessionId: effectiveGeneralSessionId,
-        complaintKind: generalKind,
-        notes: generalNotes.trim(),
-        action: 'none',
+      await runQueueableComplaintMutation({
+        url: '/api/ops/complaints/create',
+        body: {
+          mode: 'general',
+          serviceSessionId: effectiveGeneralSessionId,
+          complaintKind: generalKind,
+          notes: generalNotes.trim(),
+          action: 'none',
+        },
+        successMessage: 'تم تسجيل الملاحظة العامة.',
+        queuedMessage: 'تم حفظ الملاحظة العامة في الطابور المحلي.',
+        onSuccess: () => {
+          generalNotesDraft.resetDraft();
+        },
+        onQueued: () => {
+          generalNotesDraft.resetDraft();
+        },
       });
-      setGeneralNotes('');
     },
     { onError: setLocalError },
   );
@@ -167,32 +238,54 @@ export default function ComplaintsPage() {
   const actionCommand = useOpsCommand(
     async (item: ComplaintItemCandidate, action: ItemAction) => {
       const quantity = clampQty(selectedQty[item.orderItemId] ?? 1, maxQtyForAction(item, action));
-      await opsClient.createComplaint({
-        mode: 'item',
-        serviceSessionId: item.serviceSessionId,
-        orderItemId: item.orderItemId,
-        complaintKind: action === 'none' ? 'other' : complaintKindForAction(action),
-        quantity: action === 'none' ? undefined : quantity,
-        notes: notesByItem[item.orderItemId]?.trim() || undefined,
-        action,
+      await runQueueableComplaintMutation({
+        url: '/api/ops/complaints/create',
+        body: {
+          mode: 'item',
+          serviceSessionId: item.serviceSessionId,
+          orderItemId: item.orderItemId,
+          complaintKind: action === 'none' ? 'other' : complaintKindForAction(action),
+          quantity: action === 'none' ? undefined : quantity,
+          notes: notesByItem[item.orderItemId]?.trim() || undefined,
+          action,
+        },
+        successMessage: 'تم حفظ الإجراء على الصنف.',
+        queuedMessage: 'تم حفظ الإجراء على الصنف في الطابور المحلي.',
+        onSuccess: () => {
+          setSelectedQty((state) => ({ ...state, [item.orderItemId]: 1 }));
+          setNotesByItem((state) => ({ ...state, [item.orderItemId]: '' }));
+          setExpandedByItem((state) => ({ ...state, [item.orderItemId]: false }));
+        },
+        onQueued: () => {
+          setSelectedQty((state) => ({ ...state, [item.orderItemId]: 1 }));
+          setNotesByItem((state) => ({ ...state, [item.orderItemId]: '' }));
+          setExpandedByItem((state) => ({ ...state, [item.orderItemId]: false }));
+        },
       });
-      setSelectedQty((state) => ({ ...state, [item.orderItemId]: 1 }));
-      setNotesByItem((state) => ({ ...state, [item.orderItemId]: '' }));
-      setExpandedByItem((state) => ({ ...state, [item.orderItemId]: false }));
     },
     { onError: setLocalError },
   );
 
   const resolveCommand = useOpsCommand(
     async (complaint: ComplaintRecord, resolutionKind: 'resolved' | 'dismissed') => {
-      await opsClient.resolveComplaint({ complaintId: complaint.id, resolutionKind });
+      await runQueueableComplaintMutation({
+        url: '/api/ops/complaints/resolve',
+        body: { complaintId: complaint.id, resolutionKind },
+        successMessage: resolutionKind === 'resolved' ? 'تم اعتماد معالجة الملاحظة.' : 'تم إغلاق الملاحظة.',
+        queuedMessage: resolutionKind === 'resolved' ? 'تم حفظ اعتماد الملاحظة في الطابور المحلي.' : 'تم حفظ إغلاق الملاحظة في الطابور المحلي.',
+      });
     },
     { onError: setLocalError },
   );
 
   const updateItemIssueCommand = useOpsCommand(
     async (itemIssue: ItemIssueRecord, status: 'applied' | 'verified' | 'dismissed') => {
-      await opsClient.updateItemIssueStatus({ itemIssueId: itemIssue.id, status });
+      await runQueueableComplaintMutation({
+        url: '/api/ops/complaints/item-issues/update',
+        body: { itemIssueId: itemIssue.id, status },
+        successMessage: status === 'verified' ? 'تم التحقق من الإجراء.' : status === 'dismissed' ? 'تم إغلاق الإجراء.' : 'تم تثبيت الإجراء على الصنف.',
+        queuedMessage: status === 'verified' ? 'تم حفظ التحقق من الإجراء في الطابور المحلي.' : status === 'dismissed' ? 'تم حفظ إغلاق الإجراء في الطابور المحلي.' : 'تم حفظ تحديث الإجراء في الطابور المحلي.',
+      });
     },
     { onError: setLocalError },
   );
@@ -213,10 +306,11 @@ export default function ComplaintsPage() {
       desktopMode={can.owner ? 'admin' : 'mobile'}
     >
       {effectiveError ? (
-        <div className="mb-3 ahwa-alert-danger p-3 text-sm">
+        <div className={`mb-3 p-3 text-sm ${effectiveError === 'INVALID_INPUT' ? 'ahwa-alert-danger' : (effectiveError.includes('تم ') || effectiveError.includes('الطابور المحلي')) ? 'ahwa-alert-success' : 'ahwa-alert-danger'}`}>
           {effectiveError === 'INVALID_INPUT' ? 'أكمل البيانات المطلوبة أولاً.' : effectiveError}
         </div>
       ) : null}
+      {complaintsWorkspace.usingSnapshotFallback ? <div className="mb-3 rounded-2xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">تعرض الصفحة آخر نسخة جودة محفوظة محليًا لحين عودة الاتصال.</div> : null}
 
       <div className="space-y-4">
         <section className="ahwa-card p-3">

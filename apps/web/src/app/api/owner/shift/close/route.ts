@@ -8,13 +8,15 @@ import {
   requireOpsActorContext,
   requireOwnerRole,
 } from '@/app/api/ops/_helpers';
-import { closeShift } from '@/lib/ops/owner-admin';
+import { closeShift, upsertShiftChecklist } from '@/lib/ops/owner-admin';
+import { ShiftChecklistPayloadSchema } from '@/lib/ops/shift-checklists-schema';
 import { apiFail } from '@/app/api/_shared';
 import { NextResponse } from 'next/server';
 
 const Input = z.object({
   shiftId: z.string().uuid().optional(),
   notes: z.string().trim().max(500).optional(),
+  closingChecklist: ShiftChecklistPayloadSchema.optional(),
 });
 
 function getErrorMessage(error: unknown): string {
@@ -52,6 +54,24 @@ export async function POST(request: Request) {
     }
     mutation = started.mutation;
 
+    const warnings: string[] = [];
+    if (parsed.data.closingChecklist) {
+      try {
+        await upsertShiftChecklist({
+          cafeId: ctx.cafeId,
+          databaseKey: ctx.databaseKey,
+          shiftId,
+          stage: 'closing',
+          payload: { ...parsed.data.closingChecklist, status: 'draft' },
+          actorOwnerId: ctx.actorOwnerId,
+          actorStaffId: ctx.actorStaffId,
+        });
+      } catch (checklistError) {
+        const checklistCode = checklistError instanceof Error && checklistError.message ? checklistError.message : 'SHIFT_CLOSING_CHECKLIST_SAVE_FAILED';
+        warnings.push(checklistCode);
+      }
+    }
+
     const result = await closeShift({
       cafeId: ctx.cafeId,
       databaseKey: ctx.databaseKey,
@@ -60,6 +80,23 @@ export async function POST(request: Request) {
       notes: parsed.data.notes ?? null,
     });
 
+    if (parsed.data.closingChecklist) {
+      try {
+        await upsertShiftChecklist({
+          cafeId: ctx.cafeId,
+          databaseKey: ctx.databaseKey,
+          shiftId,
+          stage: 'closing',
+          payload: { ...parsed.data.closingChecklist, status: 'completed' },
+          actorOwnerId: ctx.actorOwnerId,
+          actorStaffId: ctx.actorStaffId,
+        });
+      } catch (checklistError) {
+        const checklistCode = checklistError instanceof Error && checklistError.message ? checklistError.message : 'SHIFT_CLOSING_CHECKLIST_COMPLETE_FAILED';
+        warnings.push(checklistCode);
+      }
+    }
+
     publishOpsEvent({
       type: 'shift.closed',
       cafeId: ctx.cafeId,
@@ -67,7 +104,7 @@ export async function POST(request: Request) {
       entityId: shiftId,
     });
 
-    const responseBody = { ok: true, shift: result };
+    const responseBody = { ok: true, shift: result, warnings };
     await completeIdempotentMutation(ctx, mutation, responseBody);
     return NextResponse.json(responseBody);
   } catch (error) {

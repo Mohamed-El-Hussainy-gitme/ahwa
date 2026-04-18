@@ -5,8 +5,12 @@ import { MobileShell } from '@/ui/MobileShell';
 import { useAuthz } from '@/lib/authz';
 import { AccessDenied } from '@/ui/AccessState';
 import { apiPost } from '@/lib/http/client';
-import type { OperatingSettings, ShiftAssignmentTemplate, ShiftInventorySnapshot } from '@/lib/ops/types';
+import { isOfflineLikeError } from '@/lib/pwa/admin-queue';
+import { buildQueuedMutation, useOpsPwa } from '@/lib/pwa/provider';
+import { usePersistentDraft } from '@/lib/pwa/use-persistent-draft';
+import type { OperatingSettings, ShiftAssignmentTemplate, ShiftChecklistFlags, ShiftChecklistRecord, ShiftChecklistStatus, ShiftInventorySnapshot } from '@/lib/ops/types';
 import { extractApiErrorMessage } from '@/lib/api/errors';
+import { emptyShiftChecklistFlags } from '@/lib/ops/shift-checklists';
 import { RecoveryPanel } from '@/ui/ops/RecoveryPanel';
 import {
   opsAccentButton,
@@ -120,6 +124,7 @@ type RawShiftSnapshot = {
     cashCollected?: string | number | null;
     deferredBooked?: string | number | null;
   }>;
+  checklists?: ShiftChecklistRecord[];
 };
 
 type NormalizedSnapshot = {
@@ -156,7 +161,23 @@ type NormalizedSnapshot = {
     cashCollected: number;
     deferredBooked: number;
   }>;
+  checklists: ShiftChecklistRecord[];
 };
+
+type ChecklistStage = 'opening' | 'closing';
+
+type ShiftChecklistFormState = {
+  checklist: ShiftChecklistFlags;
+  quickCashCount: string;
+  supervisorNotes: string;
+  issuesSummary: string;
+  status: ShiftChecklistStatus;
+};
+
+const SHIFT_DRAFT_KEYS = {
+  openingChecklist: 'ahwa:draft:shift:opening-checklist:v1',
+  closingChecklist: 'ahwa:draft:shift:closing-checklist:v1',
+} as const;
 
 function roleLabel(role: ShiftRole) {
   switch (role) {
@@ -193,6 +214,55 @@ function formatMoney(value: string | number | null | undefined) {
 
 function formatQty(value: string | number | null | undefined) {
   return toNumber(value).toLocaleString('ar-EG', { maximumFractionDigits: 3 });
+}
+
+function checklistStageLabel(stage: ChecklistStage) {
+  return stage === 'opening' ? 'Checklist الافتتاح' : 'Checklist الإغلاق';
+}
+
+function createChecklistFormState(): ShiftChecklistFormState {
+  return {
+    checklist: emptyShiftChecklistFlags(),
+    quickCashCount: '',
+    supervisorNotes: '',
+    issuesSummary: '',
+    status: 'draft',
+  };
+}
+
+function mapChecklistToFormState(record: ShiftChecklistRecord | null | undefined): ShiftChecklistFormState {
+  if (!record) return createChecklistFormState();
+  return {
+    checklist: { ...emptyShiftChecklistFlags(), ...(record.checklist ?? {}) },
+    quickCashCount: record.quickCashCount == null ? '' : String(record.quickCashCount),
+    supervisorNotes: record.supervisorNotes ?? '',
+    issuesSummary: record.issuesSummary ?? '',
+    status: record.status ?? 'draft',
+  };
+}
+
+function buildChecklistPayload(form: ShiftChecklistFormState, status: ShiftChecklistStatus): {
+  checklist: ShiftChecklistFlags;
+  quickCashCount: number | null;
+  supervisorNotes: string | null;
+  issuesSummary: string | null;
+  status: ShiftChecklistStatus;
+} {
+  const quickCashCount = form.quickCashCount.trim() ? Number(form.quickCashCount) : null;
+  return {
+    checklist: {
+      ...form.checklist,
+      supervisorSignoffName: form.checklist.supervisorSignoffName?.trim() ? form.checklist.supervisorSignoffName.trim() : null,
+    },
+    quickCashCount: quickCashCount != null && Number.isFinite(quickCashCount) ? quickCashCount : null,
+    supervisorNotes: form.supervisorNotes.trim() || null,
+    issuesSummary: form.issuesSummary.trim() || null,
+    status,
+  };
+}
+
+function findChecklistByStage(checklists: ShiftChecklistRecord[], stage: ChecklistStage) {
+  return checklists.find((item) => item.stage === stage) ?? null;
 }
 
 function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapshot | null {
@@ -252,6 +322,7 @@ function normalizeSnapshot(snapshot: RawShiftSnapshot | null): NormalizedSnapsho
       waiveIssueCount: toNumber(snapshot.totals?.complaint_waive),
     },
     employees,
+    checklists: Array.isArray(snapshot.checklists) ? snapshot.checklists : [],
   };
 }
 
@@ -259,6 +330,196 @@ function submitOnEnter(event: KeyboardEvent<HTMLTextAreaElement>, submit: () => 
   if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
   event.preventDefault();
   submit();
+}
+
+const CHECKLIST_TOGGLES: Array<{ key: keyof Omit<ShiftChecklistFlags, 'supervisorSignoffName'>; label: string; hint: string }> = [
+  { key: 'cashVerified', label: 'جرد النقدية السريع', hint: 'تأكيد العد ومطابقة المبلغ الافتتاحي أو الختامي.' },
+  { key: 'criticalInventoryReady', label: 'الخامات الحرجة', hint: 'تأكيد توفر اللبن والقهوة والفحم والجراك والمواد الأساسية.' },
+  { key: 'machineReady', label: 'جاهزية الماكينة', hint: 'فحص التشغيل والحرارة والتنظيف السريع.' },
+  { key: 'grinderReady', label: 'جاهزية المطحنة', hint: 'فحص الطحن والضبط والتنظيف.' },
+  { key: 'shishaReady', label: 'جاهزية الشيشة', hint: 'فحص الرؤوس والفحم والتجهيز.' },
+  { key: 'cleanlinessReady', label: 'النظافة والتجهيز', hint: 'الصالة والبار ومنطقة الشيشة جاهزة.' },
+  { key: 'previousShiftIssuesReviewed', label: 'مراجعة مشاكل الوردية السابقة', hint: 'تم الاطلاع على المشكلات المفتوحة أو الـ carry-over.' },
+  { key: 'supervisorApproved', label: 'اعتماد المشرف', hint: 'لا يكتمل الـ checklist بدون الاعتماد.' },
+];
+
+function ShiftChecklistEditor({
+  title,
+  description,
+  form,
+  onChange,
+  onSaveDraft,
+  saveBusy,
+  allowSaveDraft,
+}: {
+  title: string;
+  description: string;
+  form: ShiftChecklistFormState;
+  onChange: (next: ShiftChecklistFormState) => void;
+  onSaveDraft?: () => void;
+  saveBusy?: boolean;
+  allowSaveDraft?: boolean;
+}) {
+  return (
+    <div className={[opsInset, 'mt-4 p-3'].join(' ')}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-right">
+          <div className="text-sm font-semibold text-[#1e1712]">{title}</div>
+          <div className="mt-1 text-xs leading-6 text-[#7d6a59]">{description}</div>
+        </div>
+        <div className={opsBadge(form.checklist.supervisorApproved ? 'success' : 'warning')}>
+          {form.checklist.supervisorApproved ? 'معتمد' : 'بانتظار الاعتماد'}
+        </div>
+      </div>
+
+      <div className="mt-3 space-y-2">
+        {CHECKLIST_TOGGLES.map((item) => {
+          const checked = !!form.checklist[item.key];
+          return (
+            <label key={item.key} className={[opsInset, 'flex cursor-pointer items-start gap-3 p-3'].join(' ')}>
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(event) =>
+                  onChange({
+                    ...form,
+                    checklist: { ...form.checklist, [item.key]: event.target.checked },
+                  })
+                }
+                className="mt-1 h-4 w-4 rounded border-[#c8b59b]"
+              />
+              <div className="flex-1 text-right">
+                <div className="text-sm font-semibold text-[#1e1712]">{item.label}</div>
+                <div className="mt-1 text-[11px] leading-5 text-[#7d6a59]">{item.hint}</div>
+              </div>
+            </label>
+          );
+        })}
+      </div>
+
+      <div className="mt-3 grid grid-cols-1 gap-3 xl:grid-cols-2">
+        <div>
+          <label className="block text-right text-xs font-semibold text-[#7d6a59]">عدّاد النقدية السريع</label>
+          <input
+            inputMode="decimal"
+            className="mt-1 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-sm text-[#1e1712] outline-none"
+            value={form.quickCashCount}
+            onChange={(event) => onChange({ ...form, quickCashCount: event.target.value })}
+            placeholder="مثال: 1200"
+          />
+        </div>
+        <div>
+          <label className="block text-right text-xs font-semibold text-[#7d6a59]">اسم/توقيع المشرف</label>
+          <input
+            className="mt-1 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] px-3 py-3 text-right text-sm text-[#1e1712] outline-none"
+            value={form.checklist.supervisorSignoffName ?? ''}
+            onChange={(event) =>
+              onChange({
+                ...form,
+                checklist: { ...form.checklist, supervisorSignoffName: event.target.value },
+              })
+            }
+            placeholder="اسم المشرف المعتمد"
+          />
+        </div>
+      </div>
+
+      <div className="mt-3">
+        <label className="block text-right text-xs font-semibold text-[#7d6a59]">مشاكل الوردية السابقة / نقاط التسليم</label>
+        <textarea
+          className="mt-1 min-h-20 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] p-3 text-right text-[#1e1712] outline-none placeholder:text-[#a08a75]"
+          value={form.issuesSummary}
+          onChange={(event) => onChange({ ...form, issuesSummary: event.target.value })}
+          placeholder="أي مشاكل carry-over أو ملاحظات يلزم تمريرها"
+        />
+      </div>
+
+      <div className="mt-3">
+        <label className="block text-right text-xs font-semibold text-[#7d6a59]">ملاحظات المشرف</label>
+        <textarea
+          className="mt-1 min-h-24 w-full rounded-[18px] border border-[#d7c7b2] bg-[#fffdf9] p-3 text-right text-[#1e1712] outline-none placeholder:text-[#a08a75]"
+          value={form.supervisorNotes}
+          onChange={(event) => onChange({ ...form, supervisorNotes: event.target.value })}
+          placeholder="تعليمات تشغيلية أو ملاحظات جودة أو مخزن"
+        />
+      </div>
+
+      {allowSaveDraft && onSaveDraft ? (
+        <button type="button" onClick={onSaveDraft} disabled={saveBusy} className={[opsGhostButton, 'mt-3 w-full disabled:opacity-50'].join(' ')}>
+          {saveBusy ? '...' : 'حفظ checklist كمسودة'}
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ShiftChecklistSummaryCard({
+  title,
+  record,
+}: {
+  title: string;
+  record: ShiftChecklistRecord | null | undefined;
+}) {
+  if (!record) {
+    return (
+      <div className={[opsDashed, 'p-3 text-right text-sm text-[#6b5a4c]'].join(' ')}>
+        لا يوجد سجل محفوظ لهذا الـ checklist حتى الآن.
+      </div>
+    );
+  }
+
+  const checklist = { ...emptyShiftChecklistFlags(), ...(record.checklist ?? {}) };
+  const completedCount = CHECKLIST_TOGGLES.filter((item) => checklist[item.key]).length;
+
+  return (
+    <div className={[opsInset, 'p-3'].join(' ')}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="text-right">
+          <div className="text-sm font-semibold text-[#1e1712]">{title}</div>
+          <div className="mt-1 text-xs leading-6 text-[#7d6a59]">
+            آخر تحديث {formatDateTime(record.updatedAt)} • الحالة {record.status === 'completed' ? 'مكتمل' : 'مسودة'}
+          </div>
+        </div>
+        <div className={opsBadge(record.checklist.supervisorApproved ? 'success' : 'warning')}>
+          {completedCount}/{CHECKLIST_TOGGLES.length}
+        </div>
+      </div>
+      <div className="mt-3 grid grid-cols-2 gap-2 xl:grid-cols-4">
+        {CHECKLIST_TOGGLES.map((item) => (
+          <div key={item.key} className={[opsInset, 'p-2 text-right'].join(' ')}>
+            <div className="text-[11px] text-[#7d6a59]">{item.label}</div>
+            <div className="mt-1 text-sm font-semibold text-[#1e1712]">{checklist[item.key] ? 'نعم' : 'لا'}</div>
+          </div>
+        ))}
+      </div>
+      <div className="mt-3 grid grid-cols-1 gap-2 xl:grid-cols-3">
+        <div className={[opsInset, 'p-2 text-right'].join(' ')}>
+          <div className="text-[11px] text-[#7d6a59]">النقدية السريعة</div>
+          <div className="mt-1 text-sm font-semibold text-[#1e1712]">{record.quickCashCount == null ? '—' : `${formatMoney(record.quickCashCount)} ج`}</div>
+        </div>
+        <div className={[opsInset, 'p-2 text-right'].join(' ')}>
+          <div className="text-[11px] text-[#7d6a59]">توقيع المشرف</div>
+          <div className="mt-1 text-sm font-semibold text-[#1e1712]">{record.checklist.supervisorSignoffName ?? '—'}</div>
+        </div>
+        <div className={[opsInset, 'p-2 text-right'].join(' ')}>
+          <div className="text-[11px] text-[#7d6a59]">اعتمد في</div>
+          <div className="mt-1 text-sm font-semibold text-[#1e1712]">{record.approvedAt ? formatDateTime(record.approvedAt) : '—'}</div>
+        </div>
+      </div>
+      {record.issuesSummary ? (
+        <div className={[opsInset, 'mt-3 p-3 text-right text-sm text-[#1e1712]'].join(' ')}>
+          <div className="text-xs font-semibold text-[#7d6a59]">مشاكل الوردية السابقة / التسليم</div>
+          <div className="mt-1 whitespace-pre-wrap">{record.issuesSummary}</div>
+        </div>
+      ) : null}
+      {record.supervisorNotes ? (
+        <div className={[opsInset, 'mt-3 p-3 text-right text-sm text-[#1e1712]'].join(' ')}>
+          <div className="text-xs font-semibold text-[#7d6a59]">ملاحظات المشرف</div>
+          <div className="mt-1 whitespace-pre-wrap">{record.supervisorNotes}</div>
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 function buildAssignmentsFromTemplate(template: ShiftAssignmentTemplate | null | undefined, actors: AssignableActorRow[]) {
@@ -280,6 +541,7 @@ function buildAssignmentsFromTemplate(template: ShiftAssignmentTemplate | null |
 
 export default function ShiftPage() {
   const { can, effectiveRole } = useAuthz();
+  const { enqueueMutation, isOnline } = useOpsPwa();
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [actors, setActors] = useState<AssignableActorRow[]>([]);
@@ -297,6 +559,10 @@ export default function ShiftPage() {
   const [closeNotes, setCloseNotes] = useState('');
   const [snapshotBusyFor, setSnapshotBusyFor] = useState<string | null>(null);
   const [selectedSnapshot, setSelectedSnapshot] = useState<RawShiftSnapshot | null>(null);
+  const [checklists, setChecklists] = useState<ShiftChecklistRecord[]>([]);
+  const [openingChecklist, setOpeningChecklist, openingChecklistDraft] = usePersistentDraft<ShiftChecklistFormState>(SHIFT_DRAFT_KEYS.openingChecklist, createChecklistFormState);
+  const [closingChecklist, setClosingChecklist, closingChecklistDraft] = usePersistentDraft<ShiftChecklistFormState>(SHIFT_DRAFT_KEYS.closingChecklist, createChecklistFormState);
+  const [checklistBusyStage, setChecklistBusyStage] = useState<ChecklistStage | null>(null);
 
   const activeAssignableActors = useMemo(
     () => actors.filter((item) => item.isActive && (item.employmentStatus ?? 'active') === 'active'),
@@ -312,6 +578,8 @@ export default function ShiftPage() {
   const selectedTemplateKind = shift?.kind ?? kind;
   const selectedTemplate = useMemo(() => templateByKind.get(selectedTemplateKind) ?? null, [selectedTemplateKind, templateByKind]);
   const snapshotView = useMemo(() => normalizeSnapshot(selectedSnapshot), [selectedSnapshot]);
+  const openingChecklistRecord = useMemo(() => findChecklistByStage(checklists, 'opening'), [checklists]);
+  const closingChecklistRecord = useMemo(() => findChecklistByStage(checklists, 'closing'), [checklists]);
 
   const canViewShift = can.viewShift;
   const canManageShift = can.owner;
@@ -371,8 +639,14 @@ export default function ShiftPage() {
     setBusinessDayStartTime(nextOperatingSettings?.businessDayStartTime ?? '00:00');
     setActors(canManageShift && Array.isArray(actorsJson?.actors) ? (actorsJson.actors as AssignableActorRow[]) : []);
     setTemplates(canManageShift && Array.isArray(templatesJson?.templates) ? (templatesJson.templates as ShiftAssignmentTemplate[]) : []);
+    const nextChecklists = Array.isArray(stateJson?.checklists) ? (stateJson.checklists as ShiftChecklistRecord[]) : [];
     setShift((stateJson.shift as ShiftRow | null) ?? null);
     setCurrentAssignments(Array.isArray(stateJson?.assignments) ? (stateJson.assignments as AssignmentRow[]) : []);
+    setChecklists(nextChecklists);
+    const nextOpeningChecklist = findChecklistByStage(nextChecklists, 'opening');
+    const nextClosingChecklist = findChecklistByStage(nextChecklists, 'closing');
+    setOpeningChecklist((current) => nextOpeningChecklist ? mapChecklistToFormState(nextOpeningChecklist) : current);
+    setClosingChecklist((current) => nextClosingChecklist ? mapChecklistToFormState(nextClosingChecklist) : current);
     setHistory(Array.isArray(historyJson?.shifts) ? (historyJson.shifts as ShiftHistoryRow[]) : []);
     setSelectedSnapshot(null);
 
@@ -516,6 +790,11 @@ export default function ShiftPage() {
       return;
     }
 
+    if (!openingChecklist.checklist.supervisorApproved) {
+      setMessage('اعتمد Checklist الافتتاح أولًا قبل فتح الوردية.');
+      return;
+    }
+
     setBusy(true);
     setMessage(null);
     try {
@@ -526,6 +805,7 @@ export default function ShiftPage() {
           kind,
           notes: openNotes || undefined,
           assignments: payloadAssignments,
+          openingChecklist: buildChecklistPayload(openingChecklist, 'completed'),
         }),
       });
       const json = await res.json().catch(() => null);
@@ -534,8 +814,12 @@ export default function ShiftPage() {
         return;
       }
       setOpenNotes('');
+      openingChecklistDraft.resetDraft();
       await load();
-      if (typeof json?.message === 'string' && json.message.trim()) {
+      const warnings = Array.isArray(json?.warnings) ? json.warnings.filter((item: unknown) => typeof item === 'string' && item.trim()) : [];
+      if (warnings.length > 0) {
+        setMessage(`تم فتح الوردية مع تنبيه: ${warnings.join(' • ')}`);
+      } else if (typeof json?.message === 'string' && json.message.trim()) {
         setMessage(json.message);
       }
     } finally {
@@ -570,19 +854,86 @@ export default function ShiftPage() {
     }
   }
 
+  async function saveChecklistDraft(stage: ChecklistStage) {
+    if (!shift) return;
+    const form = stage === 'opening' ? openingChecklist : closingChecklist;
+    const payload = {
+      shiftId: shift.id,
+      stage,
+      payload: buildChecklistPayload(form, 'draft'),
+    };
+    setChecklistBusyStage(stage);
+    setMessage(null);
+    try {
+      if (!isOnline) {
+        await enqueueMutation(buildQueuedMutation({
+          url: '/api/owner/shift/checklists',
+          method: 'POST',
+          body: payload,
+          label: `${checklistStageLabel(stage)} محفوظ محليًا حتى عودة الاتصال.`,
+        }));
+        setMessage(`${checklistStageLabel(stage)} محفوظ محليًا حتى عودة الاتصال.`);
+        return;
+      }
+      const res = await fetch('/api/owner/shift/checklists', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => null);
+      if (!json?.ok) {
+        setMessage(extractApiErrorMessage(json, 'FAILED_TO_SAVE_SHIFT_CHECKLIST'));
+        return;
+      }
+      const nextChecklist = (json.checklist as ShiftChecklistRecord | null) ?? null;
+      if (nextChecklist) {
+        setChecklists((current) => [...current.filter((item) => item.stage !== stage), nextChecklist]);
+        if (stage === 'opening') {
+          setOpeningChecklist(mapChecklistToFormState(nextChecklist));
+        } else {
+          setClosingChecklist(mapChecklistToFormState(nextChecklist));
+        }
+      }
+      setMessage(`${checklistStageLabel(stage)} تم حفظه كمسودة.`);
+    } catch (error) {
+      if (isOfflineLikeError(error)) {
+        await enqueueMutation(buildQueuedMutation({
+          url: '/api/owner/shift/checklists',
+          method: 'POST',
+          body: payload,
+          label: `${checklistStageLabel(stage)} محفوظ محليًا حتى عودة الاتصال.`,
+        }));
+        setMessage(`${checklistStageLabel(stage)} محفوظ محليًا حتى عودة الاتصال.`);
+        return;
+      }
+      setMessage(error instanceof Error ? error.message : 'FAILED_TO_SAVE_SHIFT_CHECKLIST');
+    } finally {
+      setChecklistBusyStage(null);
+    }
+  }
+
   async function closeShift() {
     if (!shift) return;
+    if (!closingChecklist.checklist.supervisorApproved) {
+      setMessage('اعتمد Checklist الإغلاق أولًا قبل تقفيل الوردية.');
+      return;
+    }
     setBusy(true);
     setMessage(null);
     try {
-      await apiPost<{ ok: true }>(
+      const response = await apiPost<{ ok: true; warnings?: string[] }>(
         '/api/owner/shift/close',
-        { shiftId: shift.id, notes: closeNotes || undefined },
+        { shiftId: shift.id, notes: closeNotes || undefined, closingChecklist: buildChecklistPayload(closingChecklist, 'completed') },
         { idempotency: { scope: 'owner.shift.close' } },
       );
       setCloseNotes('');
+      closingChecklistDraft.resetDraft();
       await load();
       await loadSnapshot(shift.id);
+      const warnings = Array.isArray(response?.warnings) ? response.warnings.filter((item) => typeof item === 'string' && item.trim()) : [];
+      if (warnings.length > 0) {
+        setMessage(`تم تقفيل الوردية مع تنبيه: ${warnings.join(' • ')}`);
+      }
     } catch (error) {
       setMessage(error instanceof Error && error.message ? error.message : 'FAILED_TO_CLOSE_SHIFT');
     } finally {
@@ -830,6 +1181,20 @@ export default function ShiftPage() {
                   </button>
                 </div>
 
+                <div className="mt-4 space-y-3">
+                  <ShiftChecklistSummaryCard title="سجل Checklist الافتتاح" record={openingChecklistRecord} />
+                  <ShiftChecklistEditor
+                    title="Checklist الإغلاق"
+                    description="يُستخدم قبل تقفيل الوردية مباشرة، مع إمكانية حفظه كمسودة أثناء التشغيل."
+                    form={closingChecklist}
+                    onChange={setClosingChecklist}
+                    onSaveDraft={() => void saveChecklistDraft('closing')}
+                    saveBusy={checklistBusyStage === 'closing'}
+                    allowSaveDraft
+                  />
+                  {closingChecklistRecord ? <ShiftChecklistSummaryCard title="آخر سجل محفوظ للإغلاق" record={closingChecklistRecord} /> : null}
+                </div>
+
                 <div className="mt-4">
                   <label className="block text-right text-xs font-semibold text-[#7d6a59]">ملاحظات الإغلاق</label>
                   <textarea
@@ -946,6 +1311,13 @@ export default function ShiftPage() {
               </button>
             </div>
           </div>
+
+          <ShiftChecklistEditor
+            title="Checklist الافتتاح"
+            description="يرتبط بفتح الوردية ويُحفظ كسجل تشغيلي مع الاعتماد."
+            form={openingChecklist}
+            onChange={setOpeningChecklist}
+          />
 
           <div className="mt-4">
             <label className="block text-right text-xs font-semibold text-[#7d6a59]">ملاحظات الافتتاح</label>
@@ -1071,6 +1443,17 @@ export default function ShiftPage() {
               <div className="text-xs text-[#8a7763]">إجراءات تنفيذية</div>
               <div className="mt-1 text-base font-bold">{formatQty(snapshotView.summary.remakeIssueCount + snapshotView.summary.cancelIssueCount + snapshotView.summary.waiveIssueCount)}</div>
             </div>
+          </div>
+
+          <div className="mt-3 grid gap-3 xl:grid-cols-2">
+            <ShiftChecklistSummaryCard
+              title="Checklist الافتتاح داخل السناب شوت"
+              record={findChecklistByStage(snapshotView.checklists, 'opening')}
+            />
+            <ShiftChecklistSummaryCard
+              title="Checklist الإغلاق داخل السناب شوت"
+              record={findChecklistByStage(snapshotView.checklists, 'closing')}
+            />
           </div>
 
           {snapshotView.inventory ? (

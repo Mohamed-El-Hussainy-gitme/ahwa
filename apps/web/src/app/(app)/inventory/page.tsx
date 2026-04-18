@@ -1,10 +1,15 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { MobileShell } from '@/ui/MobileShell';
 import { AccessDenied } from '@/ui/AccessState';
 import { useAuthz } from '@/lib/authz';
 import { extractApiErrorMessage } from '@/lib/api/errors';
+import { OPS_CACHE_TAGS } from '@/lib/ops/cache-tags';
+import { buildQueuedMutation, useOpsPwa } from '@/lib/pwa/provider';
+import { isOfflineLikeError } from '@/lib/pwa/admin-queue';
+import { usePersistentDraft } from '@/lib/pwa/use-persistent-draft';
+import { useWorkspaceSnapshot } from '@/lib/pwa/workspace-snapshot';
 import type {
   InventoryAddonRecipe,
   InventoryEstimatedConsumptionItem,
@@ -42,6 +47,19 @@ const INVENTORY_VIEWS = [
 ] as const;
 
 type InventoryView = (typeof INVENTORY_VIEWS)[number]['key'];
+
+const INVENTORY_DRAFT_KEYS = {
+  item: 'ahwa:draft:inventory:item:v1',
+  supplier: 'ahwa:draft:inventory:supplier:v1',
+  movement: 'ahwa:draft:inventory:movement:v1',
+  quickCount: 'ahwa:draft:inventory:quick-count:v1',
+  productRecipe: 'ahwa:draft:inventory:product-recipe:v1',
+  addonRecipe: 'ahwa:draft:inventory:addon-recipe:v1',
+  structuredBundle: 'ahwa:draft:inventory:structured-bundle:v1',
+  structuredItem: 'ahwa:draft:inventory:structured-item:v1',
+  structuredRows: 'ahwa:draft:inventory:structured-rows:v1',
+  workspace: 'ahwa:workspace:inventory:v1',
+} as const;
 
 function emptyItemForm() {
   return {
@@ -260,6 +278,7 @@ function previewEntryInStockUnit(item: Pick<InventoryItem, 'unitLabel' | 'purcha
 
 export default function InventoryPage() {
   const { can } = useAuthz();
+  const { enqueueMutation, isOnline } = useOpsPwa();
   const [workspace, setWorkspace] = useState<InventoryWorkspace>(emptyWorkspace());
   const [message, setMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -272,33 +291,42 @@ export default function InventoryPage() {
   const [addonRecipeId, setAddonRecipeId] = useState<string | null>(null);
   const [recipeScope, setRecipeScope] = useState<'product' | 'addon'>('product');
   const [inventoryView, setInventoryView] = useState<InventoryView>('daily');
-  const [itemForm, setItemForm] = useState(emptyItemForm());
-  const [supplierForm, setSupplierForm] = useState(emptySupplierForm());
-  const [movementForm, setMovementForm] = useState(emptyMovementForm());
-  const [quickCountForm, setQuickCountForm] = useState(emptyQuickCountForm());
-  const [productRecipeForm, setProductRecipeForm] = useState(emptyProductRecipeForm());
-  const [addonRecipeForm, setAddonRecipeForm] = useState(emptyAddonRecipeForm());
-  const [structuredBundleKey, setStructuredBundleKey] = useState(INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels');
-  const [structuredItemId, setStructuredItemId] = useState('');
-  const [structuredOptionRows, setStructuredOptionRows] = useState<StructuredOptionFormRow[]>(createStructuredOptionRows(INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels'));
+  const [itemForm, setItemForm, itemDraft] = usePersistentDraft(INVENTORY_DRAFT_KEYS.item, emptyItemForm);
+  const [supplierForm, setSupplierForm, supplierDraft] = usePersistentDraft(INVENTORY_DRAFT_KEYS.supplier, emptySupplierForm);
+  const [movementForm, setMovementForm, movementDraft] = usePersistentDraft(INVENTORY_DRAFT_KEYS.movement, emptyMovementForm);
+  const [quickCountForm, setQuickCountForm, quickCountDraft] = usePersistentDraft(INVENTORY_DRAFT_KEYS.quickCount, emptyQuickCountForm);
+  const [productRecipeForm, setProductRecipeForm, productRecipeDraft] = usePersistentDraft(INVENTORY_DRAFT_KEYS.productRecipe, emptyProductRecipeForm);
+  const [addonRecipeForm, setAddonRecipeForm, addonRecipeDraft] = usePersistentDraft(INVENTORY_DRAFT_KEYS.addonRecipe, emptyAddonRecipeForm);
+  const [structuredBundleKey, setStructuredBundleKey, structuredBundleDraft] = usePersistentDraft(INVENTORY_DRAFT_KEYS.structuredBundle, INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels');
+  const [structuredItemId, setStructuredItemId, structuredItemDraft] = usePersistentDraft(INVENTORY_DRAFT_KEYS.structuredItem, '');
+  const [structuredOptionRows, setStructuredOptionRows, structuredRowsDraft] = usePersistentDraft<StructuredOptionFormRow[]>(INVENTORY_DRAFT_KEYS.structuredRows, () => createStructuredOptionRows(INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels'));
 
-  async function refresh() {
-    setMessage(null);
-    const response = await fetch('/api/owner/inventory/workspace', { cache: 'no-store' });
-    const payload = await response.json().catch(() => null);
-    if (!payload?.ok) {
-      setWorkspace(emptyWorkspace());
-      setMessage(extractApiErrorMessage(payload, 'INVENTORY_WORKSPACE_FAILED'));
-      return false;
-    }
-    const nextWorkspace = payload.workspace as InventoryWorkspace;
+  const inventoryWorkspace = useWorkspaceSnapshot<InventoryWorkspace>(
+    useCallback(async () => {
+      const response = await fetch('/api/owner/inventory/workspace', { cache: 'no-store' });
+      const payload = await response.json().catch(() => null);
+      if (!payload?.ok) {
+        throw new Error(extractApiErrorMessage(payload, 'INVENTORY_WORKSPACE_FAILED'));
+      }
+      return payload.workspace as InventoryWorkspace;
+    }, []),
+    {
+      cacheKey: 'workspace:inventory',
+      invalidationTags: [OPS_CACHE_TAGS.inventory],
+      staleTimeMs: 20_000,
+      enabled: can.owner,
+      storageKey: INVENTORY_DRAFT_KEYS.workspace,
+    },
+  );
+
+  const applyWorkspace = useCallback((nextWorkspace: InventoryWorkspace) => {
     setWorkspace(nextWorkspace);
     setMovementForm((current) => {
       if (current.inventoryItemId && nextWorkspace.items.some((item) => item.id === current.inventoryItemId)) {
         return current;
       }
       const firstActive = nextWorkspace.items.find((item) => item.isActive);
-      return emptyMovementForm(firstActive?.id ?? '');
+      return { ...current, inventoryItemId: firstActive?.id ?? '' };
     });
     setQuickCountForm((current) => {
       if (current.inventoryItemId && nextWorkspace.items.some((item) => item.id === current.inventoryItemId)) {
@@ -306,7 +334,7 @@ export default function InventoryPage() {
       }
       const prioritized = nextWorkspace.items.find((item) => item.stockStatus === 'low' || item.stockStatus === 'empty')
         ?? nextWorkspace.items.find((item) => item.isActive);
-      return emptyQuickCountForm(prioritized?.id ?? '');
+      return { ...current, inventoryItemId: prioritized?.id ?? '' };
     });
     setStructuredItemId((current) => {
       if (current && nextWorkspace.items.some((item) => item.id === current)) {
@@ -315,9 +343,99 @@ export default function InventoryPage() {
       const sugarLikeItem = nextWorkspace.items.find((item) => item.normalizedName.includes('سكر'));
       return sugarLikeItem?.id ?? current;
     });
-    return true;
-  }
+  }, [setMovementForm, setQuickCountForm, setStructuredItemId]);
 
+  useEffect(() => {
+    if (inventoryWorkspace.data) {
+      applyWorkspace(inventoryWorkspace.data);
+    }
+  }, [applyWorkspace, inventoryWorkspace.data]);
+
+  useEffect(() => {
+    if (inventoryWorkspace.usingSnapshotFallback) {
+      setMessage('يعرض المخزن آخر نسخة محفوظة محليًا لحين عودة الاتصال.');
+    }
+  }, [inventoryWorkspace.usingSnapshotFallback]);
+
+  const refresh = useCallback(async () => {
+    setMessage(null);
+    const nextWorkspace = await inventoryWorkspace.reload();
+    if (nextWorkspace) {
+      applyWorkspace(nextWorkspace);
+      return true;
+    }
+    if (inventoryWorkspace.data) {
+      applyWorkspace(inventoryWorkspace.data);
+      if (inventoryWorkspace.usingSnapshotFallback || inventoryWorkspace.online === false) {
+        setMessage('تمت استعادة آخر نسخة محفوظة محليًا.');
+        return true;
+      }
+    }
+    if (inventoryWorkspace.error) {
+      setMessage(inventoryWorkspace.error);
+    }
+    return false;
+  }, [applyWorkspace, inventoryWorkspace]);
+
+  const runQueueableMutation = useCallback(async (options: {
+    url: string;
+    method?: 'POST' | 'PATCH';
+    body: unknown;
+    successMessage: string | ((payload: any) => string);
+    queuedMessage: string;
+    failureCode: string;
+    invalidateTags?: readonly string[];
+    clearDraftKeys?: string[];
+    onSuccess?: (payload: any) => void;
+    onQueued?: () => void;
+  }) => {
+    const method = options.method ?? 'POST';
+    if (!isOnline) {
+      await enqueueMutation(buildQueuedMutation({
+        url: options.url,
+        method,
+        body: options.body,
+        label: options.queuedMessage,
+        invalidateTags: options.invalidateTags ?? [OPS_CACHE_TAGS.inventory],
+        clearDraftKeys: options.clearDraftKeys,
+      }));
+      options.onQueued?.();
+      setMessage(options.queuedMessage);
+      return true;
+    }
+    try {
+      const response = await fetch(options.url, {
+        method,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(options.body),
+      });
+      const payload = await response.json().catch(() => null);
+      if (!payload?.ok) {
+        setMessage(extractApiErrorMessage(payload, options.failureCode));
+        return false;
+      }
+      const refreshed = await refresh();
+      if (!refreshed && !inventoryWorkspace.data) return false;
+      options.onSuccess?.(payload);
+      setMessage(typeof options.successMessage === 'function' ? options.successMessage(payload) : options.successMessage);
+      return true;
+    } catch (error) {
+      if (!isOfflineLikeError(error)) {
+        throw error;
+      }
+      await enqueueMutation(buildQueuedMutation({
+        url: options.url,
+        method,
+        body: options.body,
+        label: options.queuedMessage,
+        invalidateTags: options.invalidateTags ?? [OPS_CACHE_TAGS.inventory],
+        clearDraftKeys: options.clearDraftKeys,
+      }));
+      options.onQueued?.();
+      setMessage(options.queuedMessage);
+      return true;
+    }
+  }, [enqueueMutation, inventoryWorkspace.data, isOnline, refresh]);
 
   async function postShiftSnapshot(shiftId: string) {
     setPostingBusyFor(shiftId);
@@ -341,10 +459,6 @@ export default function InventoryPage() {
     }
   }
 
-  useEffect(() => {
-    if (!can.owner) return;
-    void refresh();
-  }, [can.owner]);
 
   const selectedItem = useMemo(
     () => workspace.items.find((item) => item.id === itemId) ?? null,
@@ -461,8 +575,15 @@ export default function InventoryPage() {
   }, [selectedQuickCountItem?.id, selectedQuickCountItem?.purchaseUnitLabel]);
 
   useEffect(() => {
-    setStructuredOptionRows(createStructuredOptionRows(structuredBundleKey));
-  }, [structuredBundleKey]);
+    setStructuredOptionRows((current) => {
+      const seeded = createStructuredOptionRows(structuredBundleKey);
+      if (!current.length) return seeded;
+      return seeded.map((row) => {
+        const existing = current.find((item) => item.key === row.key);
+        return existing ? { ...row, menuAddonId: existing.menuAddonId, quantityPerUnit: existing.quantityPerUnit, notes: existing.notes } : row;
+      });
+    });
+  }, [structuredBundleKey, setStructuredOptionRows]);
 
   const stats = useMemo(() => ({
     totalItems: workspace.items.length,
@@ -485,22 +606,22 @@ export default function InventoryPage() {
 
   function resetItemForm() {
     setItemId(null);
-    setItemForm(emptyItemForm());
+    itemDraft.resetDraft();
   }
 
   function resetSupplierForm() {
     setSupplierId(null);
-    setSupplierForm(emptySupplierForm());
+    supplierDraft.resetDraft();
   }
 
   function resetProductRecipeForm() {
     setProductRecipeId(null);
-    setProductRecipeForm(emptyProductRecipeForm());
+    productRecipeDraft.resetDraft();
   }
 
   function resetAddonRecipeForm() {
     setAddonRecipeId(null);
-    setAddonRecipeForm(emptyAddonRecipeForm());
+    addonRecipeDraft.resetDraft();
   }
 
   function startEditItem(item: InventoryItem) {
@@ -556,10 +677,10 @@ export default function InventoryPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch(itemId ? `/api/owner/inventory/items/${itemId}` : '/api/owner/inventory/items', {
+      await runQueueableMutation({
+        url: itemId ? `/api/owner/inventory/items/${itemId}` : '/api/owner/inventory/items',
         method: itemId ? 'PATCH' : 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           itemName: itemForm.itemName,
           itemCode: itemForm.itemCode,
           categoryLabel: itemForm.categoryLabel,
@@ -571,17 +692,15 @@ export default function InventoryPage() {
           openingBalanceEntryUnit: itemId ? undefined : itemForm.openingBalanceUnit,
           notes: itemForm.notes,
           isActive: selectedItem?.isActive ?? true,
-        }),
+        },
+        successMessage: itemId ? 'تم تحديث الخامة.' : 'تمت إضافة الخامة.',
+        queuedMessage: itemId ? 'تم حفظ تعديل الخامة في الطابور المحلي.' : 'تم حفظ الخامة الجديدة في الطابور المحلي.',
+        failureCode: itemId ? 'INVENTORY_ITEM_UPDATE_FAILED' : 'INVENTORY_ITEM_CREATE_FAILED',
+        invalidateTags: [OPS_CACHE_TAGS.inventory],
+        clearDraftKeys: [INVENTORY_DRAFT_KEYS.item],
+        onSuccess: () => resetItemForm(),
+        onQueued: () => resetItemForm(),
       });
-      const payload = await response.json().catch(() => null);
-      if (!payload?.ok) {
-        setMessage(extractApiErrorMessage(payload, itemId ? 'INVENTORY_ITEM_UPDATE_FAILED' : 'INVENTORY_ITEM_CREATE_FAILED'));
-        return;
-      }
-      const refreshed = await refresh();
-      if (!refreshed) return;
-      setMessage(itemId ? 'تم تحديث الخامة.' : 'تمت إضافة الخامة.');
-      resetItemForm();
     } finally {
       setBusy(false);
     }
@@ -613,25 +732,23 @@ export default function InventoryPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch(supplierId ? `/api/owner/inventory/suppliers/${supplierId}` : '/api/owner/inventory/suppliers', {
+      await runQueueableMutation({
+        url: supplierId ? `/api/owner/inventory/suppliers/${supplierId}` : '/api/owner/inventory/suppliers',
         method: supplierId ? 'PATCH' : 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           supplierName: supplierForm.supplierName,
           phone: supplierForm.phone,
           notes: supplierForm.notes,
           isActive: selectedSupplier?.isActive ?? true,
-        }),
+        },
+        successMessage: supplierId ? 'تم تحديث المورد.' : 'تمت إضافة المورد.',
+        queuedMessage: supplierId ? 'تم حفظ تعديل المورد في الطابور المحلي.' : 'تم حفظ المورد الجديد في الطابور المحلي.',
+        failureCode: supplierId ? 'INVENTORY_SUPPLIER_UPDATE_FAILED' : 'INVENTORY_SUPPLIER_CREATE_FAILED',
+        invalidateTags: [OPS_CACHE_TAGS.inventory],
+        clearDraftKeys: [INVENTORY_DRAFT_KEYS.supplier],
+        onSuccess: () => resetSupplierForm(),
+        onQueued: () => resetSupplierForm(),
       });
-      const payload = await response.json().catch(() => null);
-      if (!payload?.ok) {
-        setMessage(extractApiErrorMessage(payload, supplierId ? 'INVENTORY_SUPPLIER_UPDATE_FAILED' : 'INVENTORY_SUPPLIER_CREATE_FAILED'));
-        return;
-      }
-      const refreshed = await refresh();
-      if (!refreshed) return;
-      setMessage(supplierId ? 'تم تحديث المورد.' : 'تمت إضافة المورد.');
-      resetSupplierForm();
     } finally {
       setBusy(false);
     }
@@ -663,10 +780,10 @@ export default function InventoryPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch('/api/owner/inventory/movements', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+      const currentItemId = movementForm.inventoryItemId;
+      await runQueueableMutation({
+        url: '/api/owner/inventory/movements',
+        body: {
           inventoryItemId: movementForm.inventoryItemId,
           movementKind: movementForm.movementKind,
           quantity: movementForm.quantity,
@@ -674,17 +791,15 @@ export default function InventoryPage() {
           adjustmentDirection: movementForm.adjustmentDirection,
           supplierId: movementForm.supplierId || null,
           notes: movementForm.notes,
-        }),
+        },
+        successMessage: 'تم تسجيل الحركة.',
+        queuedMessage: 'تم حفظ حركة المخزن في الطابور المحلي.',
+        failureCode: 'INVENTORY_MOVEMENT_CREATE_FAILED',
+        invalidateTags: [OPS_CACHE_TAGS.inventory],
+        clearDraftKeys: [INVENTORY_DRAFT_KEYS.movement],
+        onSuccess: () => movementDraft.restoreDraft(emptyMovementForm(currentItemId)),
+        onQueued: () => movementDraft.restoreDraft(emptyMovementForm(currentItemId)),
       });
-      const payload = await response.json().catch(() => null);
-      if (!payload?.ok) {
-        setMessage(extractApiErrorMessage(payload, 'INVENTORY_MOVEMENT_CREATE_FAILED'));
-        return;
-      }
-      const refreshed = await refresh();
-      if (!refreshed) return;
-      setMessage('تم تسجيل الحركة.');
-      setMovementForm(emptyMovementForm(movementForm.inventoryItemId));
     } finally {
       setBusy(false);
     }
@@ -700,26 +815,26 @@ export default function InventoryPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch('/api/owner/inventory/quick-count', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+      const currentItemId = quickCountForm.inventoryItemId;
+      await runQueueableMutation({
+        url: '/api/owner/inventory/quick-count',
+        body: {
           inventoryItemId: quickCountForm.inventoryItemId,
           actualQuantity: quickCountForm.actualQuantity,
           entryUnit: quickCountForm.entryUnit,
           notes: quickCountForm.notes,
-        }),
+        },
+        successMessage: (payload) => {
+          const result = payload.result as { skipped?: boolean; varianceQuantity?: number; unitLabel?: string };
+          return result?.skipped ? 'الجرد مطابق للرصيد الحالي.' : `تم حفظ الجرد السريع (${result?.varianceQuantity && result.varianceQuantity > 0 ? '+' : ''}${formatQty(Number(result?.varianceQuantity ?? 0))} ${result?.unitLabel ?? ''}).`;
+        },
+        queuedMessage: 'تم حفظ الجرد السريع في الطابور المحلي.',
+        failureCode: 'INVENTORY_QUICK_COUNT_FAILED',
+        invalidateTags: [OPS_CACHE_TAGS.inventory],
+        clearDraftKeys: [INVENTORY_DRAFT_KEYS.quickCount],
+        onSuccess: () => quickCountDraft.restoreDraft(emptyQuickCountForm(currentItemId)),
+        onQueued: () => quickCountDraft.restoreDraft(emptyQuickCountForm(currentItemId)),
       });
-      const payload = await response.json().catch(() => null);
-      if (!payload?.ok) {
-        setMessage(extractApiErrorMessage(payload, 'INVENTORY_QUICK_COUNT_FAILED'));
-        return;
-      }
-      const refreshed = await refresh();
-      if (!refreshed) return;
-      const result = payload.result as { skipped?: boolean; varianceQuantity?: number; unitLabel?: string };
-      setMessage(result?.skipped ? 'الجرد مطابق للرصيد الحالي.' : `تم حفظ الجرد السريع (${result?.varianceQuantity && result.varianceQuantity > 0 ? '+' : ''}${formatQty(Number(result?.varianceQuantity ?? 0))} ${result?.unitLabel ?? ''}).`);
-      setQuickCountForm((current) => emptyQuickCountForm(current.inventoryItemId));
     } finally {
       setBusy(false);
     }
@@ -729,27 +844,25 @@ export default function InventoryPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch(productRecipeId ? `/api/owner/inventory/recipes/products/${productRecipeId}` : '/api/owner/inventory/recipes/products', {
+      await runQueueableMutation({
+        url: productRecipeId ? `/api/owner/inventory/recipes/products/${productRecipeId}` : '/api/owner/inventory/recipes/products',
         method: productRecipeId ? 'PATCH' : 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           menuProductId: productRecipeForm.menuProductId,
           inventoryItemId: productRecipeForm.inventoryItemId,
           quantityPerUnit: productRecipeForm.quantityPerUnit,
           wastagePercent: productRecipeForm.wastagePercent || 0,
           notes: productRecipeForm.notes,
           isActive: selectedProductRecipe?.isActive ?? true,
-        }),
+        },
+        successMessage: productRecipeId ? 'تم تحديث وصفة المنتج.' : 'تمت إضافة وصفة المنتج.',
+        queuedMessage: productRecipeId ? 'تم حفظ تعديل وصفة المنتج في الطابور المحلي.' : 'تم حفظ وصفة المنتج في الطابور المحلي.',
+        failureCode: productRecipeId ? 'INVENTORY_PRODUCT_RECIPE_UPDATE_FAILED' : 'INVENTORY_PRODUCT_RECIPE_CREATE_FAILED',
+        invalidateTags: [OPS_CACHE_TAGS.inventory],
+        clearDraftKeys: [INVENTORY_DRAFT_KEYS.productRecipe],
+        onSuccess: () => resetProductRecipeForm(),
+        onQueued: () => resetProductRecipeForm(),
       });
-      const payload = await response.json().catch(() => null);
-      if (!payload?.ok) {
-        setMessage(extractApiErrorMessage(payload, productRecipeId ? 'INVENTORY_PRODUCT_RECIPE_UPDATE_FAILED' : 'INVENTORY_PRODUCT_RECIPE_CREATE_FAILED'));
-        return;
-      }
-      const refreshed = await refresh();
-      if (!refreshed) return;
-      setMessage(productRecipeId ? 'تم تحديث وصفة المنتج.' : 'تمت إضافة وصفة المنتج.');
-      resetProductRecipeForm();
     } finally {
       setBusy(false);
     }
@@ -786,27 +899,25 @@ export default function InventoryPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch(addonRecipeId ? `/api/owner/inventory/recipes/addons/${addonRecipeId}` : '/api/owner/inventory/recipes/addons', {
+      await runQueueableMutation({
+        url: addonRecipeId ? `/api/owner/inventory/recipes/addons/${addonRecipeId}` : '/api/owner/inventory/recipes/addons',
         method: addonRecipeId ? 'PATCH' : 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           menuAddonId: addonRecipeForm.menuAddonId,
           inventoryItemId: addonRecipeForm.inventoryItemId,
           quantityPerUnit: addonRecipeForm.quantityPerUnit,
           wastagePercent: addonRecipeForm.wastagePercent || 0,
           notes: addonRecipeForm.notes,
           isActive: selectedAddonRecipe?.isActive ?? true,
-        }),
+        },
+        successMessage: addonRecipeId ? 'تم تحديث وصفة الإضافة.' : 'تمت إضافة وصفة الإضافة.',
+        queuedMessage: addonRecipeId ? 'تم حفظ تعديل وصفة الإضافة في الطابور المحلي.' : 'تم حفظ وصفة الإضافة في الطابور المحلي.',
+        failureCode: addonRecipeId ? 'INVENTORY_ADDON_RECIPE_UPDATE_FAILED' : 'INVENTORY_ADDON_RECIPE_CREATE_FAILED',
+        invalidateTags: [OPS_CACHE_TAGS.inventory],
+        clearDraftKeys: [INVENTORY_DRAFT_KEYS.addonRecipe],
+        onSuccess: () => resetAddonRecipeForm(),
+        onQueued: () => resetAddonRecipeForm(),
       });
-      const payload = await response.json().catch(() => null);
-      if (!payload?.ok) {
-        setMessage(extractApiErrorMessage(payload, addonRecipeId ? 'INVENTORY_ADDON_RECIPE_UPDATE_FAILED' : 'INVENTORY_ADDON_RECIPE_CREATE_FAILED'));
-        return;
-      }
-      const refreshed = await refresh();
-      if (!refreshed) return;
-      setMessage(addonRecipeId ? 'تم تحديث وصفة الإضافة.' : 'تمت إضافة وصفة الإضافة.');
-      resetAddonRecipeForm();
     } finally {
       setBusy(false);
     }
@@ -843,26 +954,32 @@ export default function InventoryPage() {
     setBusy(true);
     setMessage(null);
     try {
-      const response = await fetch('/api/owner/inventory/recipes/addons/bulk', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
+      await runQueueableMutation({
+        url: '/api/owner/inventory/recipes/addons/bulk',
+        body: {
           inventoryItemId: structuredItemId,
           rows: structuredOptionRows.map((row) => ({
             menuAddonId: row.menuAddonId || null,
             quantityPerUnit: row.quantityPerUnit || 0,
             notes: row.notes || row.label,
           })),
-        }),
+        },
+        successMessage: (payload) => `تم حفظ ${payload.result?.applied ?? 0} وصفة منظمة.`,
+        queuedMessage: 'تم حفظ الوصفات المنظمة في الطابور المحلي.',
+        failureCode: 'INVENTORY_STRUCTURED_OPTIONS_FAILED',
+        invalidateTags: [OPS_CACHE_TAGS.inventory],
+        clearDraftKeys: [INVENTORY_DRAFT_KEYS.structuredBundle, INVENTORY_DRAFT_KEYS.structuredItem, INVENTORY_DRAFT_KEYS.structuredRows],
+        onSuccess: () => {
+          structuredBundleDraft.restoreDraft(INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels');
+          structuredItemDraft.restoreDraft('');
+          structuredRowsDraft.restoreDraft(createStructuredOptionRows(INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels'));
+        },
+        onQueued: () => {
+          structuredBundleDraft.restoreDraft(INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels');
+          structuredItemDraft.restoreDraft('');
+          structuredRowsDraft.restoreDraft(createStructuredOptionRows(INVENTORY_STRUCTURED_OPTION_BUNDLES[0]?.key ?? 'sugar-levels'));
+        },
       });
-      const payload = await response.json().catch(() => null);
-      if (!payload?.ok) {
-        setMessage(extractApiErrorMessage(payload, 'INVENTORY_STRUCTURED_OPTIONS_FAILED'));
-        return;
-      }
-      const refreshed = await refresh();
-      if (!refreshed) return;
-      setMessage(`تم حفظ ${payload.result?.applied ?? 0} وصفة منظمة.`);
     } finally {
       setBusy(false);
     }
@@ -883,7 +1000,8 @@ export default function InventoryPage() {
             </div>
             <div className={opsBadge('accent')}>المرحلة 5</div>
           </div>
-          {message ? <div className={[opsAlert(message.includes('تم') ? 'success' : 'danger'), 'mt-3'].join(' ')}>{message}</div> : null}
+          {message ? <div className={[opsAlert(message.includes('تم') || message.includes('محلي') || message.includes('الطابور') ? 'success' : 'danger'), 'mt-3'].join(' ')}>{message}</div> : null}
+          {inventoryWorkspace.usingSnapshotFallback ? <div className={[opsAlert('warning'), 'mt-3'].join(' ')}>أنت ترى آخر workspace محفوظ محليًا{inventoryWorkspace.snapshotLoadedAt ? ` • ${formatDateTime(new Date(inventoryWorkspace.snapshotLoadedAt).toISOString())}` : ''}.</div> : null}
           <div className="mt-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
             <div className={opsMetricCard('accent')}>
               <div className="text-xs opacity-80">الخامات</div>

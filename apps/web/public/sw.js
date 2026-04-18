@@ -1,6 +1,7 @@
-const SW_VERSION = "ahwa-sw-v5";
+const SW_VERSION = "ahwa-sw-v6";
 const STATIC_CACHE = `${SW_VERSION}-static`;
 const MENU_CACHE = `${SW_VERSION}-menu`;
+const ADMIN_WORKSPACE_CACHE = `${SW_VERSION}-admin-workspaces`;
 const OFFLINE_URL = "/offline";
 
 const STATIC_ASSETS = [
@@ -31,7 +32,7 @@ self.addEventListener("activate", (event) => {
       .then((keys) =>
         Promise.all(
           keys
-            .filter((key) => ![STATIC_CACHE, MENU_CACHE].includes(key))
+            .filter((key) => ![STATIC_CACHE, MENU_CACHE, ADMIN_WORKSPACE_CACHE].includes(key))
             .map((key) => caches.delete(key))
         )
       )
@@ -43,10 +44,36 @@ function isMenuRequest(url) {
   return url.pathname.startsWith("/api/public/cafes/") && url.pathname.endsWith("/menu");
 }
 
+function isAdminWorkspaceRequest(request, url) {
+  return request.method === 'GET' && (
+    url.pathname === '/api/owner/inventory/workspace' ||
+    url.pathname === '/api/owner/shift/state'
+  );
+}
+
 async function networkFirstMenu(request) {
   const cache = await caches.open(MENU_CACHE);
   const controller = new AbortController();
   const timeoutHandle = setTimeout(() => controller.abort(), 2500);
+
+  try {
+    const response = await fetch(request, { signal: controller.signal, cache: 'no-store' });
+    if (response && response.ok) {
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    const cached = await cache.match(request);
+    return cached || Response.error();
+  } finally {
+    clearTimeout(timeoutHandle);
+  }
+}
+
+async function networkFirstAdminWorkspace(request) {
+  const cache = await caches.open(ADMIN_WORKSPACE_CACHE);
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), 2200);
 
   try {
     const response = await fetch(request, { signal: controller.signal, cache: 'no-store' });
@@ -82,6 +109,11 @@ self.addEventListener("fetch", (event) => {
 
   if (isMenuRequest(url)) {
     event.respondWith(networkFirstMenu(request));
+    return;
+  }
+
+  if (isAdminWorkspaceRequest(request, url)) {
+    event.respondWith(networkFirstAdminWorkspace(request));
     return;
   }
 

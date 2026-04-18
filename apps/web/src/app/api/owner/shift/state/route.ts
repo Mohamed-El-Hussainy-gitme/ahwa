@@ -12,7 +12,7 @@ export async function GET() {
 
     const state = await readCurrentShiftState({ cafeId: ctx.cafeId, databaseKey: ctx.databaseKey });
     if (!state.shift) {
-      return NextResponse.json({ ok: true, shift: null, assignments: [] });
+      return NextResponse.json({ ok: true, shift: null, assignments: [], checklists: [] });
     }
 
     return NextResponse.json({
@@ -29,6 +29,7 @@ export async function GET() {
         supervisorUserId: state.assignments.find((item) => item.role === 'supervisor')?.userId ?? null,
       },
       assignments: state.assignments,
+      checklists: state.checklists,
     });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'SHIFT_STATE_FAILED';

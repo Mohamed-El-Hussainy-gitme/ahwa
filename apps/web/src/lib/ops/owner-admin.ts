@@ -14,9 +14,14 @@ import type {
   DeferredLedgerEntry,
   OperatingSettings,
   ShiftAssignmentTemplate,
+  ShiftChecklistRecord,
+  ShiftChecklistStage,
+  ShiftChecklistStatus,
+  ShiftChecklistSummary,
 } from '@/lib/ops/types';
 import { describeBusinessDayWindow, formatBusinessDayStartTime, normalizeBusinessDayStartMinutes, resolveBusinessDate, currentTimeZoneDate } from '@/lib/ops/business-day';
 import { normalizeCustomerName } from '@/lib/ops/customers';
+import { mergeChecklistSummariesByStage, normalizeShiftChecklistPayload } from '@/lib/ops/shift-checklists';
 import { parseOrderItemNotes } from '@/lib/ops/orderItemNotes';
 import { buildShiftInventorySnapshot, postShiftInventorySnapshot } from '@/lib/ops/inventory';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
@@ -1114,6 +1119,7 @@ export type CurrentShiftState = {
     isActive: boolean;
     actorType: 'owner' | 'staff';
   }>;
+  checklists: ShiftChecklistRecord[];
 };
 
 type ShiftKind = 'morning' | 'evening';
@@ -1304,6 +1310,125 @@ export async function deleteShiftAssignmentTemplate(input: CafeDatabaseScope & {
   if (error) throw error;
 }
 
+type ShiftChecklistRow = {
+  id: string;
+  shift_id: string;
+  stage: string;
+  status: string;
+  checklist_json: unknown;
+  quick_cash_count: string | number | null;
+  supervisor_notes: string | null;
+  issues_summary: string | null;
+  approved_by_owner_id: string | null;
+  approved_by_staff_id: string | null;
+  approved_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+function parseShiftChecklistRow(row: ShiftChecklistRow): ShiftChecklistRecord {
+  const payload = normalizeShiftChecklistPayload({
+    checklist: row.checklist_json,
+    quickCashCount: row.quick_cash_count == null ? null : Number(row.quick_cash_count),
+    supervisorNotes: row.supervisor_notes,
+    issuesSummary: row.issues_summary,
+    status: row.status === 'completed' ? 'completed' : 'draft',
+  });
+
+  return {
+    id: String(row.id),
+    shiftId: String(row.shift_id),
+    stage: row.stage === 'closing' ? 'closing' : 'opening',
+    status: payload.status === 'completed' ? 'completed' : 'draft',
+    checklist: payload.checklist,
+    quickCashCount: payload.quickCashCount ?? null,
+    supervisorNotes: payload.supervisorNotes ?? null,
+    issuesSummary: payload.issuesSummary ?? null,
+    approvedByOwnerId: row.approved_by_owner_id ? String(row.approved_by_owner_id) : null,
+    approvedByStaffId: row.approved_by_staff_id ? String(row.approved_by_staff_id) : null,
+    approvedAt: row.approved_at ? String(row.approved_at) : null,
+    createdAt: String(row.created_at),
+    updatedAt: String(row.updated_at),
+  };
+}
+
+export async function readShiftChecklists(input: CafeDatabaseScope & { shiftId: string }): Promise<ShiftChecklistRecord[]> {
+  const { data, error } = await ops(input.databaseKey)
+    .from('shift_checklists')
+    .select('id, shift_id, stage, status, checklist_json, quick_cash_count, supervisor_notes, issues_summary, approved_by_owner_id, approved_by_staff_id, approved_at, created_at, updated_at')
+    .eq('cafe_id', input.cafeId)
+    .eq('shift_id', input.shiftId)
+    .order('created_at', { ascending: true });
+
+  if (error) throw error;
+  return ((data ?? []) as ShiftChecklistRow[]).map(parseShiftChecklistRow);
+}
+
+export async function readShiftChecklistSummaryMap(input: CafeDatabaseScope & { shiftIds: string[] }): Promise<Map<string, ShiftChecklistSummary[]>> {
+  const uniqueShiftIds = Array.from(new Set(input.shiftIds.filter(Boolean)));
+  if (!uniqueShiftIds.length) return new Map();
+
+  const { data, error } = await ops(input.databaseKey)
+    .from('shift_checklists')
+    .select('id, shift_id, stage, status, checklist_json, quick_cash_count, supervisor_notes, issues_summary, approved_by_owner_id, approved_by_staff_id, approved_at, created_at, updated_at')
+    .eq('cafe_id', input.cafeId)
+    .in('shift_id', uniqueShiftIds);
+
+  if (error) throw error;
+
+  const grouped = new Map<string, ShiftChecklistRecord[]>();
+  for (const row of (data ?? []) as ShiftChecklistRow[]) {
+    const parsed = parseShiftChecklistRow(row);
+    const current = grouped.get(parsed.shiftId) ?? [];
+    current.push(parsed);
+    grouped.set(parsed.shiftId, current);
+  }
+
+  const summaryMap = new Map<string, ShiftChecklistSummary[]>();
+  for (const [shiftId, records] of grouped.entries()) {
+    summaryMap.set(shiftId, mergeChecklistSummariesByStage(records));
+  }
+
+  return summaryMap;
+}
+
+export async function upsertShiftChecklist(input: CafeDatabaseScope & {
+  shiftId: string;
+  stage: ShiftChecklistStage;
+  payload: unknown;
+  actorOwnerId?: string | null;
+  actorStaffId?: string | null;
+}): Promise<ShiftChecklistRecord> {
+  const payload = normalizeShiftChecklistPayload(input.payload);
+  const isApproved = !!payload.checklist.supervisorApproved;
+  const status: ShiftChecklistStatus = payload.status === 'completed' || isApproved ? 'completed' : 'draft';
+  const nowIso = new Date().toISOString();
+
+  const row = {
+    cafe_id: input.cafeId,
+    shift_id: input.shiftId,
+    stage: input.stage,
+    status,
+    checklist_json: payload.checklist,
+    quick_cash_count: payload.quickCashCount ?? null,
+    supervisor_notes: payload.supervisorNotes ?? null,
+    issues_summary: payload.issuesSummary ?? null,
+    approved_by_owner_id: isApproved ? input.actorOwnerId ?? null : null,
+    approved_by_staff_id: isApproved ? input.actorStaffId ?? null : null,
+    approved_at: isApproved ? nowIso : null,
+    updated_at: nowIso,
+  };
+
+  const { data, error } = await ops(input.databaseKey)
+    .from('shift_checklists')
+    .upsert(row, { onConflict: 'cafe_id,shift_id,stage' })
+    .select('id, shift_id, stage, status, checklist_json, quick_cash_count, supervisor_notes, issues_summary, approved_by_owner_id, approved_by_staff_id, approved_at, created_at, updated_at')
+    .single();
+
+  if (error) throw error;
+  return parseShiftChecklistRow(data as ShiftChecklistRow);
+}
+
 export async function readCurrentShiftState(scope: CafeDatabaseScope): Promise<CurrentShiftState> {
   const admin = ops(scope.databaseKey);
   const { data: shift, error: shiftError } = await admin
@@ -1317,7 +1442,7 @@ export async function readCurrentShiftState(scope: CafeDatabaseScope): Promise<C
 
   if (shiftError) throw shiftError;
   if (!shift) {
-    return { shift: null, assignments: [] };
+    return { shift: null, assignments: [], checklists: [] };
   }
 
   const shiftId = String(shift.id);
@@ -1350,6 +1475,12 @@ export async function readCurrentShiftState(scope: CafeDatabaseScope): Promise<C
   const staffNameById = new Map((staffRows.data ?? []).map((item) => [String(item.id), item.full_name ? String(item.full_name) : null]));
   const ownerNameById = new Map((ownerRows.data ?? []).map((item) => [String(item.id), item.full_name ? String(item.full_name) : null]));
 
+  const checklists = await readShiftChecklists({
+    cafeId: scope.cafeId,
+    databaseKey: scope.databaseKey,
+    shiftId,
+  });
+
   return {
     shift: {
       id: shiftId,
@@ -1372,6 +1503,7 @@ export async function readCurrentShiftState(scope: CafeDatabaseScope): Promise<C
         actorType: staffId ? 'staff' : 'owner',
       };
     }),
+    checklists,
   };
 }
 

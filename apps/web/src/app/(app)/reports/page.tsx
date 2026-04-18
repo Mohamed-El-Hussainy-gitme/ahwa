@@ -418,6 +418,16 @@ function ShiftList({ items }: { items: ReportShiftRow[] }) {
               <div className="mt-1 break-words text-xs text-[#8a7763] [overflow-wrap:anywhere]">
                 {row.status === 'open' ? 'مفتوحة' : 'مقفولة'} • جلسات {row.totalSessions} • ملاحظات عامة {row.complaintTotal} • ملاحظات أصناف {row.itemIssueTotal}
               </div>
+              {row.checklistSummary?.length ? (
+                <div className="mt-2 flex flex-wrap justify-end gap-2">
+                  {row.checklistSummary.map((item) => (
+                    <div key={`${row.shiftId}-${item.stage}`} className="ahwa-pill-neutral max-w-full break-words px-3 py-2 text-[11px] [overflow-wrap:anywhere]">
+                      {item.stage === 'opening' ? 'افتتاح' : 'إغلاق'} • {item.status === 'completed' ? 'مكتمل' : 'مسودة'} • تحقق {item.checkedCount}/8
+                      {item.quickCashCount != null ? ` • نقدية ${formatMoney(item.quickCashCount)} ج` : ''}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
             </div>
             <div className="shrink-0 text-left">
               <div className="text-base font-bold">{formatMoney(row.netSales)} ج</div>

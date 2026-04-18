@@ -360,6 +360,46 @@ export type ShiftKind = 'morning' | 'evening';
 export type ShiftRoleCode = 'supervisor' | 'waiter' | 'barista' | 'shisha' | 'american_waiter';
 export type ShiftTemplateAssignment = { userId: string; role: ShiftRoleCode; actorType: 'owner' | 'staff'; fullName: string | null; isActive: boolean; employmentStatus?: StaffEmploymentStatus };
 export type ShiftAssignmentTemplate = { id: string; kind: ShiftKind; label: string; updatedAt: string; assignments: ShiftTemplateAssignment[]; availableAssignmentsCount: number; inactiveAssignmentsCount: number };
+export type ShiftChecklistStage = 'opening' | 'closing';
+export type ShiftChecklistStatus = 'draft' | 'completed';
+export type ShiftChecklistFlags = {
+  cashVerified: boolean;
+  criticalInventoryReady: boolean;
+  machineReady: boolean;
+  grinderReady: boolean;
+  shishaReady: boolean;
+  cleanlinessReady: boolean;
+  previousShiftIssuesReviewed: boolean;
+  supervisorApproved: boolean;
+  supervisorSignoffName: string | null;
+};
+export type ShiftChecklistRecord = {
+  id: string;
+  shiftId: string;
+  stage: ShiftChecklistStage;
+  status: ShiftChecklistStatus;
+  checklist: ShiftChecklistFlags;
+  quickCashCount: number | null;
+  supervisorNotes: string | null;
+  issuesSummary: string | null;
+  approvedByOwnerId: string | null;
+  approvedByStaffId: string | null;
+  approvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+export type ShiftChecklistSummary = {
+  stage: ShiftChecklistStage;
+  status: ShiftChecklistStatus;
+  checkedCount: number;
+  supervisorApproved: boolean;
+  supervisorSignoffName: string | null;
+  quickCashCount: number | null;
+  supervisorNotes: string | null;
+  issuesSummary: string | null;
+  approvedAt: string | null;
+  updatedAt: string;
+};
 export type OpsQueueHealth = {
   oldestPendingMinutes: number | null;
   oldestReadyMinutes: number | null;
@@ -518,6 +558,7 @@ export type ReportShiftRow = ReportTotals & {
   openedAt: string;
   closedAt: string | null;
   businessDate: string | null;
+  checklistSummary?: ShiftChecklistSummary[] | null;
 };
 
 export type ReportBusinessDayRow = ReportTotals & {

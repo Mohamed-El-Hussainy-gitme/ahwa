@@ -17,7 +17,7 @@ import type {
   StationCode,
 } from '@/lib/ops/types';
 import { adminOps, buildDeferredCustomersWorkspace, ensureRuntimeContract } from '@/app/api/ops/_server';
-import { loadOperatingSettings } from '@/lib/ops/owner-admin';
+import { loadOperatingSettings, readShiftChecklistSummaryMap } from '@/lib/ops/owner-admin';
 import { normalizeNullableStationCode, normalizeStationCode } from '@/lib/ops/stations';
 
 type ShiftRow = {
@@ -1721,7 +1721,18 @@ export async function buildReportsWorkspace(
     .map((row) => combinedAggregates.shiftRowsById.get(row.id))
     .filter(Boolean) as ReportShiftRow[];
 
-  const currentShift = sortShifts(shiftRows.filter((row) => row.status === 'open'))[0] ?? null;
+  const checklistSummaryMap = await readShiftChecklistSummaryMap({
+    cafeId,
+    databaseKey,
+    shiftIds: shiftRows.map((row) => row.shiftId),
+  });
+
+  const enrichedShiftRows = shiftRows.map((row) => ({
+    ...row,
+    checklistSummary: checklistSummaryMap.get(row.shiftId) ?? null,
+  }));
+
+  const currentShift = sortShifts(enrichedShiftRows.filter((row) => row.status === 'open'))[0] ?? null;
   const currentProducts = currentShift
     ? sortProducts(Array.from(combinedAggregates.productsByShift.get(currentShift.shiftId)?.values() ?? []))
     : [];
@@ -1740,10 +1751,10 @@ export async function buildReportsWorkspace(
     : [];
 
   const periods = {
-    day: buildPeriodReport({ ...ranges.day, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
-    week: buildPeriodReport({ ...ranges.week, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
-    month: buildPeriodReport({ ...ranges.month, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
-    year: buildPeriodReport({ ...ranges.year, shiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
+    day: buildPeriodReport({ ...ranges.day, shiftRows: enrichedShiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
+    week: buildPeriodReport({ ...ranges.week, shiftRows: enrichedShiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
+    month: buildPeriodReport({ ...ranges.month, shiftRows: enrichedShiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
+    year: buildPeriodReport({ ...ranges.year, shiftRows: enrichedShiftRows, productsByShift: combinedAggregates.productsByShift, addonsByShift: combinedAggregates.addonsByShift, staffByShift: combinedAggregates.staffByShift, complaintsByShift: combinedAggregates.complaintsByShift, itemIssuesByShift: combinedAggregates.itemIssuesByShift, staffRoster }),
   };
 
   const customRange = hasCustomRange && customStartDate && customEndDate
@@ -1753,7 +1764,7 @@ export async function buildReportsWorkspace(
           label: 'فترة مخصصة',
           startDate: customStartDate,
           endDate: customEndDate,
-          shiftRows,
+          shiftRows: enrichedShiftRows,
           productsByShift: combinedAggregates.productsByShift,
           addonsByShift: combinedAggregates.addonsByShift,
           staffByShift: combinedAggregates.staffByShift,

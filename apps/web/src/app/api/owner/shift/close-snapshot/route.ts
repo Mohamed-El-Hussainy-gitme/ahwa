@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { supabaseAdminForDatabase } from '@/lib/supabase/admin';
 import { buildShiftInventorySnapshot } from '@/lib/ops/inventory';
+import { readShiftChecklists } from '@/lib/ops/owner-admin';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { requireOpsActorContext, requireOwnerOrSupervisor } from '@/app/api/ops/_helpers';
 
@@ -59,6 +60,12 @@ export async function POST(request: Request) {
       persist: true,
     });
 
+    const checklists = await readShiftChecklists({
+      cafeId: ctx.cafeId,
+      databaseKey: ctx.databaseKey,
+      shiftId: String(shiftId),
+    });
+
     publishOpsEvent({
       type: 'shift.snapshot_built',
       cafeId: ctx.cafeId,
@@ -66,7 +73,10 @@ export async function POST(request: Request) {
       entityId: String(shiftId),
     });
 
-    return NextResponse.json({ ok: true, snapshot: { ...(rpc.data as Record<string, unknown>), inventory: inventorySnapshot } });
+    return NextResponse.json({
+      ok: true,
+      snapshot: { ...(rpc.data as Record<string, unknown>), inventory: inventorySnapshot, checklists },
+    });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'SHIFT_CLOSE_SNAPSHOT_FAILED';
     return NextResponse.json({ ok: false, error: code }, { status: 400 });

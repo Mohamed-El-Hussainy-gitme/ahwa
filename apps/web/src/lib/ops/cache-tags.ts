@@ -9,6 +9,7 @@ export const OPS_CACHE_TAGS = {
   stations: 'ops:stations',
   billing: 'ops:billing',
   complaints: 'ops:complaints',
+  inventory: 'ops:inventory',
   menu: 'ops:menu',
   reports: 'ops:reports',
   customers: 'ops:customers',
@@ -42,8 +43,9 @@ export function getDefaultTagsForOpsCacheKey(cacheKey?: string | null): readonly
   if (key.startsWith('ops:nav-summary')) return [OPS_CACHE_TAGS.nav, OPS_CACHE_TAGS.orders, OPS_CACHE_TAGS.sessions, OPS_CACHE_TAGS.billing];
   if (key.startsWith('ops:station:')) return [OPS_CACHE_TAGS.stations, OPS_CACHE_TAGS.orders, OPS_CACHE_TAGS.sessions, OPS_CACHE_TAGS.ready];
   if (key.startsWith('ops:billing')) return [OPS_CACHE_TAGS.billing, OPS_CACHE_TAGS.sessions, OPS_CACHE_TAGS.orders, OPS_CACHE_TAGS.customers, OPS_CACHE_TAGS.deferred];
-  if (key.startsWith('ops:complaints')) return [OPS_CACHE_TAGS.complaints, OPS_CACHE_TAGS.orders, OPS_CACHE_TAGS.sessions];
+  if (key.startsWith('ops:complaints') || key.startsWith('workspace:complaints')) return [OPS_CACHE_TAGS.complaints, OPS_CACHE_TAGS.orders, OPS_CACHE_TAGS.sessions, OPS_CACHE_TAGS.billing, OPS_CACHE_TAGS.reports];
   if (key.startsWith('ops:menu')) return [OPS_CACHE_TAGS.menu, OPS_CACHE_TAGS.waiterCatalog];
+  if (key.startsWith('ops:inventory') || key.startsWith('workspace:inventory') || key.startsWith('owner:inventory')) return [OPS_CACHE_TAGS.inventory];
   if (key.startsWith('ops:reports:')) return [OPS_CACHE_TAGS.reports, OPS_CACHE_TAGS.orders, OPS_CACHE_TAGS.billing, OPS_CACHE_TAGS.complaints];
   if (key.startsWith('ops:deferred-customers')) return [OPS_CACHE_TAGS.deferred, OPS_CACHE_TAGS.customers, OPS_CACHE_TAGS.billing];
   if (key.startsWith('ops:deferred-ledger:')) return [OPS_CACHE_TAGS.deferred, OPS_CACHE_TAGS.customers, OPS_CACHE_TAGS.billing];

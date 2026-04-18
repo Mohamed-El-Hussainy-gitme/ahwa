@@ -2,7 +2,8 @@ import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { publishOpsEvent } from '@/lib/ops/events';
 import { requireOpsActorContext, requireOwnerOrManager } from '@/app/api/ops/_helpers';
-import { openShiftWithAssignments } from '@/lib/ops/owner-admin';
+import { openShiftWithAssignments, upsertShiftChecklist } from '@/lib/ops/owner-admin';
+import { ShiftChecklistPayloadSchema } from '@/lib/ops/shift-checklists-schema';
 
 const ShiftKind = z.enum(['morning', 'evening']);
 const Input = z.object({
@@ -17,6 +18,7 @@ const Input = z.object({
       }),
     )
     .default([]),
+  openingChecklist: ShiftChecklistPayloadSchema.optional(),
 });
 
 export async function POST(request: Request) {
@@ -55,6 +57,24 @@ export async function POST(request: Request) {
       data: { kind: parsed.data.kind, mode: opened.mode },
     });
 
+    const warnings: string[] = [];
+    if (parsed.data.openingChecklist) {
+      try {
+        await upsertShiftChecklist({
+          cafeId: ctx.cafeId,
+          databaseKey: ctx.databaseKey,
+          shiftId: opened.shiftId,
+          stage: 'opening',
+          payload: { ...parsed.data.openingChecklist, status: 'completed' },
+          actorOwnerId: ctx.actorOwnerId,
+          actorStaffId: ctx.actorStaffId,
+        });
+      } catch (checklistError) {
+        const checklistCode = checklistError instanceof Error && checklistError.message ? checklistError.message : 'SHIFT_OPENING_CHECKLIST_SAVE_FAILED';
+        warnings.push(checklistCode);
+      }
+    }
+
     const message =
       opened.mode === 'resumed_closed'
         ? 'تمت متابعة آخر وردية مقفولة بالخطأ.'
@@ -67,6 +87,7 @@ export async function POST(request: Request) {
       shift: { id: opened.shiftId, kind: parsed.data.kind, status: 'open' },
       mode: opened.mode,
       message,
+      warnings,
     });
   } catch (error) {
     const code = error instanceof Error ? error.message : 'SHIFT_OPEN_FAILED';
