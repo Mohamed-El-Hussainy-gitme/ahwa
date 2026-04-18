@@ -56,7 +56,7 @@ let inMemoryState: AdminQueueSnapshot = {
 };
 let loaded = false;
 let activeFlush: Promise<void> | null = null;
-let retryTimer: ReturnType<typeof setTimeout> | null = null;
+let retryTimer: ReturnType<typeof window.setTimeout> | null = null;
 
 function ensureLoaded() {
   if (loaded) return;

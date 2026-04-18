@@ -78,8 +78,5 @@ export function usePersistentDraft<T>(storageKey: string, initialValue: Initiali
     setHasStoredDraft(true);
   }, [storageKey]);
 
-  return useMemo<[T, Dispatch<SetStateAction<T>>, DraftControls<T>]>(
-    () => [state, setState, { hydrated, hasStoredDraft, clearDraft, resetDraft, restoreDraft }],
-    [state, hydrated, hasStoredDraft, clearDraft, resetDraft, restoreDraft],
-  );
+  return useMemo(() => [state, setState, { hydrated, hasStoredDraft, clearDraft, resetDraft, restoreDraft }], [state, hydrated, hasStoredDraft, clearDraft, resetDraft, restoreDraft]);
 }
